@@ -1,0 +1,5 @@
+user_id1 = 87d62c5d-22c1-4ba1-942c-0b3a6e407641
+owner_id = bab05df9-4149-43b8-946a-7484f24dad3f
+partner_id = 24e67405-58b8-4ab4-a43a-1d909ac5e91a
+service_id = 02b02cf3-a146-4957-bad6-308057a00849
+KOL affiliate_code = C6453D
