@@ -7,8 +7,8 @@ env/
 __pycache__/
 *.pyc
 
+node_modules
+.next
+.env 
 # Biến môi trường (Tuyệt đối bảo mật)
 .env
-
-.venv/
-__pycache__/

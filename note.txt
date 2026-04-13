@@ -3,3 +3,5 @@ owner_id = bab05df9-4149-43b8-946a-7484f24dad3f
 partner_id = 24e67405-58b8-4ab4-a43a-1d909ac5e91a
 service_id = 02b02cf3-a146-4957-bad6-308057a00849
 KOL affiliate_code = C6453D
+
+partner_id2 = e60dd514-0352-4900-99d2-834ff8e379a1
