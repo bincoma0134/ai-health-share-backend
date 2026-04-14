@@ -174,3 +174,38 @@ async def complete_booking(booking_id: str):
         raise he
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Lỗi hệ thống: {str(e)}")
+
+
+# --- 4. ENDPOINTS QUẢN LÝ VÍ & AFFILIATE (GET) ---
+
+@app.get("/wallets/{user_id}", tags=["Wallets"])
+def get_wallet_info(user_id: str):
+    try:
+        # 1. Lấy thông tin ví chính
+        wallet_res = supabase.table("wallets").select("*").eq("user_id", user_id).execute()
+        
+        # Nếu user chưa có ví (chưa có giao dịch), trả về 0
+        if not wallet_res.data:
+            return {
+                "status": "success", 
+                "data": {
+                    "wallet": {"balance": 0, "total_earned": 0},
+                    "transactions": []
+                }
+            }
+            
+        wallet_data = wallet_res.data[0]
+        wallet_id = wallet_data["id"]
+        
+        # 2. Lấy lịch sử dòng tiền (transactions)
+        tx_res = supabase.table("wallet_transactions").select("*").eq("wallet_id", wallet_id).order("created_at", desc=True).execute()
+        
+        return {
+            "status": "success",
+            "data": {
+                "wallet": wallet_data,
+                "transactions": tx_res.data
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Lỗi truy xuất ví: {str(e)}")
