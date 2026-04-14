@@ -13,8 +13,8 @@ app = FastAPI(
 # --- CẬP NHẬT CORS: CHO PHÉP CẢ LOCAL VÀ VERCEL ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Chấp nhận mọi nguồn truy cập (kể cả Tailscale, ngrok, v.v.)
-    allow_credentials=False, # Bắt buộc phải là False khi dùng "*"
+    allow_origins=["*"],  # Chấp nhận mọi nguồn truy cập
+    allow_credentials=False, 
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -50,22 +50,69 @@ def create_partner(partner: schemas.PartnerCreate):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# --- 3. API TẠO DỊCH VỤ (ĐÃ CHỈNH SỬA) ---
+# --- 3. API TẠO DỊCH VỤ ---
 @app.post("/services", tags=["Services"])
 async def create_service(service: schemas.ServiceCreate):
     try:
-        # Sử dụng model_dump để lấy dữ liệu từ Pydantic
         service_data = service.model_dump() 
-        
         response = supabase.table("services").insert(service_data).execute()
-        
         if not response.data:
             raise HTTPException(status_code=400, detail="Không thể tạo dữ liệu trong Database")
-            
         return {"status": "success", "data": response.data[0]}
     except Exception as e:
-        # Trả về chi tiết lỗi để chúng mình dễ debug
         raise HTTPException(status_code=400, detail=f"Lỗi logic Backend: {str(e)}")
 
-# --- CÁC API KHÁC GIỮ NGUYÊN ---
-# (Cần đảm bảo file schemas.py cũng đã được cập nhật trường description và service_type)
+# --- 4. API TẠO BOOKING (TÍCH HỢP QUÉT MÃ AFFILIATE) ---
+@app.post("/bookings", tags=["Bookings"])
+def create_booking(booking: schemas.BookingCreate):
+    try:
+        affiliate_id = None
+        if booking.affiliate_code:
+            aff_user = supabase.table("users").select("id").eq("affiliate_code", booking.affiliate_code).execute()
+            if aff_user.data:
+                affiliate_id = aff_user.data[0]["id"]
+
+        data = supabase.table("bookings_transactions").insert({
+            "user_id": booking.user_id,
+            "service_id": booking.service_id,
+            "affiliate_id": affiliate_id,
+            "total_amount": booking.total_amount
+        }).execute()
+        return {
+            "status": "success", 
+            "message": "Booking tạo thành công. Đang chờ thanh toán để vào ví Escrow.", 
+            "data": data.data[0]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# --- 5. API LẤY DANH SÁCH BOOKING ---
+@app.get("/bookings", tags=["Bookings"])
+def get_all_bookings():
+    try:
+        data = supabase.table("bookings_transactions").select("*").execute()
+        return {"status": "success", "data": data.data}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# --- 6. API CẬP NHẬT TRẠNG THÁI BOOKING & ESCROW ---
+@app.patch("/bookings/{booking_id}", tags=["Bookings"])
+def update_booking_status(booking_id: str, update_data: schemas.BookingUpdate):
+    try:
+        payload = {"service_status": update_data.service_status}
+        if update_data.payment_status:
+            payload["payment_status"] = update_data.payment_status
+
+        data = supabase.table("bookings_transactions").update(payload).eq("id", booking_id).execute()
+        return {"status": "success", "message": "Cập nhật thành công", "data": data.data[0]}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# --- 7. API LẤY DANH SÁCH DỊCH VỤ ---
+@app.get("/services", tags=["Services"])
+def get_all_services():
+    try:
+        data = supabase.table("services").select("*").execute()
+        return {"status": "success", "data": data.data}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
