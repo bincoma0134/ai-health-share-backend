@@ -15,7 +15,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://ai-health-share-frontend.vercel.app"
+        "https://ai-health-share-frontend.vercel.app",
+        "http://100.104.211.30:3000"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -72,3 +73,47 @@ async def create_service(service: schemas.ServiceCreate):
 
 # --- CÁC API KHÁC GIỮ NGUYÊN ---
 # (Cần đảm bảo file schemas.py cũng đã được cập nhật trường description và service_type)
+
+# --- 4. API CẬP NHẬT TRẠNG THÁI BOOKING & CHIA TIỀN ESCROW ---
+@app.patch("/bookings/{booking_id}/complete", tags=["Bookings"])
+async def complete_booking(booking_id: str):
+    try:
+        # 1. Lấy thông tin booking hiện tại
+        booking_res = supabase.table("bookings_transactions").select("*").eq("id", booking_id).execute()
+        if not booking_res.data:
+            raise HTTPException(status_code=404, detail="Không tìm thấy Booking")
+            
+        booking = booking_res.data[0]
+        
+        # Ép kiểu lowercase để tránh lỗi Case-sensitive
+        if booking.get("service_status").lower() == "completed":
+            raise HTTPException(status_code=400, detail="Booking này đã được hoàn thành trước đó")
+
+        total_amount = float(booking.get("total_amount", 0))
+        affiliate_id = booking.get("affiliate_id")
+        
+        # 2. Logic chia tiền tự động (Phase 1: Đối tác 70%, Affiliate 15%, Nền tảng 15%)
+        partner_share = total_amount * 0.70
+        affiliate_share = total_amount * 0.15 if affiliate_id else 0
+        platform_share = total_amount - partner_share - affiliate_share
+        
+        # 3. Cập nhật trạng thái thành 'completed'
+        update_res = supabase.table("bookings_transactions").update({
+            "service_status": "completed" 
+        }).eq("id", booking_id).execute()
+
+        # Phase 2 sẽ INSERT các khoản partner_share, affiliate_share vào bảng `wallets`
+        
+        return {
+            "status": "success", 
+            "message": "Đã hoàn thành dịch vụ và giải ngân Escrow",
+            "distribution": {
+                "total_amount": total_amount,
+                "partner_revenue": partner_share,
+                "affiliate_revenue": affiliate_share,
+                "platform_revenue": platform_share
+            },
+            "data": update_res.data[0]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Lỗi khi xử lý Escrow: {str(e)}")
