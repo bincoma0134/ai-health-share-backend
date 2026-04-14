@@ -16,6 +16,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://ai-health-share-frontend.vercel.app"
+        "http://100.104.211.30:3000"
     ],
     allow_credentials=True,
     allow_methods=["*"],
