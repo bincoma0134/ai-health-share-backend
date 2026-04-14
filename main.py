@@ -312,3 +312,13 @@ def process_withdrawal(withdraw_id: str, payload: schemas.WithdrawalUpdate):
         return {"status": "success", "message": f"Đã xử lý trạng thái: {payload.status}"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+# --- 6. ENDPOINTS QUẢN TRỊ ADMIN (GET) ---
+
+@app.get("/admin/withdrawals", tags=["Admin"])
+def get_all_withdrawals():
+    try:
+        # Lấy tất cả yêu cầu rút tiền, sắp xếp mới nhất lên đầu
+        data = supabase.table("withdrawal_requests").select("*").order("created_at", desc=True).execute()
+        return {"status": "success", "data": data.data}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
