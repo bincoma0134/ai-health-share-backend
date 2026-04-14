@@ -1,5 +1,7 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional
+from pydantic import BaseModel, EmailStr
+from typing import Optional, Dict, Any
 
 # --- 1. CẤU TRÚC NGƯỜI DÙNG ---
 class UserCreate(BaseModel):
@@ -33,3 +35,14 @@ class BookingCreate(BaseModel):
 class BookingUpdate(BaseModel):
     service_status: str
     payment_status: Optional[str] = None
+
+
+# --- 6. CẤU TRÚC RÚT TIỀN (WITHDRAWAL) ---
+class WithdrawalCreate(BaseModel):
+    user_id: str
+    amount: float
+    payout_info: Dict[str, Any]  # Khớp với kiểu JSONB linh hoạt của Supabase
+
+class WithdrawalUpdate(BaseModel):
+    status: str  # 'APPROVED' hoặc 'REJECTED'
+    admin_note: Optional[str] = None

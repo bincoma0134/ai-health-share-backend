@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from database import supabase
 import schemas
 import uuid
+import urllib.request
+import json
 
 app = FastAPI(
     title="AI Health Share API",
@@ -209,3 +211,104 @@ def get_wallet_info(user_id: str):
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Lỗi truy xuất ví: {str(e)}")
+
+
+# --- CẤU HÌNH TELEGRAM BOT (Thay mã của bạn vào đây sau) ---
+TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN"
+TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"
+
+def send_telegram_msg(message: str):
+    if TELEGRAM_BOT_TOKEN == "YOUR_BOT_TOKEN": 
+        return # Bỏ qua nếu chưa cài token
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        data = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": message}).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        print("Telegram error:", e)
+
+# --- 5. ENDPOINTS RÚT TIỀN & XÉT DUYỆT ---
+
+@app.post("/withdraw", tags=["Withdrawals"])
+def request_withdrawal(req: schemas.WithdrawalCreate):
+    try:
+        # 1. Kiểm tra số dư ví
+        wallet_res = supabase.table("wallets").select("*").eq("user_id", req.user_id).execute()
+        if not wallet_res.data:
+            raise HTTPException(status_code=400, detail="Không tìm thấy ví người dùng.")
+        
+        wallet = wallet_res.data[0]
+        if float(wallet["balance"]) < req.amount:
+            raise HTTPException(status_code=400, detail="Số dư không đủ để rút số tiền này.")
+
+        # 2. Đóng băng tiền (Trừ số dư ngay lập tức)
+        new_balance = float(wallet["balance"]) - req.amount
+        supabase.table("wallets").update({"balance": new_balance}).eq("id", wallet["id"]).execute()
+
+        # 3. Ghi nhận lịch sử ví (Giao dịch âm)
+        supabase.table("wallet_transactions").insert({
+            "wallet_id": wallet["id"],
+            "amount": -req.amount,
+            "transaction_type": "withdrawal_request"
+        }).execute()
+
+        # 4. Tạo yêu cầu rút tiền
+        wd_res = supabase.table("withdrawal_requests").insert({
+            "user_id": req.user_id,
+            "amount": req.amount,
+            "payout_info": req.payout_info,
+            "status": "PENDING" # Viết hoa chuẩn chỉnh
+        }).execute()
+
+        # 5. Bắn thông báo Telegram cho Admin
+        msg = f"🚨 YÊU CẦU RÚT TIỀN MỚI 🚨\n- Mã User: {req.user_id[:8]}...\n- Số tiền: {req.amount:,.0f} VND\n- Ngân hàng: {req.payout_info.get('bank_name', 'N/A')}\n👉 Vui lòng duyệt trên hệ thống!"
+        send_telegram_msg(msg)
+
+        return {"status": "success", "data": wd_res.data[0]}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.patch("/admin/withdraw/{withdraw_id}", tags=["Withdrawals"])
+def process_withdrawal(withdraw_id: str, payload: schemas.WithdrawalUpdate):
+    try:
+        # 1. Lấy thông tin yêu cầu
+        wd_res = supabase.table("withdrawal_requests").select("*").eq("id", withdraw_id).execute()
+        if not wd_res.data:
+            raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu rút tiền.")
+        wd = wd_res.data[0]
+
+        if wd["status"] != "PENDING":
+            raise HTTPException(status_code=400, detail="Yêu cầu này đã được xử lý từ trước.")
+
+        # 2. Cập nhật trạng thái
+        update_data = {"status": payload.status}
+        if payload.admin_note:
+            update_data["admin_note"] = payload.admin_note
+        
+        supabase.table("withdrawal_requests").update(update_data).eq("id", withdraw_id).execute()
+
+        # 3. Xử lý Hoàn tiền nếu BỊ TỪ CHỐI (REJECTED)
+        if payload.status == "REJECTED":
+            wallet_res = supabase.table("wallets").select("*").eq("user_id", wd["user_id"]).execute()
+            if wallet_res.data:
+                wallet = wallet_res.data[0]
+                # Cộng lại tiền vào ví
+                new_balance = float(wallet["balance"]) + float(wd["amount"])
+                supabase.table("wallets").update({"balance": new_balance}).eq("id", wallet["id"]).execute()
+                
+                # Ghi nhận hoàn tiền
+                supabase.table("wallet_transactions").insert({
+                    "wallet_id": wallet["id"],
+                    "amount": float(wd["amount"]),
+                    "transaction_type": "withdrawal_refund"
+                }).execute()
+                
+                send_telegram_msg(f"❌ Yêu cầu {withdraw_id[:8]} đã bị TỪ CHỐI. Tiền đã được hoàn lại vào ví user.")
+
+        elif payload.status == "APPROVED":
+             send_telegram_msg(f"✅ Yêu cầu {withdraw_id[:8]} đã DUYỆT THÀNH CÔNG. Vui lòng chuyển khoản cho đối tác!")
+
+        return {"status": "success", "message": f"Đã xử lý trạng thái: {payload.status}"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
