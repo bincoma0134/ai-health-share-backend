@@ -74,14 +74,14 @@ def create_booking(booking: schemas.BookingCreate):
             if aff_res.data:
                 affiliate_id = aff_res.data[0]["id"]
 
-        # 2. STRICT PAYLOAD: Chỉ lọc lấy đúng các trường hiện có trong DB Table
+        # 2. STRICT PAYLOAD: Lọc và truyền CHÍNH XÁC Enum thực tế từ DB
         clean_payload = {
             "user_id": booking_data.get("user_id"),
             "service_id": booking_data.get("service_id"),
             "total_amount": booking_data.get("total_amount"),
             "affiliate_id": affiliate_id,
-            "payment_status": "pending",  # Đã fix: Trả về chữ thường theo thực tế DB
-            "service_status": "waiting"   # Đã fix: Trả về chữ thường theo thực tế DB
+            "payment_status": "UNPAID",   # Cập nhật chuẩn theo Database: payment_status_enum
+            "service_status": "PENDING"   # Cập nhật chuẩn theo Database: service_status_enum
         }
 
         # 3. Đẩy vào Database
@@ -101,8 +101,8 @@ async def complete_booking(booking_id: str):
             raise HTTPException(status_code=404, detail="Không tìm thấy Booking")
         booking = booking_res.data[0]
         
-        # Tối ưu logic check trạng thái bằng lower()
-        if booking.get("service_status", "").lower() == "completed":
+        # Tối ưu logic check trạng thái
+        if booking.get("service_status", "").upper() == "COMPLETED":
             raise HTTPException(status_code=400, detail="Booking này đã được hoàn thành")
 
         total_amount = float(booking.get("total_amount", 0))
@@ -157,8 +157,8 @@ async def complete_booking(booking_id: str):
         if affiliate_id:
             process_wallet(affiliate_id, affiliate_share, "affiliate_commission")
 
-        # 6. Cập nhật trạng thái Booking (Đã fix: Trả về chữ thường)
-        supabase.table("bookings_transactions").update({"service_status": "completed"}).eq("id", booking_id).execute()
+        # 6. Cập nhật trạng thái Booking (Khớp với service_status_enum)
+        supabase.table("bookings_transactions").update({"service_status": "COMPLETED"}).eq("id", booking_id).execute()
         
         return {
             "status": "success", 
