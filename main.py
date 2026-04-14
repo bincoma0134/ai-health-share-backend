@@ -62,28 +62,34 @@ def create_user(user: schemas.UserCreate):
 @app.post("/bookings", tags=["Bookings"])
 def create_booking(booking: schemas.BookingCreate):
     try:
-        # Lấy toàn bộ dữ liệu từ Frontend gửi lên
-        booking_dict = booking.model_dump()
+        # Chuyển đổi Pydantic model sang Dictionary
+        booking_data = booking.model_dump()
         
-        # 1. Bóc tách affiliate_code ra khỏi dữ liệu chuẩn bị insert
-        affiliate_code = booking_dict.pop("affiliate_code", None)
+        # 1. Xử lý Affiliate Code (Dịch từ mã 6 số sang UUID)
+        affiliate_code = booking_data.get("affiliate_code")
         affiliate_id = None
         
-        # 2. Logic phiên dịch: Biến Code (6 chữ số) thành ID (UUID)
         if affiliate_code:
-            # Tìm trong bảng users xem ai là chủ nhân của mã này
             aff_res = supabase.table("users").select("id").eq("affiliate_code", affiliate_code.upper()).execute()
             if aff_res.data:
                 affiliate_id = aff_res.data[0]["id"]
-            # Nếu mã sai/không tồn tại, affiliate_id vẫn là None 
 
-        # 3. Gắn affiliate_id chuẩn vào lại dictionary
-        booking_dict["affiliate_id"] = affiliate_id
+        # 2. STRICT PAYLOAD: Chỉ lọc lấy đúng các trường hiện có trong DB Table
+        # Việc này giúp loại bỏ các trường thừa như 'description' từ Frontend gửi lên
+        clean_payload = {
+            "user_id": booking_data.get("user_id"),
+            "service_id": booking_data.get("service_id"),
+            "total_amount": booking_data.get("total_amount"),
+            "affiliate_id": affiliate_id,
+            "payment_status": "unpaid", # Mặc định cho đơn mới
+            "service_status": "waiting"  # Mặc định cho đơn mới
+        }
 
-        # 4. Đẩy vào Database
-        data = supabase.table("bookings_transactions").insert(booking_dict).execute()
+        # 3. Đẩy vào Database
+        data = supabase.table("bookings_transactions").insert(clean_payload).execute()
         return {"status": "success", "data": data.data[0]}
     except Exception as e:
+        # Debug lỗi chi tiết cho Mỹ
         raise HTTPException(status_code=400, detail=f"Lỗi tạo Booking: {str(e)}")
 
 # --- 3. LOGIC GIẢI NGÂN ESCROW & VÍ (PATCH) ---
@@ -111,30 +117,27 @@ async def complete_booking(booking_id: str):
         partner_id = service_res.data[0]["partner_id"]
         
         # --- [LOGIC PHÒNG NGỰ DỮ LIỆU RÁC] ---
-        # 2.1 Xác định chính xác owner_id nếu partner_id trỏ vào bảng partners
         target_partner_user_id = partner_id
         partner_record = supabase.table("partners").select("owner_id").eq("id", partner_id).execute()
         if partner_record.data:
             target_partner_user_id = partner_record.data[0]["owner_id"]
 
-        # 2.2 Rà soát chéo: Đối tác có CÓ THẬT trong bảng users không
         check_partner = supabase.table("users").select("id").eq("id", target_partner_user_id).execute()
         if not check_partner.data:
-            raise HTTPException(status_code=400, detail="Dữ liệu lỗi: Tài khoản Đối tác không còn tồn tại trong hệ thống (Vui lòng xóa Booking rác này trên Database).")
+            raise HTTPException(status_code=400, detail="Tài khoản Đối tác không tồn tại.")
 
-        # 2.3 Rà soát Affiliate
         if affiliate_id:
             check_aff = supabase.table("users").select("id").eq("id", affiliate_id).execute()
             if not check_aff.data:
-                affiliate_id = None # Hủy chia hoa hồng nếu user rác
+                affiliate_id = None 
         # -------------------------------------
 
-        # 3. Tính toán dòng tiền (Partner 70%, Affiliate 15%)
+        # 3. Tính toán dòng tiền
         partner_share = total_amount * 0.70
         affiliate_share = total_amount * 0.15 if affiliate_id else 0
         platform_share = total_amount - partner_share - affiliate_share
         
-        # 4. Hàm xử lý nghiệp vụ Ví (Tạo mới & Cộng dồn balance + total_earned)
+        # 4. Hàm xử lý nghiệp vụ Ví
         def process_wallet(uid: str, amount: float, tx_type: str):
             wallet_res = supabase.table("wallets").select("*").eq("user_id", uid).execute()
             if wallet_res.data:
@@ -146,7 +149,6 @@ async def complete_booking(booking_id: str):
                 new_wallet = supabase.table("wallets").insert({"user_id": uid, "balance": amount, "total_earned": amount}).execute()
                 w_id = new_wallet.data[0]["id"]
                 
-            # Ghi lịch sử giao dịch vào sổ cái
             supabase.table("wallet_transactions").insert({
                 "wallet_id": w_id, "booking_id": booking_id, "amount": amount, "transaction_type": tx_type
             }).execute()
