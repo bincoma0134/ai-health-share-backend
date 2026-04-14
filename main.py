@@ -75,21 +75,19 @@ def create_booking(booking: schemas.BookingCreate):
                 affiliate_id = aff_res.data[0]["id"]
 
         # 2. STRICT PAYLOAD: Chỉ lọc lấy đúng các trường hiện có trong DB Table
-        # Việc này giúp loại bỏ các trường thừa như 'description' từ Frontend gửi lên
         clean_payload = {
             "user_id": booking_data.get("user_id"),
             "service_id": booking_data.get("service_id"),
             "total_amount": booking_data.get("total_amount"),
             "affiliate_id": affiliate_id,
-            "payment_status": "PENDING",  # Đã fix: VIẾT HOA TOÀN BỘ
-            "service_status": "WAITING"   # Đã fix: VIẾT HOA TOÀN BỘ
+            "payment_status": "pending",  # Đã fix: Trả về chữ thường theo thực tế DB
+            "service_status": "waiting"   # Đã fix: Trả về chữ thường theo thực tế DB
         }
 
         # 3. Đẩy vào Database
         data = supabase.table("bookings_transactions").insert(clean_payload).execute()
         return {"status": "success", "data": data.data[0]}
     except Exception as e:
-        # Debug lỗi chi tiết cho Mỹ
         raise HTTPException(status_code=400, detail=f"Lỗi tạo Booking: {str(e)}")
 
 # --- 3. LOGIC GIẢI NGÂN ESCROW & VÍ (PATCH) ---
@@ -103,8 +101,8 @@ async def complete_booking(booking_id: str):
             raise HTTPException(status_code=404, detail="Không tìm thấy Booking")
         booking = booking_res.data[0]
         
-        # Tối ưu logic check trạng thái, đổi sang upper() để đồng bộ kiểm tra
-        if booking.get("service_status", "").upper() == "COMPLETED":
+        # Tối ưu logic check trạng thái bằng lower()
+        if booking.get("service_status", "").lower() == "completed":
             raise HTTPException(status_code=400, detail="Booking này đã được hoàn thành")
 
         total_amount = float(booking.get("total_amount", 0))
@@ -159,8 +157,8 @@ async def complete_booking(booking_id: str):
         if affiliate_id:
             process_wallet(affiliate_id, affiliate_share, "affiliate_commission")
 
-        # 6. Cập nhật trạng thái Booking (Đã fix: VIẾT HOA TOÀN BỘ)
-        supabase.table("bookings_transactions").update({"service_status": "COMPLETED"}).eq("id", booking_id).execute()
+        # 6. Cập nhật trạng thái Booking (Đã fix: Trả về chữ thường)
+        supabase.table("bookings_transactions").update({"service_status": "completed"}).eq("id", booking_id).execute()
         
         return {
             "status": "success", 
