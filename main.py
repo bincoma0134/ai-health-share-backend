@@ -119,29 +119,79 @@ async def complete_booking(booking_id: str):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Lỗi khi xử lý Escrow: {str(e)}")
 =======
-# --- 4. API TẠO BOOKING (TÍCH HỢP QUÉT MÃ AFFILIATE) ---
-@app.post("/bookings", tags=["Bookings"])
-def create_booking(booking: schemas.BookingCreate):
+# --- 4. API CẬP NHẬT TRẠNG THÁI BOOKING & CHIA TIỀN ESCROW (FINTECH VERSION) ---
+@app.patch("/bookings/{booking_id}/complete", tags=["Bookings"])
+async def complete_booking(booking_id: str):
     try:
-        affiliate_id = None
-        if booking.affiliate_code:
-            aff_user = supabase.table("users").select("id").eq("affiliate_code", booking.affiliate_code).execute()
-            if aff_user.data:
-                affiliate_id = aff_user.data[0]["id"]
+        # 1. Lấy thông tin booking
+        booking_res = supabase.table("bookings_transactions").select("*").eq("id", booking_id).execute()
+        if not booking_res.data:
+            raise HTTPException(status_code=404, detail="Không tìm thấy Booking")
+            
+        booking = booking_res.data[0]
+        
+        if booking.get("service_status").lower() == "completed":
+            raise HTTPException(status_code=400, detail="Booking này đã được hoàn thành trước đó")
 
-        data = supabase.table("bookings_transactions").insert({
-            "user_id": booking.user_id,
-            "service_id": booking.service_id,
-            "affiliate_id": affiliate_id,
-            "total_amount": booking.total_amount
-        }).execute()
+        total_amount = float(booking.get("total_amount", 0))
+        affiliate_id = booking.get("affiliate_id")
+        service_id = booking.get("service_id")
+        
+        # 2. Lấy thông tin Partner_id từ bảng services
+        service_res = supabase.table("services").select("partner_id").eq("id", service_id).execute()
+        if not service_res.data:
+            raise HTTPException(status_code=404, detail="Không tìm thấy Dịch vụ liên kết")
+        partner_id = service_res.data[0]["partner_id"]
+        
+        # 3. Tính toán dòng tiền (Partner 70%, Affiliate 15%)
+        partner_share = total_amount * 0.70
+        affiliate_share = total_amount * 0.15 if affiliate_id else 0
+        platform_share = total_amount - partner_share - affiliate_share
+        
+        # 4. Hàm xử lý nghiệp vụ Ví (Tạo mới hoặc Cộng dồn)
+        def process_wallet(uid: str, amount: float, tx_type: str):
+            wallet_res = supabase.table("wallets").select("*").eq("user_id", uid).execute()
+            if wallet_res.data: # Nếu đã có ví
+                w_id = wallet_res.data[0]["id"]
+                new_balance = float(wallet_res.data[0]["balance"]) + amount
+                new_total = float(wallet_res.data[0]["total_earned"]) + amount
+                supabase.table("wallets").update({"balance": new_balance, "total_earned": new_total}).eq("id", w_id).execute()
+            else: # Nếu chưa có ví -> Tạo ví mới
+                new_wallet = supabase.table("wallets").insert({"user_id": uid, "balance": amount, "total_earned": amount}).execute()
+                w_id = new_wallet.data[0]["id"]
+                
+            # Ghi vào Sổ cái (Transactions)
+            supabase.table("wallet_transactions").insert({
+                "wallet_id": w_id,
+                "booking_id": booking_id,
+                "amount": amount,
+                "transaction_type": tx_type
+            }).execute()
+
+        # 5. Giải ngân vào ví Partner
+        process_wallet(partner_id, partner_share, "partner_revenue")
+        
+        # 6. Giải ngân vào ví Affiliate (nếu khách dùng mã giới thiệu)
+        if affiliate_id:
+            process_wallet(affiliate_id, affiliate_share, "affiliate_commission")
+
+        # 7. Cập nhật trạng thái Booking thành 'completed'
+        update_res = supabase.table("bookings_transactions").update({
+            "service_status": "completed" 
+        }).eq("id", booking_id).execute()
+        
         return {
             "status": "success", 
-            "message": "Booking tạo thành công. Đang chờ thanh toán để vào ví Escrow.", 
-            "data": data.data[0]
+            "message": "Đã giải ngân Escrow thành công",
+            "distribution": {
+                "total_amount": total_amount,
+                "partner_revenue": partner_share,
+                "affiliate_revenue": affiliate_share,
+                "platform_revenue": platform_share
+            }
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=f"Lỗi hệ thống ví Escrow: {str(e)}")
 
 # --- 5. API LẤY DANH SÁCH BOOKING ---
 @app.get("/bookings", tags=["Bookings"])
