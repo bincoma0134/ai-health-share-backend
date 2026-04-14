@@ -73,7 +73,7 @@ def create_booking(booking: schemas.BookingCreate):
 @app.patch("/bookings/{booking_id}/complete", tags=["Bookings"])
 async def complete_booking(booking_id: str):
     try:
-        # Lấy thông tin booking
+        # 1. Lấy thông tin booking
         booking_res = supabase.table("bookings_transactions").select("*").eq("id", booking_id).execute()
         if not booking_res.data:
             raise HTTPException(status_code=404, detail="Không tìm thấy Booking")
@@ -86,32 +86,73 @@ async def complete_booking(booking_id: str):
         affiliate_id = booking.get("affiliate_id")
         service_id = booking.get("service_id")
         
-        # Lấy partner_id
+        # 2. Lấy partner_id từ bảng services
         service_res = supabase.table("services").select("partner_id").eq("id", service_id).execute()
+        if not service_res.data:
+            raise HTTPException(status_code=404, detail="Không tìm thấy Dịch vụ liên kết")
         partner_id = service_res.data[0]["partner_id"]
         
-        # Chia tiền (Partner 70%, Affiliate 15%) [cite: 1212]
+        # --- [LOGIC PHÒNG NGỰ DỮ LIỆU RÁC] ---
+        # 2.1 Xác định chính xác owner_id nếu partner_id trỏ vào bảng partners
+        target_partner_user_id = partner_id
+        partner_record = supabase.table("partners").select("owner_id").eq("id", partner_id).execute()
+        if partner_record.data:
+            target_partner_user_id = partner_record.data[0]["owner_id"]
+
+        # 2.2 Rà soát chéo: Đối tác có CÓ THẬT trong bảng users không
+        check_partner = supabase.table("users").select("id").eq("id", target_partner_user_id).execute()
+        if not check_partner.data:
+            raise HTTPException(status_code=400, detail="Dữ liệu lỗi: Tài khoản Đối tác không còn tồn tại trong hệ thống (Vui lòng xóa Booking rác này trên Database).")
+
+        # 2.3 Rà soát Affiliate
+        if affiliate_id:
+            check_aff = supabase.table("users").select("id").eq("id", affiliate_id).execute()
+            if not check_aff.data:
+                affiliate_id = None # Hủy chia hoa hồng nếu user rác
+        # -------------------------------------
+
+        # 3. Tính toán dòng tiền (Partner 70%, Affiliate 15%)
         partner_share = total_amount * 0.70
         affiliate_share = total_amount * 0.15 if affiliate_id else 0
+        platform_share = total_amount - partner_share - affiliate_share
         
+        # 4. Hàm xử lý nghiệp vụ Ví (Tạo mới & Cộng dồn balance + total_earned)
         def process_wallet(uid: str, amount: float, tx_type: str):
             wallet_res = supabase.table("wallets").select("*").eq("user_id", uid).execute()
             if wallet_res.data:
                 w_id = wallet_res.data[0]["id"]
                 new_balance = float(wallet_res.data[0]["balance"]) + amount
-                supabase.table("wallets").update({"balance": new_balance}).eq("id", w_id).execute()
+                new_total = float(wallet_res.data[0].get("total_earned", 0)) + amount
+                supabase.table("wallets").update({"balance": new_balance, "total_earned": new_total}).eq("id", w_id).execute()
             else:
-                new_wallet = supabase.table("wallets").insert({"user_id": uid, "balance": amount}).execute()
+                new_wallet = supabase.table("wallets").insert({"user_id": uid, "balance": amount, "total_earned": amount}).execute()
                 w_id = new_wallet.data[0]["id"]
+                
+            # Ghi lịch sử giao dịch vào sổ cái
             supabase.table("wallet_transactions").insert({
                 "wallet_id": w_id, "booking_id": booking_id, "amount": amount, "transaction_type": tx_type
             }).execute()
 
-        process_wallet(partner_id, partner_share, "partner_revenue")
+        # 5. Thực thi giải ngân
+        process_wallet(target_partner_user_id, partner_share, "partner_revenue")
         if affiliate_id:
             process_wallet(affiliate_id, affiliate_share, "affiliate_commission")
 
+        # 6. Cập nhật trạng thái Booking
         supabase.table("bookings_transactions").update({"service_status": "completed"}).eq("id", booking_id).execute()
-        return {"status": "success", "message": "Giải ngân thành công"}
+        
+        return {
+            "status": "success", 
+            "message": "Giải ngân thành công",
+            "distribution": {
+                "total_amount": total_amount,
+                "partner_revenue": partner_share,
+                "affiliate_revenue": affiliate_share,
+                "platform_revenue": platform_share
+            }
+        }
+    except HTTPException as he:
+        # Giữ nguyên mã lỗi HTTP (ví dụ 404, 400 rõ ràng) thay vì gộp chung
+        raise he
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Lỗi: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Lỗi hệ thống: {str(e)}")
