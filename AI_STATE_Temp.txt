@@ -1,0 +1,50 @@
+# [DỰ ÁN: AI HEALTH SHARE] - TRẠNG THÁI HỆ THỐNG
+**Cập nhật lần cuối:** 14:05 - 14/04/2026
+**Giai đoạn hiện tại:** Phase 1 - Luồng Đặt lịch & Affiliate (Tiktok UI)
+
+## 1. QUY TẮC CỐT LÕI (CORE RULES)
+- **Cấu trúc:** Backend (FastAPI - Python) / Frontend (Next.js - Tailwind).
+- **Naming:** Backend dùng `snake_case`, Frontend dùng `camelCase`.
+- **Database:** Supabase (Sử dụng Enum viết hoa toàn bộ cho Role).
+- **Giao thức Remote:** Port Forwarding cổng 3000 từ máy trạm về MacBook.
+
+## 2. DATABASE SCHEMA (SUPABASE)
+**Table: `users`**
+- `id` (uuid, PK) | `email` (string, unique)
+- `role` (Enum: "USER", "CREATOR", "PARTNER_ADMIN", "SUPER_ADMIN")
+- `affiliate_code` (string)
+
+**Table: `services`**
+- `id` (uuid, PK) | `service_name` (string) | `price` (number)
+
+**Table: `bookings_transactions`**
+- `id` (uuid, PK)
+- `user_id` (FK -> users.id)
+- `service_id` (FK -> services.id)
+- `affiliate_id` (FK -> users.id, nullable)
+- `total_amount` (number)
+- `payment_status` (string, default: "pending")
+- `service_status` (string, default: "waiting")
+
+## 3. BACKEND API CONTRACTS
+- `POST /users`: Đã fix lỗi Enum `USER` và check định dạng Email thật.
+- `POST /bookings`: Đã fix lỗi thiếu biến `userId` từ Frontend.
+- `GET /services`: Đang hoạt động, cung cấp dữ liệu cho Tiktok Feed.
+
+## 4. TIẾN ĐỘ & TRẠNG THÁI HIỆN TẠI
+- **Thành tựu:** Đã thông luồng Đặt lịch: Người dùng xem video -> Bấm Đặt lịch -> Hiện Modal -> Nhập Email/Affiliate -> Tạo thành công User & Booking trong DB.
+- **Lỗi đã Fix:** CORS mở toang (`allow_origins=["*"]`), Enum Role đồng bộ, Pydantic Email Validation.
+
+## 5. CẤU HÌNH QUAN TRỌNG
+- Backend: `https://ai-health-share-backend.onrender.com`
+- Frontend: `http://localhost:3000` (Localhost MacBook qua Cursor Tunnel).
+
+## 6. LỘ TRÌNH HÀNH ĐỘNG (ROADMAP)
+### 6.1. PHIÊN LÀM VIỆC TIẾP THEO
+- [ ] Thiết kế Dashboard cho Partner để quản lý các Booking vừa tạo.
+- [ ] Hiển thị danh sách Giao dịch Escrow (Số tiền đang treo).
+- [ ] Nút xác nhận "Hoàn thành dịch vụ" để chuyển trạng thái Booking.
+
+### 6.2. TẦM NHÌN CHIẾN LƯỢC
+- [ ] Hoàn thiện trang cá nhân cho Creator để theo dõi hoa hồng Affiliate.
+- [ ] Tích hợp thông báo Email khi có đơn hàng mới.
