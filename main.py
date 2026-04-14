@@ -13,12 +13,8 @@ app = FastAPI(
 # --- CẬP NHẬT CORS: CHO PHÉP CẢ LOCAL VÀ VERCEL ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://ai-health-share-frontend.vercel.app"
-        "http://100.104.211.30:3000"
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],  # Chấp nhận mọi nguồn truy cập (kể cả Tailscale, ngrok, v.v.)
+    allow_credentials=False, # Bắt buộc phải là False khi dùng "*"
     allow_methods=["*"],
     allow_headers=["*"],
 )
