@@ -1,70 +1,61 @@
 # 🚀 [DỰ ÁN: AI HEALTH SHARE] - TRẠNG THÁI HỆ THỐNG
 
 > **Mã dự án:** `X_AI_Health-Share`
-> **Cập nhật lần cuối:** 16:10 - 14/04/2026
-> **Giai đoạn hiện tại:** Phase 1.5 - Hệ thống Ví (Wallet) & Affiliate Dashboard
+> **Cập nhật lần cuối:** 17:15 - 14/04/2026
+> **Giai đoạn hiện tại:** Phase 1.5 - Hệ thống Ví (Wallet) & Affiliate Dashboard (PENDING HOTFIX)
 
 ---
 
 ## 1. QUY TẮC CỐT LÕI (CORE RULES)
 - **Kiến trúc:** Backend (`FastAPI - Python`) / Frontend (`Next.js - Tailwind`).
-- **Quy tắc Naming:** Backend dùng `snake_case`, Frontend dùng `camelCase`.
-- **Database:** Supabase (Bắt buộc sử dụng Enum **VIẾT HOA TOÀN BỘ** cho Role, VD: `USER`).
-- **Workflow Remote:** Deploy tự động qua GitHub tới Render. Cấp quyền push Git qua Personal Access Token (PAT) nếu trạm máy Windows kẹt SSH/DNS.
+- **Naming:** Backend dùng `snake_case`, Frontend dùng `camelCase`.
+- **Database:** Supabase (Bắt buộc Enum **VIẾT HOA TOÀN BỘ**, VD: `USER`, `PENDING`).
+- **Workflow:** Deploy tự động qua GitHub -> Render. Xác thực Git qua Personal Access Token (PAT).
 
 ---
 
 ## 2. DATABASE SCHEMA (VERIFIED)
 
 **🗄️ Bảng: `users`**
-- `id` (uuid, PK) | `email` (string, unique)
-- `role` (Enum: "USER", "CREATOR", "PARTNER_ADMIN", "SUPER_ADMIN")
-- `affiliate_code` (string, 6 chars)
+- `id` (uuid, PK) | `email` (string, unique) | `role` (Enum) | `affiliate_code` (6 chars)
 
-**🗄️ Bảng: `services`**
-- `id` (uuid, PK) | `partner_id` (uuid, FK)
-- `service_name` (varchar) | `description` (text, nullable)
-- `price` (numeric) | `service_type` (Enum)
+**🗄️ Bảng: `wallets` & `wallet_transactions` (NEW)**
+- Đã khởi tạo thành công luồng lưu trữ số dư và sổ cái biến động số dư.
+- Đã thiết lập RLS Policy cho phép Backend thao tác (FOR ALL).
 
 **🗄️ Bảng: `bookings_transactions`**
-- `id` (uuid, PK)
-- `user_id` (uuid, FK) | `service_id` (uuid, FK) | `affiliate_id` (uuid, FK, nullable)
-- `total_amount` (numeric)
-- `payment_status` (Enum, default: 'pending')
-- `service_status` (Enum, default: 'waiting')
+- `payment_status` (Enum: `PENDING`, `PAID`) - **Đang gặp lỗi mismatch case.**
+- `service_status` (Enum: `WAITING`, `COMPLETED`).
 
 ---
 
 ## 3. BACKEND API CONTRACTS
-- 🟢 `POST /users`: Tạo User, tự động sinh `affiliate_code`. Validate Email TLD khắt khe.
-- 🟢 `POST /bookings`: Tạo lịch đặt, liên kết User và Affiliate.
-- 🟢 `GET /services`: Lấy danh sách dịch vụ (Cung cấp data cho TikTok UI).
-- 🟢 `GET /bookings`: Đổ dữ liệu lịch đặt cho Partner Dashboard.
-- 🟢 `PATCH /bookings/{id}/complete`: **(Mới)** Xác nhận hoàn thành dịch vụ, tính toán phân bổ dòng tiền Escrow (Partner 70%, Affiliate 15%, Platform 15%).
+- 🟢 `PATCH /bookings/{id}/complete`: Hoàn tất logic giải ngân tự động 70/15/15 vào ví.
+- 🟡 `POST /bookings`: Đang lỗi `22P02` do truyền giá trị Enum lowercase (`unpaid`).
+- 🟢 `GET /bookings` & `GET /services`: Đã khôi phục và hoạt động ổn định.
 
 ---
 
 ## 4. TIẾN ĐỘ & TRẠNG THÁI HIỆN TẠI
 
 **✅ Thành tựu đã đạt:**
-- Lên hình thành công **Partner Escrow Dashboard** (`/partner/dashboard`) với thiết kế Dark Mode chuyên nghiệp.
-- Thông luồng Nút "Xác nhận Hoàn thành" -> Bắn API PATCH -> Tính toán chính xác tỷ lệ hoa hồng hiển thị trên Alert.
-- Xử lý triệt để rào cản hệ thống: Fix CORS đa luồng, xử lý lỗi phân giải DNS (Tailscale) và bypass lỗi xác thực GitHub 401 trên trạm Windows.
+- Thông luồng giải ngân: Tiền đã có thể chảy từ đơn hàng vào Ví người dùng trên Database.
+- Dashboard Partner đã hiển thị dữ liệu real-time từ Supabase.
+- Xử lý thành công lỗi Proxy/DNS và xác thực GitHub trên máy trạm Windows.
 
-**⚙️ Cấu hình Mạng lưới:**
-- **Backend URL:** `https://ai-health-share-backend.onrender.com`
-- **Frontend Local:** `http://localhost:3000`
-- **Source of Truth:** Nhánh `main` trên GitHub repository.
+**⚠️ Lỗi tồn đọng (Blocking):**
+- **Error `22P02`:** Hàm `create_booking` gửi giá trị `"unpaid"` vào cột Enum. Cần sửa thành `"PENDING"` (viết hoa) để khớp với Schema.
+- **Dữ liệu mồ côi:** Cần xóa thủ công các Booking cũ không có `user_id` hợp lệ trong bảng `users` để tránh lỗi Foreign Key.
 
 ---
 
 ## 5. LỘ TRÌNH HÀNH ĐỘNG (ROADMAP - PHASE 1.5)
 
-### 🎯 Phiên làm việc hiện tại (Ưu tiên cao nhất)
-- [ ] **Task 1 (Database):** Tạo bảng `wallets` trên Supabase để lưu trữ số dư khả dụng (Balance) của Đối tác và Affiliate.
-- [ ] **Task 2 (Backend):** Nâng cấp logic API `PATCH /bookings/{id}/complete` -> Tự động INSERT/UPDATE số tiền hoa hồng (70/15) thẳng vào bảng `wallets`.
-- [ ] **Task 3 (Frontend):** Thiết kế trang **Affiliate Dashboard** (`/affiliate/dashboard`) cho Creator theo dõi Lượt giới thiệu, GMV và Số dư ví.
+### 🎯 Phiên làm việc tiếp theo (Ưu tiên cao nhất)
+- [ ] **Hotfix:** Sửa `payment_status` trong `main.py` từ `"unpaid"` thành `"PENDING"`.
+- [ ] **Integration:** Kết nối dữ liệu thực từ bảng `wallets` lên **Affiliate Dashboard** (Hiện đang dùng data mô phỏng).
+- [ ] **UX:** Thêm trạng thái Loading và Toast thông báo khi giải ngân thành công trên Dashboard.
 
 ### 🔭 Tầm nhìn chiến lược
-- [ ] Xây dựng luồng Yêu cầu Rút tiền (Withdraw Request).
-- [ ] Tích hợp thông báo Webhook (Email/Telegram) khi có đơn hàng mới phát sinh.
+- [ ] Xây dựng hệ thống Yêu cầu Rút tiền và phê duyệt từ SuperAdmin.
+- [ ] Tích hợp thông báo Telegram Bot khi có đơn hàng mới phát sinh.
