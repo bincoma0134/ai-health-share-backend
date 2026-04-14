@@ -62,11 +62,29 @@ def create_user(user: schemas.UserCreate):
 @app.post("/bookings", tags=["Bookings"])
 def create_booking(booking: schemas.BookingCreate):
     try:
-        booking_data = booking.model_dump()
-        data = supabase.table("bookings_transactions").insert(booking_data).execute()
+        # Lấy toàn bộ dữ liệu từ Frontend gửi lên
+        booking_dict = booking.model_dump()
+        
+        # 1. Bóc tách affiliate_code ra khỏi dữ liệu chuẩn bị insert
+        affiliate_code = booking_dict.pop("affiliate_code", None)
+        affiliate_id = None
+        
+        # 2. Logic phiên dịch: Biến Code (6 chữ số) thành ID (UUID)
+        if affiliate_code:
+            # Tìm trong bảng users xem ai là chủ nhân của mã này
+            aff_res = supabase.table("users").select("id").eq("affiliate_code", affiliate_code.upper()).execute()
+            if aff_res.data:
+                affiliate_id = aff_res.data[0]["id"]
+            # Nếu mã sai/không tồn tại, affiliate_id vẫn là None 
+
+        # 3. Gắn affiliate_id chuẩn vào lại dictionary
+        booking_dict["affiliate_id"] = affiliate_id
+
+        # 4. Đẩy vào Database
+        data = supabase.table("bookings_transactions").insert(booking_dict).execute()
         return {"status": "success", "data": data.data[0]}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=f"Lỗi tạo Booking: {str(e)}")
 
 # --- 3. LOGIC GIẢI NGÂN ESCROW & VÍ (PATCH) ---
 
@@ -152,7 +170,6 @@ async def complete_booking(booking_id: str):
             }
         }
     except HTTPException as he:
-        # Giữ nguyên mã lỗi HTTP (ví dụ 404, 400 rõ ràng) thay vì gộp chung
         raise he
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Lỗi hệ thống: {str(e)}")
