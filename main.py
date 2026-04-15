@@ -102,6 +102,9 @@ def create_booking(booking: schemas.BookingCreate, current_user = Depends(verify
             aff_res = supabase.table("users").select("id").eq("affiliate_code", affiliate_code.upper()).execute()
             if aff_res.data:
                 affiliate_id = aff_res.data[0]["id"]
+            else:
+                # THÊM ĐOẠN NÀY: Bắt lỗi nếu mã không tồn tại
+                raise HTTPException(status_code=400, detail="Mã giới thiệu (KOL) không hợp lệ! Vui lòng kiểm tra lại.")
 
         # 2. Lấy thông tin Dịch vụ & Đối tác
         service_id = booking_data.get("service_id")
