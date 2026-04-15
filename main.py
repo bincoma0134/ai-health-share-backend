@@ -9,7 +9,9 @@ import json
 import os
 import time
 import random
-from payos import PayOS, PaymentData, ItemData
+# --- SỬA LẠI ĐOẠN IMPORT NÀY ---
+from payos import PayOS
+from payos.type import PaymentData, ItemData
 
 # --- CẤU HÌNH CỔNG THANH TOÁN PAYOS ---
 PAYOS_CLIENT_ID = os.environ.get("PAYOS_CLIENT_ID", "YOUR_CLIENT_ID")
