@@ -62,42 +62,50 @@ def create_user(user: schemas.UserCreate):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/bookings", tags=["Bookings"])
+@app.post("/bookings", tags=["Bookings"])
 def create_booking(booking: schemas.BookingCreate):
     try:
-        # Chuyển đổi Pydantic model sang Dictionary
         booking_data = booking.model_dump()
         
-        # 1. Xử lý Affiliate Code (Dịch từ mã 6 số sang UUID)
+        # 1. Xử lý Affiliate Code
         affiliate_code = booking_data.get("affiliate_code")
         affiliate_id = None
-        
         if affiliate_code:
             aff_res = supabase.table("users").select("id").eq("affiliate_code", affiliate_code.upper()).execute()
             if aff_res.data:
                 affiliate_id = aff_res.data[0]["id"]
 
-        # LẤY TÊN DỊCH VỤ ĐỂ BÁO TELEGRAM CHO CHI TIẾT
+        # 2. Lấy thông tin Dịch vụ & Đối tác (Partner)
         service_id = booking_data.get("service_id")
         service_name = "Dịch vụ Y tế"
-        service_res = supabase.table("services").select("service_name").eq("id", service_id).execute()
+        partner_id = None
+        service_res = supabase.table("services").select("service_name, partner_id").eq("id", service_id).execute()
         if service_res.data:
             service_name = service_res.data[0]["service_name"]
+            partner_id = service_res.data[0]["partner_id"]
 
-        # 2. STRICT PAYLOAD: Lọc và truyền CHÍNH XÁC Enum thực tế từ DB
+        # 3. STRICT PAYLOAD
         clean_payload = {
             "user_id": booking_data.get("user_id"),
             "service_id": service_id,
             "total_amount": booking_data.get("total_amount"),
             "affiliate_id": affiliate_id,
-            "payment_status": "UNPAID",   # Cập nhật chuẩn theo Database: payment_status_enum
-            "service_status": "PENDING"   # Cập nhật chuẩn theo Database: service_status_enum
+            "payment_status": "UNPAID",
+            "service_status": "PENDING"
         }
 
-        # 3. Đẩy vào Database
+        # 4. Đẩy vào Database
         data = supabase.table("bookings_transactions").insert(clean_payload).execute()
         new_booking = data.data[0]
 
-        # 4. 🚀 TÍCH HỢP BOT TELEGRAM BÁO ĐƠN MỚI
+        # 5. Lấy Telegram Chat ID của Partner (Nếu họ đã kết nối)
+        partner_chat_id = None
+        if partner_id:
+            partner_res = supabase.table("users").select("telegram_chat_id").eq("id", partner_id).execute()
+            if partner_res.data and partner_res.data[0].get("telegram_chat_id"):
+                partner_chat_id = partner_res.data[0]["telegram_chat_id"]
+
+        # 6. 🚀 TÍCH HỢP BOT TELEGRAM BÁO ĐƠN (GỬI KÉP)
         aff_text = f"Có ({affiliate_code})" if affiliate_code else "Không"
         msg = (
             f"🎉 ĐƠN ĐẶT LỊCH MỚI 🎉\n"
@@ -109,7 +117,13 @@ def create_booking(booking: schemas.BookingCreate):
             f"---------------------------\n"
             f"👉 Đối tác vui lòng chuẩn bị đón khách!"
         )
+        
+        # Gửi cho SuperAdmin giám sát tổng
         send_telegram_msg(msg)
+        
+        # Gửi riêng cho Partner (Nếu họ đã setup Bot)
+        if partner_chat_id:
+            send_telegram_msg(f"🔔 [THÔNG BÁO DÀNH CHO BẠN]\n{msg}", partner_chat_id)
 
         return {"status": "success", "data": new_booking}
     except Exception as e:
