@@ -6,6 +6,17 @@ import schemas
 import uuid
 import urllib.request
 import json
+import os
+import time
+import random
+from payos import PayOS, PaymentData, ItemData
+
+# --- CẤU HÌNH CỔNG THANH TOÁN PAYOS ---
+PAYOS_CLIENT_ID = os.environ.get("PAYOS_CLIENT_ID", "YOUR_CLIENT_ID")
+PAYOS_API_KEY = os.environ.get("PAYOS_API_KEY", "YOUR_API_KEY")
+PAYOS_CHECKSUM_KEY = os.environ.get("PAYOS_CHECKSUM_KEY", "YOUR_CHECKSUM_KEY")
+
+payos_client = PayOS(client_id=PAYOS_CLIENT_ID, api_key=PAYOS_API_KEY, checksum_key=PAYOS_CHECKSUM_KEY)
 
 app = FastAPI(
     title="AI Health Share API",
@@ -79,7 +90,6 @@ def create_booking(booking: schemas.BookingCreate, current_user = Depends(verify
     try:
         booking_data = booking.model_dump()
         
-        # 🚨 BẢO MẬT: Kiểm tra chéo ID. Hacker không thể truyền ID người khác được nữa!
         if current_user.id != str(booking_data.get("user_id")):
             raise HTTPException(status_code=403, detail="Hành động bị từ chối! Lỗi định danh.")
 
@@ -100,46 +110,51 @@ def create_booking(booking: schemas.BookingCreate, current_user = Depends(verify
             service_name = service_res.data[0]["service_name"]
             partner_id = service_res.data[0]["partner_id"]
 
-        # 3. STRICT PAYLOAD
+        # 3. Tạo Order Code số nguyên cho PayOS
+        order_code = int(time.time() * 1000) % 1000000000 + random.randint(100, 999)
+
         clean_payload = {
-            "user_id": current_user.id, # Ép dùng ID của người đang đăng nhập thay vì ID gửi lên
+            "user_id": current_user.id,
             "service_id": service_id,
             "total_amount": booking_data.get("total_amount"),
             "affiliate_id": affiliate_id,
             "payment_status": "UNPAID",
-            "service_status": "PENDING"
+            "service_status": "PENDING",
+            "order_code": order_code
         }
 
-        # 4. Đẩy vào Database
         data = supabase.table("bookings_transactions").insert(clean_payload).execute()
         new_booking = data.data[0]
 
-        # 5. Lấy Chat ID của Partner
-        partner_chat_id = None
+        # 4. GỌI PAYOS TẠO LINK THANH TOÁN QR
+        try:
+            payment_data = PaymentData(
+                orderCode=order_code,
+                amount=int(booking_data.get("total_amount")),
+                description=f"Thanh toan don {order_code}",
+                returnUrl="http://localhost:3000/partner", # Trả về web khi thanh toán xong
+                cancelUrl="http://localhost:3000/"         # Trả về web nếu hủy
+            )
+            payos_res = payos_client.createPaymentLink(paymentData=payment_data)
+            checkout_url = payos_res.checkoutUrl
+        except Exception as payos_err:
+            print("Lỗi tạo PayOS:", payos_err)
+            checkout_url = None 
+
+        # 5. Tích hợp Bot Telegram báo đơn mới (Chờ thanh toán)
+        aff_text = f"Có ({affiliate_code})" if affiliate_code else "Không"
+        msg = f"📝 ĐƠN CHỜ THANH TOÁN 📝\nKhách: {str(current_user.id)[:8]}...\nMã đơn: {order_code}\nGiá trị: {float(booking_data.get('total_amount')):,.0f} VND"
+        send_telegram_msg(msg)
         if partner_id:
             partner_res = supabase.table("users").select("telegram_chat_id").eq("id", partner_id).execute()
             if partner_res.data and partner_res.data[0].get("telegram_chat_id"):
-                partner_chat_id = partner_res.data[0]["telegram_chat_id"]
+                send_telegram_msg(f"🔔 [CÓ ĐƠN MỚI CHỜ KHÁCH CHUYỂN KHOẢN]\n{msg}", partner_res.data[0]["telegram_chat_id"])
 
-        # 6. Tích hợp Bot Telegram
-        aff_text = f"Có ({affiliate_code})" if affiliate_code else "Không"
-        msg = (
-            f"🎉 ĐƠN ĐẶT LỊCH MỚI 🎉\n"
-            f"---------------------------\n"
-            f"👤 ID Khách: {str(current_user.id)[:8]}...\n"
-            f"💉 Dịch vụ: {service_name}\n"
-            f"💰 Giá trị: {float(booking_data.get('total_amount')):,.0f} VND\n"
-            f"🎁 Mã KOL: {aff_text}\n"
-            f"---------------------------\n"
-            f"👉 Đối tác vui lòng chuẩn bị đón khách!"
-        )
-        send_telegram_msg(msg)
-        if partner_chat_id:
-            send_telegram_msg(f"🔔 [THÔNG BÁO DÀNH CHO BẠN]\n{msg}", partner_chat_id)
-
-        return {"status": "success", "data": new_booking}
-    except HTTPException as he:
-        raise he
+        return {
+            "status": "success", 
+            "data": new_booking,
+            "checkout_url": checkout_url # Trả URL về cho Frontend
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Lỗi tạo Booking: {str(e)}")
 
@@ -413,3 +428,29 @@ async def telegram_webhook(req: dict):
     except Exception as e:
         print("Lỗi Webhook:", e)
         return {"status": "error"}
+
+# --- 8. PAYOS WEBHOOK (ĐÓN TIỀN VỀ ESCROW) ---
+@app.post("/webhook/payos", tags=["Webhook"])
+async def payos_webhook(request: dict):
+    try:
+        data = request.get("data", {})
+        order_code = data.get("orderCode")
+        
+        # Nếu giao dịch thành công (code == "00")
+        if request.get("code") == "00" or request.get("success") == True:
+            # 1. Cập nhật trạng thái tiền vào Escrow
+            supabase.table("bookings_transactions").update({"payment_status": "PAID_ESCROW"}).eq("order_code", order_code).execute()
+            
+            # 2. Báo Telegram Admin
+            bk_res = supabase.table("bookings_transactions").select("total_amount").eq("order_code", order_code).execute()
+            if bk_res.data:
+                send_telegram_msg(
+                    f"💰 TING TING! KHÁCH ĐÃ CHUYỂN KHOẢN 💰\n"
+                    f"- Mã đơn: {order_code}\n"
+                    f"- Số tiền: {bk_res.data[0]['total_amount']:,.0f} VND\n"
+                    f"👉 Tiền đã khóa an toàn trong Escrow!"
+                )
+        return {"success": True}
+    except Exception as e:
+        print("Webhook error:", e)
+        return {"success": False}
