@@ -76,10 +76,17 @@ def create_booking(booking: schemas.BookingCreate):
             if aff_res.data:
                 affiliate_id = aff_res.data[0]["id"]
 
+        # LẤY TÊN DỊCH VỤ ĐỂ BÁO TELEGRAM CHO CHI TIẾT
+        service_id = booking_data.get("service_id")
+        service_name = "Dịch vụ Y tế"
+        service_res = supabase.table("services").select("service_name").eq("id", service_id).execute()
+        if service_res.data:
+            service_name = service_res.data[0]["service_name"]
+
         # 2. STRICT PAYLOAD: Lọc và truyền CHÍNH XÁC Enum thực tế từ DB
         clean_payload = {
             "user_id": booking_data.get("user_id"),
-            "service_id": booking_data.get("service_id"),
+            "service_id": service_id,
             "total_amount": booking_data.get("total_amount"),
             "affiliate_id": affiliate_id,
             "payment_status": "UNPAID",   # Cập nhật chuẩn theo Database: payment_status_enum
@@ -88,10 +95,26 @@ def create_booking(booking: schemas.BookingCreate):
 
         # 3. Đẩy vào Database
         data = supabase.table("bookings_transactions").insert(clean_payload).execute()
-        return {"status": "success", "data": data.data[0]}
+        new_booking = data.data[0]
+
+        # 4. 🚀 TÍCH HỢP BOT TELEGRAM BÁO ĐƠN MỚI
+        aff_text = f"Có ({affiliate_code})" if affiliate_code else "Không"
+        msg = (
+            f"🎉 ĐƠN ĐẶT LỊCH MỚI 🎉\n"
+            f"---------------------------\n"
+            f"👤 ID Khách: {str(booking_data.get('user_id'))[:8]}...\n"
+            f"💉 Dịch vụ: {service_name}\n"
+            f"💰 Giá trị: {float(booking_data.get('total_amount')):,.0f} VND\n"
+            f"🎁 Mã KOL: {aff_text}\n"
+            f"---------------------------\n"
+            f"👉 Đối tác vui lòng chuẩn bị đón khách!"
+        )
+        send_telegram_msg(msg)
+
+        return {"status": "success", "data": new_booking}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Lỗi tạo Booking: {str(e)}")
-
+        
 # --- 3. LOGIC GIẢI NGÂN ESCROW & VÍ (PATCH) ---
 
 @app.patch("/bookings/{booking_id}/complete", tags=["Bookings"])
@@ -214,8 +237,8 @@ def get_wallet_info(user_id: str):
 
 
 # --- CẤU HÌNH TELEGRAM BOT (Thay mã của bạn vào đây sau) ---
-TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN"
-TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"
+TELEGRAM_BOT_TOKEN = "8705824981:AAFE1nkirPA55EGaP71Vcvu7VZdyTyHDuLI"
+TELEGRAM_CHAT_ID = "8653422521"
 
 def send_telegram_msg(message: str):
     if TELEGRAM_BOT_TOKEN == "YOUR_BOT_TOKEN": 
