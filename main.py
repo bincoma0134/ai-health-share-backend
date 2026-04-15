@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from database import supabase
 import schemas
@@ -8,9 +9,22 @@ import json
 
 app = FastAPI(
     title="AI Health Share API",
-    description="Backend API cho Phase 1 - X_AI_Health-Share",
-    version="1.0.0"
+    description="Backend API tích hợp Security (JWT)",
+    version="2.0.0"
 )
+
+# --- CHỐT CHẶN AN NINH (SECURITY GUARD) ---
+security = HTTPBearer()
+
+def verify_user_token(credentials: HTTPAuthorizationCredentials = Security(security)):
+    token = credentials.credentials
+    try:
+        # Mang thẻ từ (token) lên Supabase để quét xem là thật hay giả
+        user_data = supabase.auth.get_user(token)
+        return user_data.user
+    except Exception:
+        raise HTTPException(status_code=401, detail="Token không hợp lệ hoặc đã hết hạn! Vui lòng đăng nhập lại.")
+# -------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,7 +37,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 @app.get("/")
 def health_check():
     return {"status": "success", "message": "Server FastAPI đang hoạt động!"}
@@ -62,11 +75,14 @@ def create_user(user: schemas.UserCreate):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/bookings", tags=["Bookings"])
-@app.post("/bookings", tags=["Bookings"])
-def create_booking(booking: schemas.BookingCreate):
+def create_booking(booking: schemas.BookingCreate, current_user = Depends(verify_user_token)):
     try:
         booking_data = booking.model_dump()
         
+        # 🚨 BẢO MẬT: Kiểm tra chéo ID. Hacker không thể truyền ID người khác được nữa!
+        if current_user.id != str(booking_data.get("user_id")):
+            raise HTTPException(status_code=403, detail="Hành động bị từ chối! Lỗi định danh.")
+
         # 1. Xử lý Affiliate Code
         affiliate_code = booking_data.get("affiliate_code")
         affiliate_id = None
@@ -75,7 +91,7 @@ def create_booking(booking: schemas.BookingCreate):
             if aff_res.data:
                 affiliate_id = aff_res.data[0]["id"]
 
-        # 2. Lấy thông tin Dịch vụ & Đối tác (Partner)
+        # 2. Lấy thông tin Dịch vụ & Đối tác
         service_id = booking_data.get("service_id")
         service_name = "Dịch vụ Y tế"
         partner_id = None
@@ -86,7 +102,7 @@ def create_booking(booking: schemas.BookingCreate):
 
         # 3. STRICT PAYLOAD
         clean_payload = {
-            "user_id": booking_data.get("user_id"),
+            "user_id": current_user.id, # Ép dùng ID của người đang đăng nhập thay vì ID gửi lên
             "service_id": service_id,
             "total_amount": booking_data.get("total_amount"),
             "affiliate_id": affiliate_id,
@@ -98,34 +114,32 @@ def create_booking(booking: schemas.BookingCreate):
         data = supabase.table("bookings_transactions").insert(clean_payload).execute()
         new_booking = data.data[0]
 
-        # 5. Lấy Telegram Chat ID của Partner (Nếu họ đã kết nối)
+        # 5. Lấy Chat ID của Partner
         partner_chat_id = None
         if partner_id:
             partner_res = supabase.table("users").select("telegram_chat_id").eq("id", partner_id).execute()
             if partner_res.data and partner_res.data[0].get("telegram_chat_id"):
                 partner_chat_id = partner_res.data[0]["telegram_chat_id"]
 
-        # 6. 🚀 TÍCH HỢP BOT TELEGRAM BÁO ĐƠN (GỬI KÉP)
+        # 6. Tích hợp Bot Telegram
         aff_text = f"Có ({affiliate_code})" if affiliate_code else "Không"
         msg = (
             f"🎉 ĐƠN ĐẶT LỊCH MỚI 🎉\n"
             f"---------------------------\n"
-            f"👤 ID Khách: {str(booking_data.get('user_id'))[:8]}...\n"
+            f"👤 ID Khách: {str(current_user.id)[:8]}...\n"
             f"💉 Dịch vụ: {service_name}\n"
             f"💰 Giá trị: {float(booking_data.get('total_amount')):,.0f} VND\n"
             f"🎁 Mã KOL: {aff_text}\n"
             f"---------------------------\n"
             f"👉 Đối tác vui lòng chuẩn bị đón khách!"
         )
-        
-        # Gửi cho SuperAdmin giám sát tổng
         send_telegram_msg(msg)
-        
-        # Gửi riêng cho Partner (Nếu họ đã setup Bot)
         if partner_chat_id:
             send_telegram_msg(f"🔔 [THÔNG BÁO DÀNH CHO BẠN]\n{msg}", partner_chat_id)
 
         return {"status": "success", "data": new_booking}
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Lỗi tạo Booking: {str(e)}")
 
