@@ -114,7 +114,7 @@ def create_booking(booking: schemas.BookingCreate):
         return {"status": "success", "data": new_booking}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Lỗi tạo Booking: {str(e)}")
-        
+
 # --- 3. LOGIC GIẢI NGÂN ESCROW & VÍ (PATCH) ---
 
 @app.patch("/bookings/{booking_id}/complete", tags=["Bookings"])
@@ -240,12 +240,18 @@ def get_wallet_info(user_id: str):
 TELEGRAM_BOT_TOKEN = "8705824981:AAFE1nkirPA55EGaP71Vcvu7VZdyTyHDuLI"
 TELEGRAM_CHAT_ID = "8653422521"
 
-def send_telegram_msg(message: str):
+def send_telegram_msg(message: str, specific_chat_id: str = None):
     if TELEGRAM_BOT_TOKEN == "YOUR_BOT_TOKEN": 
         return # Bỏ qua nếu chưa cài token
+    
+    # Nếu truyền specific_chat_id thì gửi cho người đó, nếu không thì gửi cho SuperAdmin
+    target_chat = specific_chat_id if specific_chat_id else TELEGRAM_CHAT_ID
+    if not target_chat:
+        return
+
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        data = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": message}).encode('utf-8')
+        data = json.dumps({"chat_id": target_chat, "text": message}).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
         urllib.request.urlopen(req, timeout=5)
     except Exception as e:
@@ -345,3 +351,37 @@ def get_all_withdrawals():
         return {"status": "success", "data": data.data}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# --- 7. TELEGRAM WEBHOOK (ONBOARDING 1 CHẠM CHO ĐỐI TÁC) ---
+
+@app.post("/webhook/telegram", tags=["Webhook"])
+async def telegram_webhook(req: dict):
+    try:
+        # Kiểm tra xem Telegram có gửi tin nhắn text không
+        if "message" in req and "text" in req["message"]:
+            text = req["message"]["text"]
+            chat_id = req["message"]["chat"]["id"]
+
+            # Luồng Deep Link: Khi đối tác bấm link, Telegram sẽ tự gửi lệnh có dạng "/start <user_id>"
+            if text.startswith("/start "):
+                user_id = text.split(" ")[1] # Tách lấy user_id
+                
+                try:
+                    # 1. Lưu Chat ID vào Database
+                    supabase.table("users").update({"telegram_chat_id": str(chat_id)}).eq("id", user_id).execute()
+                    
+                    # 2. Bắn tin nhắn chào mừng đích danh cho Đối tác
+                    welcome_msg = (
+                        "✅ KẾT NỐI THÀNH CÔNG!\n\n"
+                        "Chào mừng bạn đến với AI Health Share. Từ bây giờ, hệ thống sẽ tự động "
+                        "gửi thông báo tiền về và đơn hàng mới cho bạn ngay tại đây. Chúc bạn bùng nổ doanh số! 🚀"
+                    )
+                    send_telegram_msg(welcome_msg, str(chat_id))
+                except Exception as db_err:
+                    print("Lỗi lưu DB webhook:", db_err)
+
+        return {"status": "ok"}
+    except Exception as e:
+        print("Lỗi Webhook:", e)
+        return {"status": "error"}
