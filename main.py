@@ -459,3 +459,88 @@ async def payos_webhook(request: dict):
     except Exception as e:
         print("Webhook error:", e)
         return {"success": False}
+
+
+from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, timedelta
+
+# Lưu ý: Cậu nhớ import supabase client và hàm get_current_user của dự án
+# @router hoặc @app tùy thuộc vào cấu trúc file của cậu
+@app.get("/admin/dashboard")
+async def get_admin_dashboard(current_user: dict = Depends(get_current_user)):
+    # 1. Kiểm tra quyền (RBAC)
+    if current_user.get("role") != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="Chỉ Super Admin mới được xem thống kê")
+
+    try:
+        # 2. Truy vấn thống kê tổng quan (Sử dụng count của Supabase)
+        users_count_res = supabase.table("users").select("id", count="exact").eq("role", "USER").execute()
+        partners_count_res = supabase.table("users").select("id", count="exact").eq("role", "PARTNER_ADMIN").execute()
+        services_count_res = supabase.table("services").select("id", count="exact").execute()
+        pending_wd_res = supabase.table("withdrawal_requests").select("id", count="exact").eq("status", "PENDING").execute()
+
+        # 3. Tính tổng doanh thu từ các Booking đã thanh toán thành công
+        # Lấy thêm thông tin đối tác để tính Top Partners
+        bookings_res = supabase.table("bookings").select("*, services(partner_id), users(email)").eq("status", "PAID").execute()
+        bookings = bookings_res.data
+
+        total_revenue = sum(b.get("total_amount", 0) for b in bookings) if bookings else 0
+
+        # 4. Xử lý dữ liệu Biểu đồ Doanh thu (7 ngày gần nhất)
+        today = datetime.now()
+        revenue_chart = []
+        for i in range(6, -1, -1):
+            target_date = (today - timedelta(days=i)).date()
+            daily_revenue = sum(
+                b.get("total_amount", 0) 
+                for b in bookings 
+                if datetime.fromisoformat(b["created_at"].replace("Z", "+00:00")).date() == target_date
+            )
+            revenue_chart.append({
+                "date": target_date.strftime("%d/%m"),
+                "revenue": daily_revenue
+            })
+
+        # 5. Xử lý Top Partners (Nhóm theo đối tác)
+        partner_stats = {}
+        for b in bookings:
+            # Lấy email đối tác (Nơi cung cấp dịch vụ)
+            partner_id = b.get("services", {}).get("partner_id")
+            if not partner_id: continue
+            
+            if partner_id not in partner_stats:
+                # Cần query thêm email của partner này để hiển thị cho đẹp
+                partner_info = supabase.table("users").select("email").eq("id", partner_id).execute()
+                p_email = partner_info.data[0]["email"] if partner_info.data else "Unknown"
+                
+                partner_stats[partner_id] = {
+                    "email": p_email,
+                    "total_bookings": 0,
+                    "total_revenue": 0
+                }
+            
+            partner_stats[partner_id]["total_bookings"] += 1
+            partner_stats[partner_id]["total_revenue"] += b.get("total_amount", 0)
+
+        # Sắp xếp lấy top 3 đối tác có doanh thu cao nhất
+        top_partners = sorted(partner_stats.values(), key=lambda x: x["total_revenue"], reverse=True)[:3]
+
+        # 6. Trả về đúng cấu trúc Frontend đang chờ
+        return {
+            "status": "success",
+            "data": {
+                "stats": {
+                    "total_revenue": total_revenue,
+                    "total_users": users_count_res.count if users_count_res else 0,
+                    "total_partners": partners_count_res.count if partners_count_res else 0,
+                    "total_services": services_count_res.count if services_count_res else 0,
+                    "pending_withdrawals": pending_wd_res.count if pending_wd_res else 0
+                },
+                "revenue_chart": revenue_chart,
+                "top_partners": top_partners
+            }
+        }
+
+    except Exception as e:
+        print("Dashboard Error:", str(e))
+        raise HTTPException(status_code=500, detail="Lỗi khi truy xuất dữ liệu thống kê")

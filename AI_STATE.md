@@ -1,61 +1,75 @@
-# 🚀 [DỰ ÁN: AI HEALTH SHARE] - TRẠNG THÁI HỆ THỐNG
+# 🧠 AI_STATE.md | X_AI_Health-Share
 
-> **Mã dự án:** `X_AI_Health-Share`
-> **Cập nhật lần cuối:** 17:15 - 14/04/2026
-> **Giai đoạn hiện tại:** Phase 1.5 - Hệ thống Ví (Wallet) & Affiliate Dashboard (PENDING HOTFIX)
-
----
-
-## 1. QUY TẮC CỐT LÕI (CORE RULES)
-- **Kiến trúc:** Backend (`FastAPI - Python`) / Frontend (`Next.js - Tailwind`).
-- **Naming:** Backend dùng `snake_case`, Frontend dùng `camelCase`.
-- **Database:** Supabase (Bắt buộc Enum **VIẾT HOA TOÀN BỘ**, VD: `USER`, `PENDING`).
-- **Workflow:** Deploy tự động qua GitHub -> Render. Xác thực Git qua Personal Access Token (PAT).
+> **Project Identity:** `X_AI_Health-Share` (Escrow & Affiliate Healthcare Platform)
+> **Current Version:** `3.5.0-MVP_READY`
+> **Last Synced:** 17:30 - 15/04/2026
+> **Status:** 🟢 Phase 3.0 COMPLETED | 🔵 Phase 4.0 INITIALIZING (UI/UX & Mobile MVP)
 
 ---
 
-## 2. DATABASE SCHEMA (VERIFIED)
+## 🛠️ 1. QUY TẮC CỐT LÕI (CORE PROTOCOLS)
 
-**🗄️ Bảng: `users`**
-- `id` (uuid, PK) | `email` (string, unique) | `role` (Enum) | `affiliate_code` (6 chars)
-
-**🗄️ Bảng: `wallets` & `wallet_transactions` (NEW)**
-- Đã khởi tạo thành công luồng lưu trữ số dư và sổ cái biến động số dư.
-- Đã thiết lập RLS Policy cho phép Backend thao tác (FOR ALL).
-
-**🗄️ Bảng: `bookings_transactions`**
-- `payment_status` (Enum: `PENDING`, `PAID`) - **Đang gặp lỗi mismatch case.**
-- `service_status` (Enum: `WAITING`, `COMPLETED`).
+| Thành phần | Quy tắc đặt tên | Định dạng bắt buộc |
+| :--- | :--- | :--- |
+| **Backend API** | `snake_case` | FastAPI chuẩn PEP8 + JWT Bearer |
+| **Frontend UI** | `camelCase` | Next.js / TypeScript |
+| **Database Enum** | `UPPERCASE` | **Bắt buộc** (VD: `PENDING`, `UNPAID`) |
+| **Dòng tiền (Ratio)**| `70 / 15 / 15` | Partner / Affiliate / Platform |
+| **Workflow** | `CI/CD` | Render (BE) / Vercel (FE) |
 
 ---
 
-## 3. BACKEND API CONTRACTS
-- 🟢 `PATCH /bookings/{id}/complete`: Hoàn tất logic giải ngân tự động 70/15/15 vào ví.
-- 🟡 `POST /bookings`: Đang lỗi `22P02` do truyền giá trị Enum lowercase (`unpaid`).
-- 🟢 `GET /bookings` & `GET /services`: Đã khôi phục và hoạt động ổn định.
+## 🗄️ 2. KIẾN TRÚC DỮ LIỆU (DATABASE SCHEMA)
+
+### 2.1. Hệ thống Phân quyền (Role-based)
+* **`role` (Enum):** `USER`, `CREATOR`, `PARTNER_ADMIN`, `SUPER_ADMIN`.
+* Có cột `telegram_chat_id` (TEXT) hỗ trợ Deep Link Onboarding 1 chạm.
+
+### 2.2. Hệ thống Đơn hàng & Thanh toán (`bookings_transactions`)
+* **`order_code` (BIGINT UNIQUE):** Mã số giao dịch động định dạng số nguyên, sinh ra riêng cho cổng PayOS.
+* **`payment_status`**: `UNPAID` ➔ `PAID_ESCROW` ➔ `REVENUE_SPLIT`.
+* **`service_status`**: `PENDING` ➔ `COMPLETED`.
+
+### 2.3. Hệ thống Tài chính & Rút tiền (`wallets` & `withdrawal_requests`)
+* 🔒 **Bảo mật:** Bật RLS (Row Level Security) cho toàn bộ. Chỉ owner mới được `SELECT`.
+* **`wallet_transactions`**: Ghi nhận chi tiết dòng tiền ra/vào (commission, partner_revenue, withdrawal...).
+* **`status` (Enum)** rút tiền: `PENDING` ➔ `APPROVED` / `REJECTED`.
 
 ---
 
-## 4. TIẾN ĐỘ & TRẠNG THÁI HIỆN TẠI
+## 🔌 3. DANH MỤC API (API CONTRACTS)
 
-**✅ Thành tựu đã đạt:**
-- Thông luồng giải ngân: Tiền đã có thể chảy từ đơn hàng vào Ví người dùng trên Database.
-- Dashboard Partner đã hiển thị dữ liệu real-time từ Supabase.
-- Xử lý thành công lỗi Proxy/DNS và xác thực GitHub trên máy trạm Windows.
+### 🟢 Dịch vụ, Đơn hàng & Thanh toán
+- `POST /bookings`: Khởi tạo đơn, sinh `order_code` và trả về `checkout_url` của PayOS.
+- `PATCH /bookings/{id}/complete`: Kích hoạt logic giải ngân Escrow 3 bên (70/15/15).
+- `POST /webhook/payos`: Cổng nhận "báo mộng" từ ngân hàng khi khách quét QR thành công (Cập nhật PAID_ESCROW).
 
-**⚠️ Lỗi tồn đọng (Blocking):**
-- **Error `22P02`:** Hàm `create_booking` gửi giá trị `"unpaid"` vào cột Enum. Cần sửa thành `"PENDING"` (viết hoa) để khớp với Schema.
-- **Dữ liệu mồ côi:** Cần xóa thủ công các Booking cũ không có `user_id` hợp lệ trong bảng `users` để tránh lỗi Foreign Key.
+### 🟡 Ví & Quản trị Hệ thống
+- `GET /wallets/{user_id}`: Truy xuất số dư (Yêu cầu JWT).
+- `POST /withdraw`: Gửi yêu cầu rút tiền (Yêu cầu JWT).
+- `GET /admin/withdrawals` & `PATCH /admin/withdraw/{id}`: Dashboard quản trị (Chỉ dành cho tài khoản có role `SUPER_ADMIN`).
 
 ---
 
-## 5. LỘ TRÌNH HÀNH ĐỘNG (ROADMAP - PHASE 1.5)
+## 📈 4. TRẠNG THÁI TIẾN ĐỘ (MILESTONES)
 
-### 🎯 Phiên làm việc tiếp theo (Ưu tiên cao nhất)
-- [ ] **Hotfix:** Sửa `payment_status` trong `main.py` từ `"unpaid"` thành `"PENDING"`.
-- [ ] **Integration:** Kết nối dữ liệu thực từ bảng `wallets` lên **Affiliate Dashboard** (Hiện đang dùng data mô phỏng).
-- [ ] **UX:** Thêm trạng thái Loading và Toast thông báo khi giải ngân thành công trên Dashboard.
+### ✅ Phase 1.0 ➔ 2.0: Core Backend & Security (DONE)
+- [x] Database Schema, Auth Triggers, Wallet Escrow Workflow.
+- [x] API Security (JWT Bearer) & Database Security (RLS Bypass via Service Role).
 
-### 🔭 Tầm nhìn chiến lược
-- [ ] Xây dựng hệ thống Yêu cầu Rút tiền và phê duyệt từ SuperAdmin.
-- [ ] Tích hợp thông báo Telegram Bot khi có đơn hàng mới phát sinh.
+### ✅ Phase 3.0: Mở rộng Hệ sinh thái & Thương mại (DONE)
+- [x] **Payment Gateway:** Tích hợp PayOS Webhook (Tự động hóa dòng tiền).
+- [x] **CRM & Admin:** Hoàn thiện Partner Portal và SuperAdmin Dashboard.
+- [x] **QA Toàn trình:** Thông suốt kịch bản test 16 bước. Tối ưu UX Skeleton, bắt lỗi mã Affiliate.
+
+### 🚀 Phase 4.0: MVP Optimization & Mobile App (NEXT)
+- [ ] **UI/UX Polish:** Trau chuốt giao diện toàn diện cho hệ thống Web (Responsive, Typography, Animations, Micro-interactions) đảm bảo thẩm mỹ chuẩn mực để Demo nhà đầu tư.
+- [ ] **Mobile Readiness:** Chuẩn hóa giao diện trên Mobile Browser (PWA) hoặc khởi tạo khung kiến trúc cho Mobile App (React Native/Expo).
+- [ ] **Data Seeding:** Đổ dữ liệu mẫu thực tế (Video, Hình ảnh cơ sở, Dịch vụ, Đánh giá) để biến MVP thành một hệ sinh thái sống động.
+- [ ] **Production Launch:** Trỏ Custom Domain (Tên miền thực tế) và chuẩn bị slide pitch deck.
+
+---
+
+## 🚨 5. GHI CHÚ VẬN HÀNH (DEV NOTES)
+1. **Phân quyền Admin:** Bất kỳ ai muốn truy cập `/admin` bắt buộc phải được đổi `role` thành `SUPER_ADMIN` trong bảng `users` của Database.
+2. **UX Đặt lịch:** URL thanh toán PayOS được cấu hình tự động mở ở Tab mới (`_blank`) để giữ trải nghiệm liền mạch cho luồng chọn dịch vụ của khách.
