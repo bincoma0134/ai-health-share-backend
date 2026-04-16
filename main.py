@@ -214,3 +214,45 @@ def create_booking(booking: schemas.BookingCreate, current_user = Depends(verify
 @app.patch("/bookings/{booking_id}/complete", tags=["Bookings"])
 async def complete_booking(booking_id: str):
     pass
+
+# =====================================================================
+# 🚀 API 9: USER PROFILE (TRANG CÁ NHÂN NGƯỜI DÙNG)
+# =====================================================================
+@app.get("/user/profile", tags=["User"])
+def get_user_profile(current_user = Depends(verify_user_token)):
+    try:
+        # 1. Lấy thông tin cơ bản
+        user_res = supabase.table("users").select("id, email, role, created_at").eq("id", current_user.id).single().execute()
+        user_data = user_res.data if user_res else {}
+
+        # 2. Lấy danh sách Dịch vụ đã lưu (Bookmarks)
+        saves_res = supabase.table("user_saves").select("service_id, services(*)").eq("user_id", current_user.id).order("created_at", desc=True).execute()
+        saved_services = []
+        if saves_res.data:
+            # Trích xuất data service từ quan hệ (Join)
+            saved_services = [s["services"] for s in saves_res.data if s.get("services")]
+
+        # 3. Lấy Lịch sử Đặt lịch (Bookings)
+        bookings_res = supabase.table("bookings_transactions").select("*, services(service_name)").eq("user_id", current_user.id).order("created_at", desc=True).execute()
+        bookings = bookings_res.data if bookings_res else []
+
+        # 4. Đếm số lượng đã Like (Để làm chỉ số thống kê)
+        likes_count_res = supabase.table("user_likes").select("id", count="exact").eq("user_id", current_user.id).execute()
+        likes_count = likes_count_res.count if likes_count_res else 0
+
+        return {
+            "status": "success",
+            "data": {
+                "profile": user_data,
+                "stats": {
+                    "saved_count": len(saved_services),
+                    "bookings_count": len(bookings),
+                    "likes_count": likes_count
+                },
+                "saved_services": saved_services,
+                "bookings": bookings
+            }
+        }
+    except Exception as e:
+        print("Lỗi Profile API:", e)
+        raise HTTPException(status_code=500, detail="Không thể lấy thông tin người dùng")
