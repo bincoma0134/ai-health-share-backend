@@ -216,27 +216,21 @@ async def complete_booking(booking_id: str):
     pass
 
 # =====================================================================
-# 🚀 API 9: USER PROFILE (TRANG CÁ NHÂN NGƯỜI DÙNG)
+# 🚀 API 9: USER PROFILE & EDIT
 # =====================================================================
 @app.get("/user/profile", tags=["User"])
 def get_user_profile(current_user = Depends(verify_user_token)):
     try:
-        # 1. Lấy thông tin cơ bản
-        user_res = supabase.table("users").select("id, email, role, created_at").eq("id", current_user.id).single().execute()
+        # Sửa select để lấy thêm full_name, bio, avatar_url, cover_url
+        user_res = supabase.table("users").select("id, email, role, created_at, full_name, bio, avatar_url, cover_url").eq("id", current_user.id).single().execute()
         user_data = user_res.data if user_res else {}
 
-        # 2. Lấy danh sách Dịch vụ đã lưu (Bookmarks)
         saves_res = supabase.table("user_saves").select("service_id, services(*)").eq("user_id", current_user.id).order("created_at", desc=True).execute()
-        saved_services = []
-        if saves_res.data:
-            # Trích xuất data service từ quan hệ (Join)
-            saved_services = [s["services"] for s in saves_res.data if s.get("services")]
+        saved_services = [s["services"] for s in saves_res.data if s.get("services")] if saves_res.data else []
 
-        # 3. Lấy Lịch sử Đặt lịch (Bookings)
         bookings_res = supabase.table("bookings_transactions").select("*, services(service_name)").eq("user_id", current_user.id).order("created_at", desc=True).execute()
         bookings = bookings_res.data if bookings_res else []
 
-        # 4. Đếm số lượng đã Like (Để làm chỉ số thống kê)
         likes_count_res = supabase.table("user_likes").select("id", count="exact").eq("user_id", current_user.id).execute()
         likes_count = likes_count_res.count if likes_count_res else 0
 
@@ -254,5 +248,21 @@ def get_user_profile(current_user = Depends(verify_user_token)):
             }
         }
     except Exception as e:
-        print("Lỗi Profile API:", e)
         raise HTTPException(status_code=500, detail="Không thể lấy thông tin người dùng")
+
+@app.patch("/user/profile", tags=["User"])
+def update_user_profile(payload: dict, current_user = Depends(verify_user_token)):
+    try:
+        update_data = {
+            "full_name": payload.get("full_name"),
+            "bio": payload.get("bio"),
+            "avatar_url": payload.get("avatar_url"),
+            "cover_url": payload.get("cover_url")
+        }
+        # Loại bỏ các giá trị None để không ghi đè mất dữ liệu
+        update_data = {k: v for k, v in update_data.items() if v is not None}
+        
+        res = supabase.table("users").update(update_data).eq("id", current_user.id).execute()
+        return {"status": "success", "data": res.data[0] if res.data else {}}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Lỗi cập nhật: {str(e)}")
