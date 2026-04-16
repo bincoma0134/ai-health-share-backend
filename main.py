@@ -9,11 +9,12 @@ import json
 import os
 import time
 import random
-# --- SỬA LẠI ĐOẠN IMPORT NÀY ---
+from datetime import datetime, timedelta
+
+# --- CẤU HÌNH CỔNG THANH TOÁN PAYOS ---
 from payos import PayOS
 from payos.type import PaymentData, ItemData
 
-# --- CẤU HÌNH CỔNG THANH TOÁN PAYOS ---
 PAYOS_CLIENT_ID = os.environ.get("PAYOS_CLIENT_ID", "YOUR_CLIENT_ID")
 PAYOS_API_KEY = os.environ.get("PAYOS_API_KEY", "YOUR_API_KEY")
 PAYOS_CHECKSUM_KEY = os.environ.get("PAYOS_CHECKSUM_KEY", "YOUR_CHECKSUM_KEY")
@@ -50,6 +51,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 @app.get("/")
 def health_check():
     return {"status": "success", "message": "Server FastAPI đang hoạt động!"}
@@ -103,7 +105,6 @@ def create_booking(booking: schemas.BookingCreate, current_user = Depends(verify
             if aff_res.data:
                 affiliate_id = aff_res.data[0]["id"]
             else:
-                # THÊM ĐOẠN NÀY: Bắt lỗi nếu mã không tồn tại
                 raise HTTPException(status_code=400, detail="Mã giới thiệu (KOL) không hợp lệ! Vui lòng kiểm tra lại.")
 
         # 2. Lấy thông tin Dịch vụ & Đối tác
@@ -137,8 +138,8 @@ def create_booking(booking: schemas.BookingCreate, current_user = Depends(verify
                 orderCode=order_code,
                 amount=int(booking_data.get("total_amount")),
                 description=f"Thanh toan don {order_code}",
-                returnUrl="http://localhost:3000/partner", # Trả về web khi thanh toán xong
-                cancelUrl="http://localhost:3000/"         # Trả về web nếu hủy
+                returnUrl="http://localhost:3000/partner", 
+                cancelUrl="http://localhost:3000/"         
             )
             payos_res = payos_client.createPaymentLink(paymentData=payment_data)
             checkout_url = payos_res.checkoutUrl
@@ -146,7 +147,7 @@ def create_booking(booking: schemas.BookingCreate, current_user = Depends(verify
             print("Lỗi tạo PayOS:", payos_err)
             checkout_url = None 
 
-        # 5. Tích hợp Bot Telegram báo đơn mới (Chờ thanh toán)
+        # 5. Tích hợp Bot Telegram
         aff_text = f"Có ({affiliate_code})" if affiliate_code else "Không"
         msg = f"📝 ĐƠN CHỜ THANH TOÁN 📝\nKhách: {str(current_user.id)[:8]}...\nMã đơn: {order_code}\nGiá trị: {float(booking_data.get('total_amount')):,.0f} VND"
         send_telegram_msg(msg)
@@ -158,7 +159,7 @@ def create_booking(booking: schemas.BookingCreate, current_user = Depends(verify
         return {
             "status": "success", 
             "data": new_booking,
-            "checkout_url": checkout_url # Trả URL về cho Frontend
+            "checkout_url": checkout_url
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Lỗi tạo Booking: {str(e)}")
@@ -168,13 +169,11 @@ def create_booking(booking: schemas.BookingCreate, current_user = Depends(verify
 @app.patch("/bookings/{booking_id}/complete", tags=["Bookings"])
 async def complete_booking(booking_id: str):
     try:
-        # 1. Lấy thông tin booking
         booking_res = supabase.table("bookings_transactions").select("*").eq("id", booking_id).execute()
         if not booking_res.data:
             raise HTTPException(status_code=404, detail="Không tìm thấy Booking")
         booking = booking_res.data[0]
         
-        # Tối ưu logic check trạng thái
         if booking.get("service_status", "").upper() == "COMPLETED":
             raise HTTPException(status_code=400, detail="Booking này đã được hoàn thành")
 
@@ -182,13 +181,11 @@ async def complete_booking(booking_id: str):
         affiliate_id = booking.get("affiliate_id")
         service_id = booking.get("service_id")
         
-        # 2. Lấy partner_id từ bảng services
         service_res = supabase.table("services").select("partner_id").eq("id", service_id).execute()
         if not service_res.data:
             raise HTTPException(status_code=404, detail="Không tìm thấy Dịch vụ liên kết")
         partner_id = service_res.data[0]["partner_id"]
         
-        # --- [LOGIC PHÒNG NGỰ DỮ LIỆU RÁC] ---
         target_partner_user_id = partner_id
         partner_record = supabase.table("partners").select("owner_id").eq("id", partner_id).execute()
         if partner_record.data:
@@ -202,14 +199,11 @@ async def complete_booking(booking_id: str):
             check_aff = supabase.table("users").select("id").eq("id", affiliate_id).execute()
             if not check_aff.data:
                 affiliate_id = None 
-        # -------------------------------------
 
-        # 3. Tính toán dòng tiền
         partner_share = total_amount * 0.70
         affiliate_share = total_amount * 0.15 if affiliate_id else 0
         platform_share = total_amount - partner_share - affiliate_share
         
-        # 4. Hàm xử lý nghiệp vụ Ví
         def process_wallet(uid: str, amount: float, tx_type: str):
             wallet_res = supabase.table("wallets").select("*").eq("user_id", uid).execute()
             if wallet_res.data:
@@ -225,12 +219,10 @@ async def complete_booking(booking_id: str):
                 "wallet_id": w_id, "booking_id": booking_id, "amount": amount, "transaction_type": tx_type
             }).execute()
 
-        # 5. Thực thi giải ngân
         process_wallet(target_partner_user_id, partner_share, "partner_revenue")
         if affiliate_id:
             process_wallet(affiliate_id, affiliate_share, "affiliate_commission")
 
-        # 6. Cập nhật trạng thái Booking (Khớp với service_status_enum)
         supabase.table("bookings_transactions").update({"service_status": "COMPLETED"}).eq("id", booking_id).execute()
         
         return {
@@ -249,15 +241,13 @@ async def complete_booking(booking_id: str):
         raise HTTPException(status_code=400, detail=f"Lỗi hệ thống: {str(e)}")
 
 
-# --- 4. ENDPOINTS QUẢN LÝ VÍ & AFFILIATE (GET) ---
+# --- 4. QUẢN LÝ VÍ & AFFILIATE ---
 
 @app.get("/wallets/{user_id}", tags=["Wallets"])
 def get_wallet_info(user_id: str):
     try:
-        # 1. Lấy thông tin ví chính
         wallet_res = supabase.table("wallets").select("*").eq("user_id", user_id).execute()
         
-        # Nếu user chưa có ví (chưa có giao dịch), trả về 0
         if not wallet_res.data:
             return {
                 "status": "success", 
@@ -270,7 +260,6 @@ def get_wallet_info(user_id: str):
         wallet_data = wallet_res.data[0]
         wallet_id = wallet_data["id"]
         
-        # 2. Lấy lịch sử dòng tiền (transactions)
         tx_res = supabase.table("wallet_transactions").select("*").eq("wallet_id", wallet_id).order("created_at", desc=True).execute()
         
         return {
@@ -284,15 +273,14 @@ def get_wallet_info(user_id: str):
         raise HTTPException(status_code=400, detail=f"Lỗi truy xuất ví: {str(e)}")
 
 
-# --- CẤU HÌNH TELEGRAM BOT (Thay mã của bạn vào đây sau) ---
+# --- CẤU HÌNH TELEGRAM BOT ---
 TELEGRAM_BOT_TOKEN = "8705824981:AAFE1nkirPA55EGaP71Vcvu7VZdyTyHDuLI"
 TELEGRAM_CHAT_ID = "8653422521"
 
 def send_telegram_msg(message: str, specific_chat_id: str = None):
     if TELEGRAM_BOT_TOKEN == "YOUR_BOT_TOKEN": 
-        return # Bỏ qua nếu chưa cài token
+        return
     
-    # Nếu truyền specific_chat_id thì gửi cho người đó, nếu không thì gửi cho SuperAdmin
     target_chat = specific_chat_id if specific_chat_id else TELEGRAM_CHAT_ID
     if not target_chat:
         return
@@ -305,12 +293,11 @@ def send_telegram_msg(message: str, specific_chat_id: str = None):
     except Exception as e:
         print("Telegram error:", e)
 
-# --- 5. ENDPOINTS RÚT TIỀN & XÉT DUYỆT ---
+# --- 5. RÚT TIỀN & XÉT DUYỆT ---
 
 @app.post("/withdraw", tags=["Withdrawals"])
 def request_withdrawal(req: schemas.WithdrawalCreate):
     try:
-        # 1. Kiểm tra số dư ví
         wallet_res = supabase.table("wallets").select("*").eq("user_id", req.user_id).execute()
         if not wallet_res.data:
             raise HTTPException(status_code=400, detail="Không tìm thấy ví người dùng.")
@@ -319,26 +306,22 @@ def request_withdrawal(req: schemas.WithdrawalCreate):
         if float(wallet["balance"]) < req.amount:
             raise HTTPException(status_code=400, detail="Số dư không đủ để rút số tiền này.")
 
-        # 2. Đóng băng tiền (Trừ số dư ngay lập tức)
         new_balance = float(wallet["balance"]) - req.amount
         supabase.table("wallets").update({"balance": new_balance}).eq("id", wallet["id"]).execute()
 
-        # 3. Ghi nhận lịch sử ví (Giao dịch âm)
         supabase.table("wallet_transactions").insert({
             "wallet_id": wallet["id"],
             "amount": -req.amount,
             "transaction_type": "withdrawal_request"
         }).execute()
 
-        # 4. Tạo yêu cầu rút tiền
         wd_res = supabase.table("withdrawal_requests").insert({
             "user_id": req.user_id,
             "amount": req.amount,
             "payout_info": req.payout_info,
-            "status": "PENDING" # Viết hoa chuẩn chỉnh
+            "status": "PENDING"
         }).execute()
 
-        # 5. Bắn thông báo Telegram cho Admin
         msg = f"🚨 YÊU CẦU RÚT TIỀN MỚI 🚨\n- Mã User: {req.user_id[:8]}...\n- Số tiền: {req.amount:,.0f} VND\n- Ngân hàng: {req.payout_info.get('bank_name', 'N/A')}\n👉 Vui lòng duyệt trên hệ thống!"
         send_telegram_msg(msg)
 
@@ -349,7 +332,6 @@ def request_withdrawal(req: schemas.WithdrawalCreate):
 @app.patch("/admin/withdraw/{withdraw_id}", tags=["Withdrawals"])
 def process_withdrawal(withdraw_id: str, payload: schemas.WithdrawalUpdate):
     try:
-        # 1. Lấy thông tin yêu cầu
         wd_res = supabase.table("withdrawal_requests").select("*").eq("id", withdraw_id).execute()
         if not wd_res.data:
             raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu rút tiền.")
@@ -358,23 +340,19 @@ def process_withdrawal(withdraw_id: str, payload: schemas.WithdrawalUpdate):
         if wd["status"] != "PENDING":
             raise HTTPException(status_code=400, detail="Yêu cầu này đã được xử lý từ trước.")
 
-        # 2. Cập nhật trạng thái
         update_data = {"status": payload.status}
         if payload.admin_note:
             update_data["admin_note"] = payload.admin_note
         
         supabase.table("withdrawal_requests").update(update_data).eq("id", withdraw_id).execute()
 
-        # 3. Xử lý Hoàn tiền nếu BỊ TỪ CHỐI (REJECTED)
         if payload.status == "REJECTED":
             wallet_res = supabase.table("wallets").select("*").eq("user_id", wd["user_id"]).execute()
             if wallet_res.data:
                 wallet = wallet_res.data[0]
-                # Cộng lại tiền vào ví
                 new_balance = float(wallet["balance"]) + float(wd["amount"])
                 supabase.table("wallets").update({"balance": new_balance}).eq("id", wallet["id"]).execute()
                 
-                # Ghi nhận hoàn tiền
                 supabase.table("wallet_transactions").insert({
                     "wallet_id": wallet["id"],
                     "amount": float(wd["amount"]),
@@ -389,42 +367,29 @@ def process_withdrawal(withdraw_id: str, payload: schemas.WithdrawalUpdate):
         return {"status": "success", "message": f"Đã xử lý trạng thái: {payload.status}"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-# --- 6. ENDPOINTS QUẢN TRỊ ADMIN (GET) ---
 
 @app.get("/admin/withdrawals", tags=["Admin"])
 def get_all_withdrawals():
     try:
-        # Lấy tất cả yêu cầu rút tiền, sắp xếp mới nhất lên đầu
         data = supabase.table("withdrawal_requests").select("*").order("created_at", desc=True).execute()
         return {"status": "success", "data": data.data}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-
-# --- 7. TELEGRAM WEBHOOK (ONBOARDING 1 CHẠM CHO ĐỐI TÁC) ---
+# --- 7. WEBHOOKS ---
 
 @app.post("/webhook/telegram", tags=["Webhook"])
 async def telegram_webhook(req: dict):
     try:
-        # Kiểm tra xem Telegram có gửi tin nhắn text không
         if "message" in req and "text" in req["message"]:
             text = req["message"]["text"]
             chat_id = req["message"]["chat"]["id"]
 
-            # Luồng Deep Link: Khi đối tác bấm link, Telegram sẽ tự gửi lệnh có dạng "/start <user_id>"
             if text.startswith("/start "):
-                user_id = text.split(" ")[1] # Tách lấy user_id
-                
+                user_id = text.split(" ")[1]
                 try:
-                    # 1. Lưu Chat ID vào Database
                     supabase.table("users").update({"telegram_chat_id": str(chat_id)}).eq("id", user_id).execute()
-                    
-                    # 2. Bắn tin nhắn chào mừng đích danh cho Đối tác
-                    welcome_msg = (
-                        "✅ KẾT NỐI THÀNH CÔNG!\n\n"
-                        "Chào mừng bạn đến với AI Health Share. Từ bây giờ, hệ thống sẽ tự động "
-                        "gửi thông báo tiền về và đơn hàng mới cho bạn ngay tại đây. Chúc bạn bùng nổ doanh số! 🚀"
-                    )
+                    welcome_msg = "✅ KẾT NỐI THÀNH CÔNG!\nChào mừng bạn đến với AI Health Share. Từ bây giờ, hệ thống sẽ tự động gửi thông báo tiền về và đơn hàng mới cho bạn ngay tại đây. Chúc bạn bùng nổ doanh số! 🚀"
                     send_telegram_msg(welcome_msg, str(chat_id))
                 except Exception as db_err:
                     print("Lỗi lưu DB webhook:", db_err)
@@ -434,19 +399,15 @@ async def telegram_webhook(req: dict):
         print("Lỗi Webhook:", e)
         return {"status": "error"}
 
-# --- 8. PAYOS WEBHOOK (ĐÓN TIỀN VỀ ESCROW) ---
 @app.post("/webhook/payos", tags=["Webhook"])
 async def payos_webhook(request: dict):
     try:
         data = request.get("data", {})
         order_code = data.get("orderCode")
         
-        # Nếu giao dịch thành công (code == "00")
         if request.get("code") == "00" or request.get("success") == True:
-            # 1. Cập nhật trạng thái tiền vào Escrow
             supabase.table("bookings_transactions").update({"payment_status": "PAID_ESCROW"}).eq("order_code", order_code).execute()
             
-            # 2. Báo Telegram Admin
             bk_res = supabase.table("bookings_transactions").select("total_amount").eq("order_code", order_code).execute()
             if bk_res.data:
                 send_telegram_msg(
@@ -460,81 +421,88 @@ async def payos_webhook(request: dict):
         print("Webhook error:", e)
         return {"success": False}
 
-
-from fastapi import APIRouter, Depends, HTTPException
-from datetime import datetime, timedelta
-
-# Lưu ý: Cậu nhớ import supabase client và hàm get_current_user của dự án
-# @router hoặc @app tùy thuộc vào cấu trúc file của cậu
-@app.get("/admin/dashboard")
-async def get_admin_dashboard(current_user: dict = Depends(get_current_user)):
-    # 1. Kiểm tra quyền (RBAC)
-    if current_user.get("role") != "SUPER_ADMIN":
-        raise HTTPException(status_code=403, detail="Chỉ Super Admin mới được xem thống kê")
-
+# =====================================================================
+# 🚀 API 8: ADMIN DASHBOARD (DỮ LIỆU THỐNG KÊ THẬT 100%)
+# =====================================================================
+@app.get("/admin/dashboard", tags=["Admin"])
+def get_admin_dashboard(current_user = Depends(verify_user_token)):
     try:
-        # 2. Truy vấn thống kê tổng quan (Sử dụng count của Supabase)
-        users_count_res = supabase.table("users").select("id", count="exact").eq("role", "USER").execute()
-        partners_count_res = supabase.table("users").select("id", count="exact").eq("role", "PARTNER_ADMIN").execute()
-        services_count_res = supabase.table("services").select("id", count="exact").execute()
-        pending_wd_res = supabase.table("withdrawal_requests").select("id", count="exact").eq("status", "PENDING").execute()
+        # 1. KIỂM TRA QUYỀN (RBAC) - Truy vấn thẳng vào bảng users
+        user_res = supabase.table("users").select("role").eq("id", current_user.id).execute()
+        if not user_res.data or user_res.data[0].get("role") != "SUPER_ADMIN":
+            raise HTTPException(status_code=403, detail="Chỉ Super Admin mới được quyền truy cập Dashboard.")
 
-        # 3. Tính tổng doanh thu từ các Booking đã thanh toán thành công
-        # Lấy thêm thông tin đối tác để tính Top Partners
-        bookings_res = supabase.table("bookings").select("*, services(partner_id), users(email)").eq("status", "PAID").execute()
-        bookings = bookings_res.data
+        # 2. ĐẾM SỐ LƯỢNG TỔNG QUAN
+        users_res = supabase.table("users").select("id", count="exact").eq("role", "USER").execute()
+        partners_res = supabase.table("users").select("id", count="exact").eq("role", "PARTNER_ADMIN").execute()
+        services_res = supabase.table("services").select("id", count="exact").execute()
+        withdrawals_res = supabase.table("withdrawal_requests").select("id", count="exact").eq("status", "PENDING").execute()
 
-        total_revenue = sum(b.get("total_amount", 0) for b in bookings) if bookings else 0
+        # 3. TÍNH TOÁN DOANH THU & GIAO DỊCH THÀNH CÔNG
+        # Lấy tất cả bookings đã thanh toán vào Escrow HOẶC đã hoàn thành
+        paid_res = supabase.table("bookings_transactions").select("*").in_("payment_status", ["PAID_ESCROW", "COMPLETED"]).execute()
+        valid_bookings = paid_res.data if paid_res.data else []
 
-        # 4. Xử lý dữ liệu Biểu đồ Doanh thu (7 ngày gần nhất)
+        total_revenue = sum(float(b.get("total_amount", 0)) for b in valid_bookings)
+
+        # 4. TẠO DỮ LIỆU BIỂU ĐỒ 7 NGÀY GẦN NHẤT
         today = datetime.now()
         revenue_chart = []
         for i in range(6, -1, -1):
             target_date = (today - timedelta(days=i)).date()
-            daily_revenue = sum(
-                b.get("total_amount", 0) 
-                for b in bookings 
-                if datetime.fromisoformat(b["created_at"].replace("Z", "+00:00")).date() == target_date
-            )
+            daily_rev = 0
+            for b in valid_bookings:
+                created_at_str = b.get("created_at", "")
+                if created_at_str:
+                    # Chuyển đổi định dạng ISO an toàn
+                    b_date = datetime.fromisoformat(created_at_str.replace("Z", "+00:00")).date()
+                    if b_date == target_date:
+                        daily_rev += float(b.get("total_amount", 0))
+            
             revenue_chart.append({
                 "date": target_date.strftime("%d/%m"),
-                "revenue": daily_revenue
+                "revenue": daily_rev
             })
 
-        # 5. Xử lý Top Partners (Nhóm theo đối tác)
+        # 5. TÌM KIẾM TOP 3 ĐỐI TÁC CÓ DOANH THU CAO NHẤT
+        # Tải danh sách Services để map Partner
+        all_services_res = supabase.table("services").select("id, partner_id").execute()
+        service_map = {s["id"]: s["partner_id"] for s in (all_services_res.data or [])}
+
+        # Tải danh sách Partners để lấy Email
+        all_partners_res = supabase.table("users").select("id, email").eq("role", "PARTNER_ADMIN").execute()
+        partner_email_map = {p["id"]: p["email"] for p in (all_partners_res.data or [])}
+
         partner_stats = {}
-        for b in bookings:
-            # Lấy email đối tác (Nơi cung cấp dịch vụ)
-            partner_id = b.get("services", {}).get("partner_id")
-            if not partner_id: continue
+        for b in valid_bookings:
+            s_id = b.get("service_id")
+            p_id = service_map.get(s_id)
+            if not p_id:
+                continue
             
-            if partner_id not in partner_stats:
-                # Cần query thêm email của partner này để hiển thị cho đẹp
-                partner_info = supabase.table("users").select("email").eq("id", partner_id).execute()
-                p_email = partner_info.data[0]["email"] if partner_info.data else "Unknown"
-                
-                partner_stats[partner_id] = {
-                    "email": p_email,
+            if p_id not in partner_stats:
+                partner_stats[p_id] = {
+                    "email": partner_email_map.get(p_id, "Unknown Partner"),
                     "total_bookings": 0,
                     "total_revenue": 0
                 }
             
-            partner_stats[partner_id]["total_bookings"] += 1
-            partner_stats[partner_id]["total_revenue"] += b.get("total_amount", 0)
+            partner_stats[p_id]["total_bookings"] += 1
+            partner_stats[p_id]["total_revenue"] += float(b.get("total_amount", 0))
 
-        # Sắp xếp lấy top 3 đối tác có doanh thu cao nhất
+        # Sắp xếp và lấy Top 3
         top_partners = sorted(partner_stats.values(), key=lambda x: x["total_revenue"], reverse=True)[:3]
 
-        # 6. Trả về đúng cấu trúc Frontend đang chờ
+        # 6. TRẢ VỀ JSON CHUẨN CHO FRONTEND
         return {
             "status": "success",
             "data": {
                 "stats": {
                     "total_revenue": total_revenue,
-                    "total_users": users_count_res.count if users_count_res else 0,
-                    "total_partners": partners_count_res.count if partners_count_res else 0,
-                    "total_services": services_count_res.count if services_count_res else 0,
-                    "pending_withdrawals": pending_wd_res.count if pending_wd_res else 0
+                    "total_users": users_res.count if users_res else 0,
+                    "total_partners": partners_res.count if partners_res else 0,
+                    "total_services": services_res.count if services_res else 0,
+                    "pending_withdrawals": withdrawals_res.count if withdrawals_res else 0
                 },
                 "revenue_chart": revenue_chart,
                 "top_partners": top_partners
@@ -542,5 +510,5 @@ async def get_admin_dashboard(current_user: dict = Depends(get_current_user)):
         }
 
     except Exception as e:
-        print("Dashboard Error:", str(e))
-        raise HTTPException(status_code=500, detail="Lỗi khi truy xuất dữ liệu thống kê")
+        print("Lỗi Admin Dashboard API:", str(e))
+        raise HTTPException(status_code=500, detail=f"Lỗi truy xuất hệ thống: {str(e)}")
