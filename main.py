@@ -375,3 +375,45 @@ def get_my_services(current_user = Depends(verify_user_token)):
         
     services = supabase.table("services").select("*").eq("partner_id", current_user.id).order("created_at", desc=True).execute().data
     return {"status": "success", "data": services}
+
+# ==========================================
+# 8. AI ASSISTANT (Tích hợp Llama / Grok qua Groq API)
+# ==========================================
+from groq import Groq
+
+# Lấy API Key từ biến môi trường
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+
+@app.post("/ai/chat", tags=["AI Assistant"])
+def chat_with_llama(payload: schemas.AIChatRequest, current_user = Depends(verify_user_token)):
+    if not groq_client:
+        return {"status": "success", "data": {"reply": "📡 Giao diện AI đã sẵn sàng, nhưng hệ thống chưa tìm thấy `GROQ_API_KEY` trong file `.env`. Hãy bổ sung để tôi có thể kết nối với Llama nhé!"}}
+
+    try:
+        # 1. Khởi tạo System Prompt (Định hình nhân cách AI)
+        messages = [{
+            "role": "system",
+            "content": "Bạn là AI Health, một trợ lý y tế ảo thấu cảm và chuyên nghiệp trên nền tảng AI Health Share. Hãy trả lời bằng tiếng Việt, ngắn gọn, súc tích, chia đoạn dễ nhìn. Tuyệt đối lưu ý: Luôn nhắc nhở người dùng đi khám bác sĩ thực tế nếu họ có triệu chứng bệnh lý nghiêm trọng."
+        }]
+
+        # 2. Xây dựng ngữ cảnh từ lịch sử Chat của Frontend
+        # Frontend gửi 'bot' và 'user', nhưng Llama cần 'assistant' và 'user'
+        for msg in payload.messages:
+            role = "assistant" if msg.role == "bot" else "user"
+            messages.append({"role": role, "content": msg.content})
+
+        # 3. Gọi API Groq (Sử dụng Llama 3 8B - Nhanh và thông minh)
+        chat_completion = groq_client.chat.completions.create(
+            messages=messages,
+            model="llama3-8b-8192", # Có thể đổi thành "llama3-70b-8192" nếu cần siêu thông minh
+            temperature=0.7, # Độ sáng tạo (0.0 đến 1.0)
+            max_tokens=1024,
+        )
+
+        # Lấy câu trả lời từ Llama
+        reply_text = chat_completion.choices[0].message.content
+
+        return {"status": "success", "data": {"reply": reply_text}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi từ Trạm trung chuyển Llama/Groq: {str(e)}")
