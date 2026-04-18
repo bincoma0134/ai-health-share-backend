@@ -64,6 +64,25 @@ def get_services(user_id: str = None):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+        
+@app.post("/services", tags=["Services"])
+def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify_user_token)):
+    try:
+        # 1. Bảo mật: Chỉ Partner mới được tạo dịch vụ
+        user_data = supabase.table("users").select("role").eq("id", current_user.id).single().execute().data
+        if not user_data or user_data.get("role") not in ["PARTNER_ADMIN", "SUPER_ADMIN"]:
+            raise HTTPException(status_code=403, detail="BẢO MẬT: Chỉ Doanh nghiệp mới có quyền đăng dịch vụ!")
+
+        # 2. Xử lý Payload
+        service_data = payload.model_dump()
+        service_data["partner_id"] = current_user.id # Tự động lấy ID thật từ Token, không tin Frontend
+        
+        # 3. Lưu Database
+        res = supabase.table("services").insert(service_data).execute()
+        return {"status": "success", "data": res.data[0] if res.data else {}}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.post("/interactions/{action}", tags=["Interactions"])
 def toggle_interaction(action: str, payload: dict, current_user = Depends(verify_user_token)):
     table = "user_likes" if action == "like" else "user_saves"

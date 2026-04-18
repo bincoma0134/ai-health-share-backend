@@ -16,11 +16,12 @@ class PartnerCreate(BaseModel):
 
 # --- 3. CẤU TRÚC DỊCH VỤ (Đã thêm các trường mô tả) ---
 class ServiceCreate(BaseModel):
-    partner_id: str
     service_name: str
     description: Optional[str] = None
     price: float
+    video_url: str  # Bắt buộc phải có link video từ Supabase Storage
     service_type: Optional[str] = "RELAXATION"
+    status: Optional[str] = "PENDING" # Mặc định đẩy vào hàng đợi duyệt
 
 # --- 4. CẤU TRÚC ĐẶT LỊCH (Gộp tất cả các trường cần thiết) ---
 class BookingCreate(BaseModel):
