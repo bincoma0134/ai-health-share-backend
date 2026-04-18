@@ -200,6 +200,9 @@ def update_user_profile(payload: dict, current_user = Depends(verify_user_token)
 # ==========================================
 # 5. PARTNER PUBLIC PROFILE & REVIEWS
 # ==========================================
+# ==========================================
+# 5. PARTNER PUBLIC PROFILE & REVIEWS
+# ==========================================
 @app.get("/partner/profile/{partner_id}", tags=["Partner"])
 def get_partner_public_profile(partner_id: str):
     try:
@@ -207,7 +210,9 @@ def get_partner_public_profile(partner_id: str):
         if not partner: raise HTTPException(status_code=404, detail="Không tìm thấy doanh nghiệp")
         
         services = supabase.table("services").select("*").eq("partner_id", partner_id).eq("status", "APPROVED").execute().data or []
-        reviews = supabase.table("partner_reviews").select("*, users(full_name, avatar_url)").eq("partner_id", partner_id).order("created_at", desc=True).execute().data or []
+        
+        # 🚀 FIX: Chỉ định rõ Foreign Key để lấy thông tin của người viết đánh giá (user_id)
+        reviews = supabase.table("partner_reviews").select("*, users!partner_reviews_user_id_fkey(full_name, avatar_url)").eq("partner_id", partner_id).order("created_at", desc=True).execute().data or []
         
         avg_rating = sum([r["rating"] for r in reviews]) / len(reviews) if reviews else 0.0
 
@@ -221,7 +226,7 @@ def get_partner_public_profile(partner_id: str):
             }
         }
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
-
+    
 @app.post("/partner/reviews", tags=["Partner"])
 def submit_partner_review(payload: dict, current_user = Depends(verify_user_token)):
     partner_id = payload.get("partner_id")
