@@ -110,60 +110,82 @@ def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# ==========================================
-# 2. COMMENTS
-# ==========================================
+# Cập nhật trong file: backend/main.py (Phần # 2. COMMENTS)
+
 @app.get("/comments/{service_id}", tags=["Comments"])
-def get_comments(service_id: str, user_id: str = None):
+def get_comments_nested(service_id: str, user_id: str = None):
     try:
-        # 1. Lấy tất cả comment kèm thông tin user (đảm bảo có role)
-        comments_res = supabase.table("service_comments").select(
+        # 1. Fetch dữ liệu thực từ Supabase kèm Role chuẩn xác
+        res = supabase.table("service_comments").select(
             "*, users(id, full_name, avatar_url, role)"
         ).eq("service_id", service_id).order("created_at", desc=False).execute()
         
-        comments = comments_res.data or []
+        all_comments = res.data or []
 
-        # 2. Lấy tất cả lượt thả tim của các comment này
-        comment_ids = [c["id"] for c in comments]
-        likes = []
+        # 2. Lấy danh sách likes để đếm và check is_liked
+        comment_ids = [c["id"] for c in all_comments]
+        likes_dict = {}
         if comment_ids:
             likes_res = supabase.table("comment_likes").select("*").in_("comment_id", comment_ids).execute()
-            likes = likes_res.data or []
+            for l in likes_res.data:
+                likes_dict.setdefault(l["comment_id"], []).append(l["user_id"])
 
-        # 3. Lắp ráp dữ liệu (Đếm tim, check đã tim chưa)
-        for c in comments:
-            c_likes = [l for l in likes if l["comment_id"] == c["id"]]
-            c["likes_count"] = len(c_likes)
-            c["is_liked"] = any(l["user_id"] == user_id for l in c_likes) if user_id else False
+        # 3. Thuật toán xây dựng cây Bình luận (Nested Structure)
+        comment_map = {}
+        roots = []
 
-        # 4. Sắp xếp: Comment ghim lên đầu, sau đó mới nhất lên đầu
-        # Lưu ý: Comment con (reply) sẽ được Frontend tự động nhóm theo parent_id
-        comments.sort(key=lambda x: (x.get("is_pinned", False), x["created_at"]), reverse=True)
+        # Khởi tạo map và đính kèm likes_count
+        for c in all_comments:
+            c_id = c["id"]
+            likes = likes_dict.get(c_id, [])
+            c["likes_count"] = len(likes)
+            c["is_liked"] = user_id in likes if user_id else False
+            c["replies"] = [] # Mảng chứa bình luận con
+            comment_map[c_id] = c
 
-        return {"status": "success", "data": comments}
+        # Rẽ nhánh dựa vào parent_id
+        for c in all_comments:
+            p_id = c.get("parent_id")
+            if p_id and p_id in comment_map:
+                # Nếu có cha, nhét vào mảng replies của cha
+                comment_map[p_id]["replies"].append(c)
+            else:
+                # Nếu không có cha, đây là bình luận gốc
+                roots.append(c)
+
+        # 4. Sắp xếp: Ưu tiên ghim (is_pinned) lên đầu
+        roots.sort(key=lambda x: x.get("is_pinned", False), reverse=True)
+
+        return {"status": "success", "data": roots}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {str(e)}")
 
 @app.post("/comments", tags=["Comments"])
-def add_comment(payload: dict, current_user = Depends(verify_user_token)):
+def add_comment(payload: schemas.CommentCreate, current_user = Depends(verify_user_token)):
     try:
+        # Nhận parent_id từ schema chuẩn hóa
         insert_data = {
             "user_id": current_user.id,
-            "service_id": payload.get("service_id"),
-            "content": payload.get("content"),
-            "parent_id": payload.get("parent_id") # Hỗ trợ reply (rẽ nhánh)
+            "service_id": payload.service_id,
+            "content": payload.content,
+            "parent_id": payload.parent_id 
         }
         
-        new_comment = supabase.table("service_comments").insert(insert_data).execute().data[0]
+        res = supabase.table("service_comments").insert(insert_data).execute()
+        if not res.data:
+            raise Exception("Không thể lưu bình luận")
+            
+        new_comment = res.data[0]
         
-        # Đính kèm thông tin user cho comment mới để UI cập nhật ngay lập tức
-        user_data = supabase.table("users").select("id, full_name, avatar_url, role").eq("id", current_user.id).execute().data[0]
-        new_comment["users"] = user_data
+        # Trả về kèm thông tin User chuẩn xác từ Database
+        user_info = supabase.table("users").select("id, full_name, avatar_url, role").eq("id", current_user.id).single().execute()
+        new_comment["users"] = user_info.data
         new_comment["likes_count"] = 0
         new_comment["is_liked"] = False
-        
+        new_comment["replies"] = []
+
         return {"status": "success", "data": new_comment}
-    except Exception as e: 
+    except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/comments/{comment_id}/like", tags=["Comments"])

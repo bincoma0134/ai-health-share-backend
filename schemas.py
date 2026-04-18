@@ -47,3 +47,11 @@ class WithdrawalCreate(BaseModel):
 class WithdrawalUpdate(BaseModel):
     status: str  # 'APPROVED' hoặc 'REJECTED'
     admin_note: Optional[str] = None
+
+
+# Cập nhật trong file: backend/schemas.py
+
+class CommentCreate(BaseModel):
+    service_id: str
+    content: str
+    parent_id: Optional[str] = None # Thêm trường này để nhận ID của bình luận gốc
