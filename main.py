@@ -64,7 +64,7 @@ def get_services(user_id: str = None):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-        
+
 @app.post("/services", tags=["Services"])
 def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify_user_token)):
     try:
@@ -94,6 +94,21 @@ def toggle_interaction(action: str, payload: dict, current_user = Depends(verify
     else:
         supabase.table(table).insert({"user_id": current_user.id, "service_id": sid}).execute()
         return {"status": "success", "action": f"{action}d"}
+
+@app.post("/services", tags=["Services"])
+def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify_user_token)):
+    try:
+        user_data = supabase.table("users").select("role").eq("id", current_user.id).single().execute().data
+        if not user_data or user_data.get("role") != "PARTNER_ADMIN":
+            raise HTTPException(status_code=403, detail="BẢO MẬT: Chỉ Doanh nghiệp mới có quyền đăng dịch vụ!")
+
+        service_data = payload.model_dump()
+        service_data["partner_id"] = current_user.id # Lấy ID thật từ Token
+
+        res = supabase.table("services").insert(service_data).execute()
+        return {"status": "success", "data": res.data[0] if res.data else {}}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # ==========================================
 # 2. COMMENTS
