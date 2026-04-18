@@ -114,20 +114,70 @@ def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify
 # 2. COMMENTS
 # ==========================================
 @app.get("/comments/{service_id}", tags=["Comments"])
-def get_comments(service_id: str):
-    data = supabase.table("service_comments").select("*, users(email, avatar_url)").eq("service_id", service_id).order("created_at", desc=True).execute()
-    return {"status": "success", "data": data.data}
+def get_comments(service_id: str, user_id: str = None):
+    try:
+        # 1. Lấy tất cả comment kèm thông tin user (đảm bảo có role)
+        comments_res = supabase.table("service_comments").select(
+            "*, users(id, full_name, avatar_url, role)"
+        ).eq("service_id", service_id).order("created_at", desc=False).execute()
+        
+        comments = comments_res.data or []
+
+        # 2. Lấy tất cả lượt thả tim của các comment này
+        comment_ids = [c["id"] for c in comments]
+        likes = []
+        if comment_ids:
+            likes_res = supabase.table("comment_likes").select("*").in_("comment_id", comment_ids).execute()
+            likes = likes_res.data or []
+
+        # 3. Lắp ráp dữ liệu (Đếm tim, check đã tim chưa)
+        for c in comments:
+            c_likes = [l for l in likes if l["comment_id"] == c["id"]]
+            c["likes_count"] = len(c_likes)
+            c["is_liked"] = any(l["user_id"] == user_id for l in c_likes) if user_id else False
+
+        # 4. Sắp xếp: Comment ghim lên đầu, sau đó mới nhất lên đầu
+        # Lưu ý: Comment con (reply) sẽ được Frontend tự động nhóm theo parent_id
+        comments.sort(key=lambda x: (x.get("is_pinned", False), x["created_at"]), reverse=True)
+
+        return {"status": "success", "data": comments}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/comments", tags=["Comments"])
 def add_comment(payload: dict, current_user = Depends(verify_user_token)):
     try:
-        new_comment = supabase.table("service_comments").insert({
-            "user_id": current_user.id, "service_id": payload.get("service_id"), "content": payload.get("content")
-        }).execute().data[0]
-        user_data = supabase.table("users").select("email, avatar_url").eq("id", current_user.id).execute().data[0]
+        insert_data = {
+            "user_id": current_user.id,
+            "service_id": payload.get("service_id"),
+            "content": payload.get("content"),
+            "parent_id": payload.get("parent_id") # Hỗ trợ reply (rẽ nhánh)
+        }
+        
+        new_comment = supabase.table("service_comments").insert(insert_data).execute().data[0]
+        
+        # Đính kèm thông tin user cho comment mới để UI cập nhật ngay lập tức
+        user_data = supabase.table("users").select("id, full_name, avatar_url, role").eq("id", current_user.id).execute().data[0]
         new_comment["users"] = user_data
+        new_comment["likes_count"] = 0
+        new_comment["is_liked"] = False
+        
         return {"status": "success", "data": new_comment}
-    except Exception as e: raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e: 
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/comments/{comment_id}/like", tags=["Comments"])
+def toggle_comment_like(comment_id: str, current_user = Depends(verify_user_token)):
+    try:
+        existing = supabase.table("comment_likes").select("id").eq("user_id", current_user.id).eq("comment_id", comment_id).execute().data
+        if existing:
+            supabase.table("comment_likes").delete().eq("user_id", current_user.id).eq("comment_id", comment_id).execute()
+            return {"status": "success", "action": "unliked"}
+        else:
+            supabase.table("comment_likes").insert({"user_id": current_user.id, "comment_id": comment_id}).execute()
+            return {"status": "success", "action": "liked"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 # ==========================================
 # 3. BOOKINGS
