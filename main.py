@@ -20,7 +20,7 @@ PAYOS_API_KEY = os.environ.get("PAYOS_API_KEY", "YOUR_API_KEY")
 PAYOS_CHECKSUM_KEY = os.environ.get("PAYOS_CHECKSUM_KEY", "YOUR_CHECKSUM_KEY")
 payos_client = PayOS(client_id=PAYOS_CLIENT_ID, api_key=PAYOS_API_KEY, checksum_key=PAYOS_CHECKSUM_KEY)
 
-app = FastAPI(title="AI Health Share API", version="4.5.0")
+app = FastAPI(title="AI Health Share API", version="4.6.0")
 security = HTTPBearer()
 
 def verify_user_token(credentials: HTTPAuthorizationCredentials = Security(security)):
@@ -42,9 +42,9 @@ def health_check(): return {"status": "success", "message": "Server FastAPI đan
 @app.get("/services", tags=["Services"])
 def get_services(user_id: str = None):
     try:
-        services = supabase.table("services").select("*").execute().data
+        # 🚀 CẬP NHẬT: FEED CHÍNH CHỈ HIỂN THỊ VIDEO ĐÃ ĐƯỢC DUYỆT (APPROVED)
+        services = supabase.table("services").select("*").eq("status", "APPROVED").execute().data
         
-        # Thủ thuật lấy thêm Avatar Partner an toàn không lo lỗi JOIN
         partner_ids = list(set([s["partner_id"] for s in services if s.get("partner_id")]))
         partners = supabase.table("users").select("id, avatar_url, full_name").in_("id", partner_ids).execute().data
         p_dict = {p["id"]: p for p in partners}
@@ -120,14 +120,14 @@ def create_booking(booking: schemas.BookingCreate, current_user = Depends(verify
 
 @app.patch("/bookings/{booking_id}/complete", tags=["Bookings"])
 async def complete_booking(booking_id: str):
-    pass # Cấu trúc Escrow giữ nguyên
+    pass 
 
 # ==========================================
 # 4. USER PROFILE (Cá nhân)
 # ==========================================
 @app.get("/user/profile", tags=["User"])
 def get_user_profile(current_user = Depends(verify_user_token)):
-    user = supabase.table("users").select("id, email, role, created_at, full_name, bio, avatar_url, cover_url").eq("id", current_user.id).single().execute().data
+    user = supabase.table("users").select("id, email, role, created_at, full_name, bio, avatar_url, cover_url, theme_preference").eq("id", current_user.id).single().execute().data
     saves = supabase.table("user_saves").select("services(*)").eq("user_id", current_user.id).order("created_at", desc=True).execute()
     bookings = supabase.table("bookings_transactions").select("*, services(service_name)").eq("user_id", current_user.id).order("created_at", desc=True).execute()
     likes_count = supabase.table("user_likes").select("id", count="exact").eq("user_id", current_user.id).execute().count or 0
@@ -148,7 +148,7 @@ def update_user_profile(payload: dict, current_user = Depends(verify_user_token)
     return {"status": "success", "data": res.data[0] if res.data else {}}
 
 # ==========================================
-# 5. 🚀 PARTNER PUBLIC PROFILE & REVIEWS
+# 5. PARTNER PUBLIC PROFILE & REVIEWS
 # ==========================================
 @app.get("/partner/profile/{partner_id}", tags=["Partner"])
 def get_partner_public_profile(partner_id: str):
@@ -156,7 +156,8 @@ def get_partner_public_profile(partner_id: str):
         partner = supabase.table("users").select("id, full_name, bio, avatar_url, cover_url, reputation_points").eq("id", partner_id).single().execute().data
         if not partner: raise HTTPException(status_code=404, detail="Không tìm thấy doanh nghiệp")
         
-        services = supabase.table("services").select("*").eq("partner_id", partner_id).execute().data or []
+        # 🚀 CẬP NHẬT: SHOWROOM CHỈ HIỂN THỊ DỊCH VỤ ĐÃ DUYỆT (APPROVED)
+        services = supabase.table("services").select("*").eq("partner_id", partner_id).eq("status", "APPROVED").execute().data or []
         reviews = supabase.table("partner_reviews").select("*, users(full_name, avatar_url)").eq("partner_id", partner_id).order("created_at", desc=True).execute().data or []
         
         avg_rating = sum([r["rating"] for r in reviews]) / len(reviews) if reviews else 0.0
@@ -178,36 +179,21 @@ def submit_partner_review(payload: dict, current_user = Depends(verify_user_toke
     rating = payload.get("rating", 5)
     comment = payload.get("comment", "")
 
-    # 1. TÌM TẤT CẢ DỊCH VỤ CỦA PARTNER NÀY
     services_res = supabase.table("services").select("id").eq("partner_id", partner_id).execute()
     service_ids = [s["id"] for s in services_res.data] if services_res.data else []
-    
-    if not service_ids:
-        raise HTTPException(status_code=400, detail="Doanh nghiệp này chưa có dịch vụ nào.")
+    if not service_ids: raise HTTPException(status_code=400, detail="Doanh nghiệp này chưa có dịch vụ nào.")
 
-    # 2. KIỂM TRA ĐIỀU KIỆN TIÊN QUYẾT: ĐÃ HOÀN TẤT DỊCH VỤ CHƯA?
-    bookings_res = supabase.table("bookings_transactions")\
-        .select("id")\
-        .eq("user_id", current_user.id)\
-        .eq("service_status", "COMPLETED")\
-        .in_("service_id", service_ids)\
-        .execute()
+    bookings_res = supabase.table("bookings_transactions").select("id").eq("user_id", current_user.id).eq("service_status", "COMPLETED").in_("service_id", service_ids).execute()
+    if not bookings_res.data: raise HTTPException(status_code=403, detail="BẢO MẬT: Bạn cần thanh toán và trải nghiệm dịch vụ trước khi đánh giá!")
 
-    if not bookings_res.data:
-        raise HTTPException(status_code=403, detail="BẢO MẬT: Bạn cần thanh toán và trải nghiệm dịch vụ của chuyên gia này trước khi đánh giá!")
-
-    # 3. KIỂM TRA XEM ĐÃ ĐÁNH GIÁ CHƯA
     existing = supabase.table("partner_reviews").select("id").eq("user_id", current_user.id).eq("partner_id", partner_id).execute()
-    if existing.data:
-        raise HTTPException(status_code=400, detail="Bạn đã đánh giá chuyên gia này rồi!")
+    if existing.data: raise HTTPException(status_code=400, detail="Bạn đã đánh giá chuyên gia này rồi!")
 
     try:
-        # 4. LƯU ĐÁNH GIÁ
         new_review = supabase.table("partner_reviews").insert({
             "user_id": current_user.id, "partner_id": partner_id, "rating": rating, "comment": comment
         }).execute().data[0]
 
-        # 5. CỘNG ĐIỂM UY TÍN CHO PARTNER (Ví dụ: + rating điểm)
         partner_data = supabase.table("users").select("reputation_points").eq("id", partner_id).single().execute().data
         current_points = partner_data.get("reputation_points") or 0
         supabase.table("users").update({"reputation_points": current_points + rating}).eq("id", partner_id).execute()
@@ -218,3 +204,48 @@ def submit_partner_review(payload: dict, current_user = Depends(verify_user_toke
         return {"status": "success", "data": new_review}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# ==========================================
+# 6. MODERATION (Khu vực dành cho MODERATOR)
+# ==========================================
+@app.get("/moderation/services", tags=["Moderation"])
+def get_pending_services(current_user = Depends(verify_user_token)):
+    user_data = supabase.table("users").select("role").eq("id", current_user.id).single().execute().data
+    if not user_data or user_data.get("role") not in ["MODERATOR", "SUPER_ADMIN"]:
+        raise HTTPException(status_code=403, detail="BẢO MẬT: Chỉ Kiểm duyệt viên mới có quyền truy cập!")
+    
+    # Kéo tất cả video đang PENDING kèm theo thông tin Doanh nghiệp đăng tải
+    services = supabase.table("services").select("*, users(full_name, email, avatar_url)").eq("status", "PENDING").order("created_at", desc=True).execute().data
+    return {"status": "success", "data": services}
+
+@app.patch("/moderation/services/{service_id}", tags=["Moderation"])
+def moderate_service(service_id: str, payload: dict, current_user = Depends(verify_user_token)):
+    user_data = supabase.table("users").select("role").eq("id", current_user.id).single().execute().data
+    if not user_data or user_data.get("role") not in ["MODERATOR", "SUPER_ADMIN"]:
+        raise HTTPException(status_code=403, detail="BẢO MẬT: Chỉ Kiểm duyệt viên mới có quyền duyệt bài!")
+    
+    status = payload.get("status")
+    note = payload.get("moderation_note", "")
+    
+    if status not in ["APPROVED", "REJECTED"]:
+        raise HTTPException(status_code=400, detail="Trạng thái không hợp lệ. Chỉ nhận APPROVED hoặc REJECTED.")
+        
+    res = supabase.table("services").update({
+        "status": status,
+        "moderation_note": note
+    }).eq("id", service_id).execute()
+    
+    return {"status": "success", "data": res.data[0] if res.data else {}}
+
+# ==========================================
+# 7. PARTNER BACKSTAGE API (Quản lý video cá nhân)
+# ==========================================
+@app.get("/partner/my-services", tags=["Partner"])
+def get_my_services(current_user = Depends(verify_user_token)):
+    user_data = supabase.table("users").select("role").eq("id", current_user.id).single().execute().data
+    if not user_data or user_data.get("role") not in ["PARTNER_ADMIN", "SUPER_ADMIN"]:
+        raise HTTPException(status_code=403, detail="BẢO MẬT: Chỉ Doanh nghiệp mới xem được khu vực này!")
+        
+    # Lấy TẤT CẢ video của Partner này (PENDING, APPROVED, REJECTED) để họ tự quản lý
+    services = supabase.table("services").select("*").eq("partner_id", current_user.id).order("created_at", desc=True).execute().data
+    return {"status": "success", "data": services}
