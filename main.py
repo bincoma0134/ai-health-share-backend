@@ -406,7 +406,7 @@ def chat_with_llama(payload: schemas.AIChatRequest, current_user = Depends(verif
         # 3. Gọi API Groq (Sử dụng Llama 3 8B - Nhanh và thông minh)
         chat_completion = groq_client.chat.completions.create(
             messages=messages,
-            model="llama3-8b-8192", # Có thể đổi thành "llama3-70b-8192" nếu cần siêu thông minh
+            model="llama-3.1-8b-instant", # Có thể đổi thành "llama3-70b-8192" nếu cần siêu thông minh
             temperature=0.7, # Độ sáng tạo (0.0 đến 1.0)
             max_tokens=1024,
         )
