@@ -383,3 +383,20 @@ def chat_with_llama(payload: schemas.AIChatRequest, current_user = Depends(verif
         return {"status": "success", "data": {"reply": reply_text}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi AI: {str(e)}")
+
+# ==========================================
+# 9. NOTIFICATIONS CENTER
+# ==========================================
+@app.get("/notifications", tags=["Notifications"])
+def get_notifications(current_user = Depends(verify_user_token)):
+    try:
+        res = supabase.table("notifications").select("*").eq("user_id", current_user.id).order("created_at", desc=True).limit(50).execute()
+        return {"status": "success", "data": res.data or []}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/notifications/{notif_id}/read", tags=["Notifications"])
+def mark_notification_read(notif_id: str, current_user = Depends(verify_user_token)):
+    try:
+        res = supabase.table("notifications").update({"is_read": True}).eq("id", notif_id).eq("user_id", current_user.id).execute()
+        return {"status": "success", "data": res.data[0] if res.data else {}}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
