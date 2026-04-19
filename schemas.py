@@ -55,3 +55,13 @@ class CommentCreate(BaseModel):
     service_id: str
     content: str
     parent_id: Optional[str] = None # Thêm trường này để nhận ID của bình luận gốc
+
+from typing import List
+
+# --- 7. CẤU TRÚC AI ASSISTANT ---
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class AIChatRequest(BaseModel):
+    messages: List[ChatMessage]
