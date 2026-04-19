@@ -20,7 +20,7 @@ PAYOS_API_KEY = os.environ.get("PAYOS_API_KEY", "YOUR_API_KEY")
 PAYOS_CHECKSUM_KEY = os.environ.get("PAYOS_CHECKSUM_KEY", "YOUR_CHECKSUM_KEY")
 payos_client = PayOS(client_id=PAYOS_CLIENT_ID, api_key=PAYOS_API_KEY, checksum_key=PAYOS_CHECKSUM_KEY)
 
-app = FastAPI(title="AI Health Share API", version="4.7.0")
+app = FastAPI(title="AI Health Share API", version="5.0.0")
 security = HTTPBearer()
 
 def verify_user_token(credentials: HTTPAuthorizationCredentials = Security(security)):
@@ -64,20 +64,16 @@ def get_services(user_id: str = None):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-
 @app.post("/services", tags=["Services"])
 def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify_user_token)):
     try:
-        # 1. Bảo mật: Chỉ Partner mới được tạo dịch vụ
         user_data = supabase.table("users").select("role").eq("id", current_user.id).single().execute().data
         if not user_data or user_data.get("role") not in ["PARTNER_ADMIN", "SUPER_ADMIN"]:
             raise HTTPException(status_code=403, detail="BẢO MẬT: Chỉ Doanh nghiệp mới có quyền đăng dịch vụ!")
 
-        # 2. Xử lý Payload
         service_data = payload.model_dump()
-        service_data["partner_id"] = current_user.id # Tự động lấy ID thật từ Token, không tin Frontend
+        service_data["partner_id"] = current_user.id 
         
-        # 3. Lưu Database
         res = supabase.table("services").insert(service_data).execute()
         return {"status": "success", "data": res.data[0] if res.data else {}}
     except Exception as e:
@@ -95,67 +91,44 @@ def toggle_interaction(action: str, payload: dict, current_user = Depends(verify
         supabase.table(table).insert({"user_id": current_user.id, "service_id": sid}).execute()
         return {"status": "success", "action": f"{action}d"}
 
-@app.post("/services", tags=["Services"])
-def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify_user_token)):
-    try:
-        user_data = supabase.table("users").select("role").eq("id", current_user.id).single().execute().data
-        if not user_data or user_data.get("role") != "PARTNER_ADMIN":
-            raise HTTPException(status_code=403, detail="BẢO MẬT: Chỉ Doanh nghiệp mới có quyền đăng dịch vụ!")
-
-        service_data = payload.model_dump()
-        service_data["partner_id"] = current_user.id # Lấy ID thật từ Token
-
-        res = supabase.table("services").insert(service_data).execute()
-        return {"status": "success", "data": res.data[0] if res.data else {}}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-# Cập nhật trong file: backend/main.py (Phần # 2. COMMENTS)
-
+# ==========================================
+# 2. COMMENTS
+# ==========================================
 @app.get("/comments/{service_id}", tags=["Comments"])
 def get_comments_nested(service_id: str, user_id: str = None):
     try:
-        # 1. Fetch dữ liệu thực từ Supabase kèm Role chuẩn xác
         res = supabase.table("service_comments").select(
             "*, users(id, full_name, avatar_url, role)"
         ).eq("service_id", service_id).order("created_at", desc=False).execute()
         
         all_comments = res.data or []
-
-        # 2. Lấy danh sách likes để đếm và check is_liked
         comment_ids = [c["id"] for c in all_comments]
         likes_dict = {}
+        
         if comment_ids:
             likes_res = supabase.table("comment_likes").select("*").in_("comment_id", comment_ids).execute()
             for l in likes_res.data:
                 likes_dict.setdefault(l["comment_id"], []).append(l["user_id"])
 
-        # 3. Thuật toán xây dựng cây Bình luận (Nested Structure)
         comment_map = {}
         roots = []
 
-        # Khởi tạo map và đính kèm likes_count
         for c in all_comments:
             c_id = c["id"]
             likes = likes_dict.get(c_id, [])
             c["likes_count"] = len(likes)
             c["is_liked"] = user_id in likes if user_id else False
-            c["replies"] = [] # Mảng chứa bình luận con
+            c["replies"] = [] 
             comment_map[c_id] = c
 
-        # Rẽ nhánh dựa vào parent_id
         for c in all_comments:
             p_id = c.get("parent_id")
             if p_id and p_id in comment_map:
-                # Nếu có cha, nhét vào mảng replies của cha
                 comment_map[p_id]["replies"].append(c)
             else:
-                # Nếu không có cha, đây là bình luận gốc
                 roots.append(c)
 
-        # 4. Sắp xếp: Ưu tiên ghim (is_pinned) lên đầu
         roots.sort(key=lambda x: x.get("is_pinned", False), reverse=True)
-
         return {"status": "success", "data": roots}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {str(e)}")
@@ -163,22 +136,18 @@ def get_comments_nested(service_id: str, user_id: str = None):
 @app.post("/comments", tags=["Comments"])
 def add_comment(payload: schemas.CommentCreate, current_user = Depends(verify_user_token)):
     try:
-        # Nhận parent_id từ schema chuẩn hóa
         insert_data = {
             "user_id": current_user.id,
             "service_id": payload.service_id,
             "content": payload.content,
             "parent_id": payload.parent_id 
         }
-        
         res = supabase.table("service_comments").insert(insert_data).execute()
-        if not res.data:
-            raise Exception("Không thể lưu bình luận")
+        if not res.data: raise Exception("Không thể lưu bình luận")
             
         new_comment = res.data[0]
-        
-        # Trả về kèm thông tin User chuẩn xác từ Database
         user_info = supabase.table("users").select("id, full_name, avatar_url, role").eq("id", current_user.id).single().execute()
+        
         new_comment["users"] = user_info.data
         new_comment["likes_count"] = 0
         new_comment["is_liked"] = False
@@ -228,13 +197,12 @@ async def complete_booking(booking_id: str):
     pass 
 
 # ==========================================
-# 4. USER PROFILE (Cá nhân)
+# 4. USER PROFILE 
 # ==========================================
 @app.get("/user/profile", tags=["User"])
 def get_user_profile(current_user = Depends(verify_user_token)):
     user = supabase.table("users").select("id, email, role, created_at, full_name, bio, avatar_url, cover_url, theme_preference").eq("id", current_user.id).single().execute().data
     
-    # Chỉ số cơ bản
     saves = supabase.table("user_saves").select("services(*)").eq("user_id", current_user.id).order("created_at", desc=True).execute()
     bookings = supabase.table("bookings_transactions").select("*, services(service_name)").eq("user_id", current_user.id).order("created_at", desc=True).execute()
     likes_count = supabase.table("user_likes").select("id", count="exact").eq("user_id", current_user.id).execute().count or 0
@@ -245,11 +213,9 @@ def get_user_profile(current_user = Depends(verify_user_token)):
         "likes_count": likes_count
     }
 
-    # 🚀 CẬP NHẬT: QUÉT DỮ LIỆU THỰC TẾ CHO MODERATOR
     if user and user.get("role") in ["MODERATOR", "SUPER_ADMIN"]:
         pending_res = supabase.table("services").select("id", count="exact").eq("status", "PENDING").execute()
         handled_res = supabase.table("services").select("id", count="exact").eq("moderated_by", current_user.id).execute()
-        
         stats["pendingTotal"] = pending_res.count or 0
         stats["approvedByMe"] = handled_res.count or 0
 
@@ -270,10 +236,7 @@ def update_user_profile(payload: dict, current_user = Depends(verify_user_token)
     return {"status": "success", "data": res.data[0] if res.data else {}}
 
 # ==========================================
-# 5. PARTNER PUBLIC PROFILE & REVIEWS
-# ==========================================
-# ==========================================
-# 5. PARTNER PUBLIC PROFILE & REVIEWS
+# 5. PARTNER PROFILE & REVIEWS
 # ==========================================
 @app.get("/partner/profile/{partner_id}", tags=["Partner"])
 def get_partner_public_profile(partner_id: str):
@@ -283,7 +246,6 @@ def get_partner_public_profile(partner_id: str):
         
         services = supabase.table("services").select("*").eq("partner_id", partner_id).eq("status", "APPROVED").execute().data or []
         
-        # 🚀 FIX: Chỉ định rõ Foreign Key để lấy thông tin của người viết đánh giá (user_id)
         reviews = supabase.table("partner_reviews").select("*, users!partner_reviews_user_id_fkey(full_name, avatar_url)").eq("partner_id", partner_id).order("created_at", desc=True).execute().data or []
         
         avg_rating = sum([r["rating"] for r in reviews]) / len(reviews) if reviews else 0.0
@@ -332,7 +294,7 @@ def submit_partner_review(payload: dict, current_user = Depends(verify_user_toke
         raise HTTPException(status_code=400, detail=str(e))
 
 # ==========================================
-# 6. MODERATION (Khu vực dành cho MODERATOR)
+# 6. MODERATION
 # ==========================================
 @app.get("/moderation/services", tags=["Moderation"])
 def get_pending_services(current_user = Depends(verify_user_token)):
@@ -351,21 +313,13 @@ def moderate_service(service_id: str, payload: dict, current_user = Depends(veri
     
     status = payload.get("status")
     note = payload.get("moderation_note", "")
-    
-    if status not in ["APPROVED", "REJECTED"]:
-        raise HTTPException(status_code=400, detail="Trạng thái không hợp lệ. Chỉ nhận APPROVED hoặc REJECTED.")
+    if status not in ["APPROVED", "REJECTED"]: raise HTTPException(status_code=400, detail="Trạng thái không hợp lệ.")
         
-    # 🚀 CẬP NHẬT: Lưu vết ID người kiểm duyệt vào Database
-    res = supabase.table("services").update({
-        "status": status,
-        "moderation_note": note,
-        "moderated_by": current_user.id
-    }).eq("id", service_id).execute()
-    
+    res = supabase.table("services").update({"status": status, "moderation_note": note, "moderated_by": current_user.id}).eq("id", service_id).execute()
     return {"status": "success", "data": res.data[0] if res.data else {}}
 
 # ==========================================
-# 7. PARTNER BACKSTAGE API (Quản lý video cá nhân)
+# 7. PARTNER BACKSTAGE API
 # ==========================================
 @app.get("/partner/my-services", tags=["Partner"])
 def get_my_services(current_user = Depends(verify_user_token)):
@@ -377,43 +331,55 @@ def get_my_services(current_user = Depends(verify_user_token)):
     return {"status": "success", "data": services}
 
 # ==========================================
-# 8. AI ASSISTANT (Tích hợp Llama / Grok qua Groq API)
+# 8. AI ASSISTANT (Groq & Supabase History)
 # ==========================================
 from groq import Groq
 
-# Lấy API Key từ biến môi trường
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
+@app.get("/ai/history", tags=["AI Assistant"])
+def get_chat_history(current_user = Depends(verify_user_token)):
+    try:
+        res = supabase.table("ai_chat_history").select("*").eq("user_id", current_user.id).order("created_at", desc=False).limit(20).execute()
+        return {"status": "success", "data": res.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/ai/chat", tags=["AI Assistant"])
 def chat_with_llama(payload: schemas.AIChatRequest, current_user = Depends(verify_user_token)):
-    if not groq_client:
-        return {"status": "success", "data": {"reply": "📡 Giao diện AI đã sẵn sàng, nhưng hệ thống chưa tìm thấy `GROQ_API_KEY` trong file `.env`. Hãy bổ sung để tôi có thể kết nối với Llama nhé!"}}
-
     try:
-        # 1. Khởi tạo System Prompt (Định hình nhân cách AI)
-        messages = [{
+        system_prompt = {
             "role": "system",
-            "content": "Bạn là AI Health, một trợ lý y tế ảo thấu cảm và chuyên nghiệp trên nền tảng AI Health Share. Hãy trả lời bằng tiếng Việt, ngắn gọn, súc tích, chia đoạn dễ nhìn. Tuyệt đối lưu ý: Luôn nhắc nhở người dùng đi khám bác sĩ thực tế nếu họ có triệu chứng bệnh lý nghiêm trọng."
-        }]
+            "content": """Bạn là Trợ lý AI Health. 
+            QUY TẮC TRÌNH BÀY BẮT BUỘC:
+            - Sử dụng Markdown để định dạng văn bản.
+            - Phân cấp thông tin bằng tiêu đề (##) và danh sách gạch đầu dòng (-).
+            - Nhấn mạnh các từ khóa quan trọng bằng chữ in đậm (**text**).
+            - Ngắn gọn, súc tích, đi thẳng vào vấn đề. 
+            - Luôn có một dòng nhắc nhở khám bác sĩ chuyên khoa ở cuối câu trả lời."""
+        }
 
-        # 2. Xây dựng ngữ cảnh từ lịch sử Chat của Frontend
-        # Frontend gửi 'bot' và 'user', nhưng Llama cần 'assistant' và 'user'
+        messages = [system_prompt]
         for msg in payload.messages:
             role = "assistant" if msg.role == "bot" else "user"
             messages.append({"role": role, "content": msg.content})
 
-        # 3. Gọi API Groq (Sử dụng Llama 3 8B - Nhanh và thông minh)
         chat_completion = groq_client.chat.completions.create(
             messages=messages,
-            model="llama-3.1-8b-instant", # Có thể đổi thành "llama3-70b-8192" nếu cần siêu thông minh
-            temperature=0.7, # Độ sáng tạo (0.0 đến 1.0)
+            model="llama-3.1-8b-instant",
+            temperature=0.6,
             max_tokens=1024,
         )
 
-        # Lấy câu trả lời từ Llama
         reply_text = chat_completion.choices[0].message.content
+
+        user_msg = payload.messages[-1].content
+        supabase.table("ai_chat_history").insert([
+            {"user_id": current_user.id, "role": "user", "content": user_msg},
+            {"user_id": current_user.id, "role": "assistant", "content": reply_text}
+        ]).execute()
 
         return {"status": "success", "data": {"reply": reply_text}}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Lỗi từ Trạm trung chuyển Llama/Groq: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Lỗi AI: {str(e)}")
