@@ -535,18 +535,16 @@ def resolve_identifier(payload: schemas.AuthResolve):
         
     return {"status": "success", "email": res.data[0]["email"]}
 
-@app.post("/auth/set-username", tags=["Auth"])
-def set_username(payload: schemas.UsernameSet, current_user = Depends(verify_user_token)):
-    """Kiểm tra và lưu Username (đảm bảo tính duy nhất)"""
+# Thêm endpoint này vào phần 12. AUTH HELPERS trong main.py
+@app.post("/auth/check-username", tags=["Auth"])
+def check_username(payload: schemas.UsernameSet):
+    """Kiểm tra xem Username đã tồn tại chưa (Không cần token)"""
     username = payload.username.strip().lower()
     if len(username) < 3:
         raise HTTPException(status_code=400, detail="Username phải có ít nhất 3 ký tự!")
         
-    # Check trùng lặp
     existing = supabase.table("users").select("id").eq("username", username).execute()
-    if existing.data and existing.data[0]["id"] != current_user.id:
+    if existing.data:
         raise HTTPException(status_code=400, detail="Tên người dùng này đã tồn tại, vui lòng chọn tên khác!")
         
-    # Cập nhật username
-    supabase.table("users").update({"username": username}).eq("id", current_user.id).execute()
-    return {"status": "success", "message": "Đã cập nhật Username thành công!"}
+    return {"status": "success", "message": "Username hợp lệ"}
