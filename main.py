@@ -482,12 +482,67 @@ def toggle_like(post_id: str, current_user = Depends(verify_user_token)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
+@app.post("/community/posts/{post_id}/save", tags=["Community"])
+def toggle_save_post(post_id: str, current_user = Depends(verify_user_token)):
+    """Lưu / Bỏ lưu bài viết (Save Bookmark)"""
+    try:
+        existing = supabase.table("post_saves").select("*").eq("post_id", post_id).eq("user_id", current_user.id).execute()
+        
+        if existing.data:
+            supabase.table("post_saves").delete().eq("post_id", post_id).eq("user_id", current_user.id).execute()
+            return {"status": "success", "action": "unsaved"}
+        else:
+            supabase.table("post_saves").insert({"post_id": post_id, "user_id": current_user.id}).execute()
+            return {"status": "success", "action": "saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
 # 11. XỬ LÝ MEDIA / UPLOAD
 # ==========================================
+# ==========================================
+# GIAI ĐOẠN 1: PUBLIC PROFILE & LƯU TRỮ (LIKES/SAVES)
+# ==========================================
 
+@app.get("/user/public/{username}", tags=["User"])
+def get_public_profile(username: str):
+    """Lấy thông tin công khai và các bài viết của một user dựa vào username"""
+    try:
+        # 1. Lấy thông tin cơ bản của user
+        user = supabase.table("users").select("id, full_name, username, avatar_url, bio, role").eq("username", username).single().execute()
+        if not user.data:
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng này!")
+
+        # 2. Lấy danh sách bài viết/video do người này đăng
+        posts = supabase.table("posts").select("*, author:users(full_name, avatar_url, username, role)").eq("author_id", user.data["id"]).order("created_at", desc=True).execute()
+
+        return {"status": "success", "data": {"profile": user.data, "posts": posts.data or []}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/user/my-likes", tags=["User"])
+def get_my_liked_posts(current_user = Depends(verify_user_token)):
+    """Lấy danh sách các bài viết mà user hiện tại đã thả tim"""
+    try:
+        # Dùng query lồng (join) để lấy thông tin bài viết từ bảng post_likes
+        res = supabase.table("post_likes").select("post_id, posts(*, author:users(full_name, avatar_url, username, role))").eq("user_id", current_user.id).order("created_at", desc=True).execute()
+        # Trích xuất data bài viết ra khỏi mảng lồng
+        liked_posts = [item["posts"] for item in res.data if item.get("posts")]
+        return {"status": "success", "data": liked_posts}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/user/my-saves", tags=["User"])
+def get_my_saved_posts(current_user = Depends(verify_user_token)):
+    """Lấy danh sách các bài viết mà user hiện tại đã lưu"""
+    try:
+        res = supabase.table("post_saves").select("post_id, posts(*, author:users(full_name, avatar_url, username, role))").eq("user_id", current_user.id).order("created_at", desc=True).execute()
+        saved_posts = [item["posts"] for item in res.data if item.get("posts")]
+        return {"status": "success", "data": saved_posts}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    
 @app.post("/upload/image", tags=["Media"])
 async def upload_image(file: UploadFile = File(...), current_user = Depends(verify_user_token)):
     """Upload ảnh lên Supabase Storage và trả về Public URL"""
@@ -548,3 +603,5 @@ def check_username(payload: schemas.UsernameSet):
         raise HTTPException(status_code=400, detail="Tên người dùng này đã tồn tại, vui lòng chọn tên khác!")
         
     return {"status": "success", "message": "Username hợp lệ"}
+
+
