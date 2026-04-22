@@ -514,3 +514,39 @@ async def upload_image(file: UploadFile = File(...), current_user = Depends(veri
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi upload ảnh: {str(e)}")
+
+
+# ==========================================
+# 12. AUTH HELPERS (XÁC THỰC PHỤ TRỢ)
+# ==========================================
+
+@app.post("/auth/resolve", tags=["Auth"])
+def resolve_identifier(payload: schemas.AuthResolve):
+    """Từ Username hoặc Phone, tìm ra Email để Frontend gọi Supabase Auth"""
+    ident = payload.identifier.strip()
+    if "@" in ident: 
+        return {"status": "success", "email": ident} # Đã là email thì trả về luôn
+
+    # Tìm trong bảng users xem có ai trùng username hoặc phone không
+    res = supabase.table("users").select("email").or_(f"username.eq.{ident},phone.eq.{ident}").execute()
+    
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài khoản với thông tin này!")
+        
+    return {"status": "success", "email": res.data[0]["email"]}
+
+@app.post("/auth/set-username", tags=["Auth"])
+def set_username(payload: schemas.UsernameSet, current_user = Depends(verify_user_token)):
+    """Kiểm tra và lưu Username (đảm bảo tính duy nhất)"""
+    username = payload.username.strip().lower()
+    if len(username) < 3:
+        raise HTTPException(status_code=400, detail="Username phải có ít nhất 3 ký tự!")
+        
+    # Check trùng lặp
+    existing = supabase.table("users").select("id").eq("username", username).execute()
+    if existing.data and existing.data[0]["id"] != current_user.id:
+        raise HTTPException(status_code=400, detail="Tên người dùng này đã tồn tại, vui lòng chọn tên khác!")
+        
+    # Cập nhật username
+    supabase.table("users").update({"username": username}).eq("id", current_user.id).execute()
+    return {"status": "success", "message": "Đã cập nhật Username thành công!"}

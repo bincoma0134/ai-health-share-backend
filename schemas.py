@@ -74,3 +74,10 @@ class PostCreate(BaseModel):
 class CommentCreate(BaseModel):
     post_id: str
     content: str
+
+# --- 8. CẤU TRÚC XÁC THỰC (AUTH HELPERS) ---
+class AuthResolve(BaseModel):
+    identifier: str # Có thể là email, phone, hoặc username
+
+class UsernameSet(BaseModel):
+    username: str
