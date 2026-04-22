@@ -65,3 +65,12 @@ class ChatMessage(BaseModel):
 
 class AIChatRequest(BaseModel):
     messages: List[ChatMessage]
+
+# --- 7. CẤU TRÚC CỘNG ĐỒNG (COMMUNITY) ---
+class PostCreate(BaseModel):
+    content: str
+    image_url: Optional[str] = None
+
+class CommentCreate(BaseModel):
+    post_id: str
+    content: str

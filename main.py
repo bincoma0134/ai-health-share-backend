@@ -10,6 +10,8 @@ import os
 import time
 import random
 from datetime import datetime, timedelta
+from fastapi import UploadFile, File 
+
 
 # --- CẤU HÌNH CỔNG THANH TOÁN PAYOS ---
 from payos import PayOS
@@ -400,3 +402,115 @@ def mark_notification_read(notif_id: str, current_user = Depends(verify_user_tok
         res = supabase.table("notifications").update({"is_read": True}).eq("id", notif_id).eq("user_id", current_user.id).execute()
         return {"status": "success", "data": res.data[0] if res.data else {}}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# ==========================================
+# 10. CỘNG ĐỒNG (COMMUNITY API)
+# ==========================================
+
+@app.get("/community/posts", tags=["Community"])
+def get_posts(limit: int = 50):
+    """Lấy danh sách bài viết mới nhất kèm thông tin người đăng"""
+    try:
+        # Lấy bài viết và join với bảng users để lấy tên, avatar, role
+        res = supabase.table("posts").select(
+            "*, author:users(full_name, avatar_url, role)"
+        ).order("created_at", desc=True).limit(limit).execute()
+        return {"status": "success", "data": res.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi lấy bài viết: {str(e)}")
+
+
+@app.post("/community/posts", tags=["Community"])
+def create_post(post: schemas.PostCreate, current_user = Depends(verify_user_token)):
+    """Đăng bài viết mới"""
+    try:
+        data = {
+            "author_id": current_user.id,
+            "content": post.content,
+            "image_url": post.image_url
+        }
+        res = supabase.table("posts").insert(data).execute()
+        return {"status": "success", "data": res.data[0]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi đăng bài: {str(e)}")
+
+
+@app.post("/community/posts/{post_id}/comments", tags=["Community"])
+def add_comment(post_id: str, comment: schemas.CommentCreate, current_user = Depends(verify_user_token)):
+    """Thêm bình luận vào bài viết"""
+    try:
+        data = {
+            "post_id": post_id,
+            "user_id": current_user.id,
+            "content": comment.content
+        }
+        res = supabase.table("post_comments").insert(data).execute()
+        
+        # Tăng biến đếm comments_count trong bảng posts
+        # (Trong thực tế nên dùng Trigger của DB, nhưng MVP ta gọi update luôn cho nhanh)
+        post_data = supabase.table("posts").select("comments_count").eq("id", post_id).execute()
+        if post_data.data:
+            current_count = post_data.data[0].get("comments_count", 0)
+            supabase.table("posts").update({"comments_count": current_count + 1}).eq("id", post_id).execute()
+
+        return {"status": "success", "message": "Đã thêm bình luận"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/community/posts/{post_id}/like", tags=["Community"])
+def toggle_like(post_id: str, current_user = Depends(verify_user_token)):
+    """Thích / Bỏ thích bài viết"""
+    try:
+        # Kiểm tra xem user đã like chưa
+        existing = supabase.table("post_likes").select("*").eq("post_id", post_id).eq("user_id", current_user.id).execute()
+        post_data = supabase.table("posts").select("likes_count").eq("id", post_id).execute()
+        current_likes = post_data.data[0].get("likes_count", 0) if post_data.data else 0
+
+        if existing.data:
+            # Đã like -> Hủy like (Unlike)
+            supabase.table("post_likes").delete().eq("post_id", post_id).eq("user_id", current_user.id).execute()
+            supabase.table("posts").update({"likes_count": max(0, current_likes - 1)}).eq("id", post_id).execute()
+            return {"status": "success", "action": "unliked"}
+        else:
+            # Chưa like -> Thêm like
+            supabase.table("post_likes").insert({"post_id": post_id, "user_id": current_user.id}).execute()
+            supabase.table("posts").update({"likes_count": current_likes + 1}).eq("id", post_id).execute()
+            return {"status": "success", "action": "liked"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# ==========================================
+# 11. XỬ LÝ MEDIA / UPLOAD
+# ==========================================
+
+@app.post("/upload/image", tags=["Media"])
+async def upload_image(file: UploadFile = File(...), current_user = Depends(verify_user_token)):
+    """Upload ảnh lên Supabase Storage và trả về Public URL"""
+    try:
+        # 1. Tạo tên file độc nhất để tránh trùng lặp hoặc bị ghi đè
+        file_ext = file.filename.split(".")[-1]
+        file_name = f"community/{current_user.id}_{int(time.time())}.{file_ext}"
+        
+        # 2. Đọc dữ liệu file
+        file_bytes = await file.read()
+        
+        # 3. Upload lên bucket có tên 'media' của Supabase 
+        # (Lưu ý: Cậu cần vào Supabase -> Storage -> Tạo một bucket tên là 'media' và để ở chế độ Public)
+        res = supabase.storage.from_("community_media").upload(
+            file_name, 
+            file_bytes, 
+            {"content-type": file.content_type}
+        )
+        
+        # 4. Lấy URL public của ảnh vừa upload
+        public_url = supabase.storage.from_("media").get_public_url(file_name)
+        
+        return {"status": "success", "data": {"image_url": public_url}}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi upload ảnh: {str(e)}")
