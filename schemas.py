@@ -1,7 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
-from pydantic import BaseModel, EmailStr
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 # --- 1. CẤU TRÚC NGƯỜI DÙNG ---
 class UserCreate(BaseModel):
@@ -14,51 +12,56 @@ class PartnerCreate(BaseModel):
     business_name: str
     physical_address: str
 
-# --- 3. CẤU TRÚC DỊCH VỤ (Đã thêm các trường mô tả) ---
+# --- 3. CẤU TRÚC DỊCH VỤ (Hiển thị trong Tab Quản lý Dịch vụ) ---
 class ServiceCreate(BaseModel):
     service_name: str
     description: Optional[str] = None
     price: float
-    video_url: str  # Bắt buộc phải có link video từ Supabase Storage
+    image_url: Optional[str] = None # Minh họa bằng ảnh
+    video_url: Optional[str] = None # Minh họa bằng video
+    tags: Optional[list] = []
     service_type: Optional[str] = "RELAXATION"
-    status: Optional[str] = "PENDING" # Mặc định đẩy vào hàng đợi duyệt
+    status: Optional[str] = "PENDING"
 
-# --- 4. CẤU TRÚC ĐẶT LỊCH (Gộp tất cả các trường cần thiết) ---
+# --- 4. CẤU TRÚC STUDIO & CỘNG ĐỒNG (Hiển thị trên Feed trang chủ) ---
+class PostCreate(BaseModel):
+    title: Optional[str] = None
+    content: str
+    image_url: Optional[str] = None
+    video_url: Optional[str] = None
+    price: Optional[float] = None
+
+# --- 5. CẤU TRÚC BÌNH LUẬN (Dùng chung) ---
+class CommentCreate(BaseModel):
+    service_id: Optional[str] = None
+    post_id: Optional[str] = None
+    content: str
+    parent_id: Optional[str] = None 
+
+# --- 6. CẤU TRÚC ĐẶT LỊCH ---
 class BookingCreate(BaseModel):
     user_id: str
     service_id: str
     total_amount: float
-    affiliate_code: Optional[str] = None  # Dùng code để tra cứu affiliate_id trong main.py
+    affiliate_code: Optional[str] = None 
     description: Optional[str] = None
     service_type: str = "SINGLE_SESSION"
 
-# --- 5. CẤU TRÚC CẬP NHẬT TRẠNG THÁI ---
 class BookingUpdate(BaseModel):
     service_status: str
     payment_status: Optional[str] = None
 
-
-# --- 6. CẤU TRÚC RÚT TIỀN (WITHDRAWAL) ---
+# --- 7. CẤU TRÚC RÚT TIỀN ---
 class WithdrawalCreate(BaseModel):
     user_id: str
     amount: float
-    payout_info: Dict[str, Any]  # Khớp với kiểu JSONB linh hoạt của Supabase
+    payout_info: Dict[str, Any] 
 
 class WithdrawalUpdate(BaseModel):
-    status: str  # 'APPROVED' hoặc 'REJECTED'
+    status: str 
     admin_note: Optional[str] = None
 
-
-# Cập nhật trong file: backend/schemas.py
-
-class CommentCreate(BaseModel):
-    service_id: str
-    content: str
-    parent_id: Optional[str] = None # Thêm trường này để nhận ID của bình luận gốc
-
-from typing import List
-
-# --- 7. CẤU TRÚC AI ASSISTANT ---
+# --- 8. CẤU TRÚC AI ASSISTANT ---
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -66,18 +69,9 @@ class ChatMessage(BaseModel):
 class AIChatRequest(BaseModel):
     messages: List[ChatMessage]
 
-# --- 7. CẤU TRÚC CỘNG ĐỒNG (COMMUNITY) ---
-class PostCreate(BaseModel):
-    content: str
-    image_url: Optional[str] = None
-
-class CommentCreate(BaseModel):
-    post_id: str
-    content: str
-
-# --- 8. CẤU TRÚC XÁC THỰC (AUTH HELPERS) ---
+# --- 9. CẤU TRÚC XÁC THỰC (AUTH HELPERS) ---
 class AuthResolve(BaseModel):
-    identifier: str # Có thể là email, phone, hoặc username
+    identifier: str 
 
 class UsernameSet(BaseModel):
     username: str
