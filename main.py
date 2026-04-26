@@ -249,6 +249,7 @@ def get_community_posts(limit: int = 50):
         return {"status": "success", "data": res.data or []}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
+# Tìm đến dòng 253 và đảm bảo nó trông như thế này:
 @app.post("/community/posts", tags=["Community"])
 def create_community_post(post: schemas.CommunityPostCreate, current_user = Depends(verify_user_token)):
     try:
