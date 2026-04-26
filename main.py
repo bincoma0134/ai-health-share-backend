@@ -8,6 +8,7 @@ import random
 import os
 from datetime import datetime
 from fastapi import UploadFile, File 
+from groq import Groq
 
 # --- CẤU HÌNH CỔNG THANH TOÁN PAYOS ---
 from payos import PayOS
@@ -18,10 +19,9 @@ PAYOS_API_KEY = os.environ.get("PAYOS_API_KEY", "YOUR_API_KEY")
 PAYOS_CHECKSUM_KEY = os.environ.get("PAYOS_CHECKSUM_KEY", "YOUR_CHECKSUM_KEY")
 payos_client = PayOS(client_id=PAYOS_CLIENT_ID, api_key=PAYOS_API_KEY, checksum_key=PAYOS_CHECKSUM_KEY)
 
-app = FastAPI(title="AI Health Share API", version="5.1.0")
+app = FastAPI(title="AI Health Share API", version="5.2.1")
 security = HTTPBearer()
 
-# --- XÁC THỰC NGƯỜI DÙNG ---
 def verify_user_token(credentials: HTTPAuthorizationCredentials = Security(security)):
     token = credentials.credentials
     try:
@@ -30,17 +30,10 @@ def verify_user_token(credentials: HTTPAuthorizationCredentials = Security(secur
     except Exception:
         raise HTTPException(status_code=401, detail="Token không hợp lệ hoặc đã hết hạn!")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"]
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 @app.get("/")
-def health_check(): 
-    return {"status": "success", "message": "Backend AI Health đang chạy mượt mà!"}
+def health_check(): return {"status": "success", "message": "Backend AI Health đang chạy mượt mà!"}
 
 # ==========================================
 # 1. SERVICES (DỊCH VỤ CƠ SỞ)
@@ -52,45 +45,18 @@ def get_services(user_id: str = None):
         partner_ids = list(set([s["partner_id"] for s in services if s.get("partner_id")]))
         partners = supabase.table("users").select("id, avatar_url, full_name, username").in_("id", partner_ids).execute().data
         p_dict = {p["id"]: p for p in partners}
-
-        likes = supabase.table("user_likes").select("*").execute().data or []
-        saves = supabase.table("user_saves").select("*").execute().data or []
-        comments = supabase.table("service_comments").select("service_id").execute().data or []
-        
         for s in services:
-            s_id = s["id"]
             s["users"] = p_dict.get(s.get("partner_id"), {})
-            s["likes_count"] = len([l for l in likes if l["service_id"] == s_id])
-            s["saves_count"] = len([sv for sv in saves if sv["service_id"] == s_id])
-            s["comments_count"] = len([c for c in comments if c["service_id"] == s_id])
-            s["is_liked"] = any(l["user_id"] == user_id and l["service_id"] == s_id for l in likes) if user_id else False
-            s["is_saved"] = any(sv["user_id"] == user_id and sv["service_id"] == s_id for sv in saves) if user_id else False
         return {"status": "success", "data": services}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e: raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/services", tags=["Services"])
 def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify_user_token)):
-    try:
-        service_data = payload.model_dump()
-        service_data["partner_id"] = current_user.id
-        service_data["status"] = "PENDING" 
-        res = supabase.table("services").insert(service_data).execute()
-        return {"status": "success", "data": res.data[0]}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.post("/interactions/{action}", tags=["Interactions"])
-def toggle_interaction(action: str, payload: dict, current_user = Depends(verify_user_token)):
-    table = "user_likes" if action == "like" else "user_saves"
-    sid = payload.get("service_id")
-    existing = supabase.table(table).select("*").eq("user_id", current_user.id).eq("service_id", sid).execute()
-    if existing.data:
-        supabase.table(table).delete().eq("user_id", current_user.id).eq("service_id", sid).execute()
-        return {"status": "success", "action": f"un{action}d"}
-    else:
-        supabase.table(table).insert({"user_id": current_user.id, "service_id": sid}).execute()
-        return {"status": "success", "action": f"{action}d"}
+    service_data = payload.model_dump()
+    service_data["partner_id"] = current_user.id
+    service_data["status"] = "PENDING" 
+    res = supabase.table("services").insert(service_data).execute()
+    return {"status": "success", "data": res.data[0]}
 
 # ==========================================
 # 2. BOOKINGS (BẢO CHỨNG ESCROW)
@@ -100,134 +66,61 @@ def create_booking(booking: schemas.BookingCreate, current_user = Depends(verify
     try:
         booking_data = booking.model_dump()
         order_code = int(time.time() * 1000) % 1000000000 + random.randint(100, 999)
-        
         clean_payload = {
-            "user_id": current_user.id, 
-            "service_id": booking_data.get("service_id"),
-            "video_id": booking_data.get("video_id"),
-            "total_amount": booking_data.get("total_amount"),
-            "payment_status": "UNPAID", 
-            "service_status": "PENDING", 
-            "order_code": order_code,
-            "customer_name": booking_data.get("customer_name"),
-            "customer_phone": booking_data.get("customer_phone"),
+            "user_id": current_user.id, "service_id": booking_data.get("service_id"),
+            "video_id": booking_data.get("video_id"), "total_amount": booking_data.get("total_amount"),
+            "payment_status": "UNPAID", "service_status": "PENDING", "order_code": order_code,
+            "customer_name": booking_data.get("customer_name"), "customer_phone": booking_data.get("customer_phone"),
             "note": booking_data.get("note")
         }
         clean_payload = {k: v for k, v in clean_payload.items() if v is not None}
-        
         data = supabase.table("bookings_transactions").insert(clean_payload).execute()
-        
         try:
-            payment_data = PaymentData(
-                orderCode=order_code, 
-                amount=int(booking_data.get("total_amount")), 
-                description=f"Thanh toan don {order_code}", 
-                returnUrl="http://localhost:3000/", 
-                cancelUrl="http://localhost:3000/"
-            )
+            payment_data = PaymentData(orderCode=order_code, amount=int(booking_data.get("total_amount")), description=f"Thanh toan don {order_code}", returnUrl="http://localhost:3000/", cancelUrl="http://localhost:3000/")
             checkout_url = payos_client.createPaymentLink(paymentData=payment_data).checkoutUrl
-        except: 
-            checkout_url = None 
-            
+        except: checkout_url = None 
         return {"status": "success", "data": data.data[0], "checkout_url": checkout_url}
-    except Exception as e: 
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e: raise HTTPException(status_code=400, detail=str(e))
 
 # ==========================================
-# 3. COMMENTS
-# ==========================================
-@app.get("/comments/{service_id}", tags=["Comments"])
-def get_comments_nested(service_id: str, user_id: str = None):
-    try:
-        res = supabase.table("service_comments").select("*, users(id, full_name, avatar_url, role)").eq("service_id", service_id).order("created_at", desc=False).execute()
-        all_comments = res.data or []
-        comment_ids = [c["id"] for c in all_comments]
-        likes_dict = {}
-        
-        if comment_ids:
-            likes_res = supabase.table("comment_likes").select("*").in_("comment_id", comment_ids).execute()
-            for l in likes_res.data:
-                likes_dict.setdefault(l["comment_id"], []).append(l["user_id"])
-
-        comment_map = {}
-        roots = []
-
-        for c in all_comments:
-            c_id = c["id"]
-            likes = likes_dict.get(c_id, [])
-            c["likes_count"] = len(likes)
-            c["is_liked"] = user_id in likes if user_id else False
-            c["replies"] = [] 
-            comment_map[c_id] = c
-
-        for c in all_comments:
-            p_id = c.get("parent_id")
-            if p_id and p_id in comment_map:
-                comment_map[p_id]["replies"].append(c)
-            else:
-                roots.append(c)
-
-        roots.sort(key=lambda x: x.get("is_pinned", False), reverse=True)
-        return {"status": "success", "data": roots}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/comments", tags=["Comments"])
-def add_comment(payload: schemas.CommentCreate, current_user = Depends(verify_user_token)):
-    try:
-        insert_data = {"user_id": current_user.id, "service_id": payload.service_id, "content": payload.content, "parent_id": payload.parent_id}
-        res = supabase.table("service_comments").insert(insert_data).execute()
-        if not res.data: raise Exception("Không thể lưu bình luận")
-        new_comment = res.data[0]
-        user_info = supabase.table("users").select("id, full_name, avatar_url, role").eq("id", current_user.id).single().execute()
-        new_comment["users"] = user_info.data
-        new_comment["likes_count"] = 0
-        new_comment["is_liked"] = False
-        new_comment["replies"] = []
-        return {"status": "success", "data": new_comment}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-# ==========================================
-# 4. USER PROFILE 
+# 3. HỒ SƠ NGƯỜI DÙNG & CÔNG KHAI
 # ==========================================
 @app.get("/user/profile", tags=["User"])
 def get_user_profile(current_user = Depends(verify_user_token)):
     try:
         user_res = supabase.table("users").select("*").eq("id", current_user.id).execute()
         user = user_res.data[0] if user_res.data else None
-        
         if not user:
             new_user = {"id": current_user.id, "email": current_user.email, "role": "USER", "full_name": current_user.email.split("@")[0]}
             supabase.table("users").insert(new_user).execute()
             user = new_user
+        return {"status": "success", "data": {"profile": user}}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
-        saves = supabase.table("user_saves").select("services(*)").eq("user_id", current_user.id).order("created_at", desc=True).execute()
-        bookings = supabase.table("bookings_transactions").select("*, services(service_name)").eq("user_id", current_user.id).order("created_at", desc=True).execute()
-        likes_count = supabase.table("user_likes").select("id", count="exact").eq("user_id", current_user.id).execute().count or 0
+@app.get("/user/public/{username}", tags=["User"])
+def get_public_profile(username: str):
+    """API QUAN TRỌNG: Lấy thông tin công khai để hiển thị profile"""
+    try:
+        # Tìm user theo username (ILIKE để không phân biệt hoa thường)
+        user_res = supabase.table("users").select("*").ilike("username", username).single().execute()
+        if not user_res.data: raise HTTPException(status_code=404, detail="Người dùng không tồn tại!")
         
-        stats = {
-            "saved_count": len(saves.data or []), 
-            "bookings_count": len(bookings.data or []), 
-            "likes_count": likes_count
-        }
-
-        if user and user.get("role") in ["MODERATOR", "SUPER_ADMIN"]:
-            pending_res = supabase.table("services").select("id", count="exact").eq("status", "PENDING").execute()
-            handled_res = supabase.table("services").select("id", count="exact").eq("moderated_by", current_user.id).execute()
-            stats["pendingTotal"] = pending_res.count or 0
-            stats["approvedByMe"] = handled_res.count or 0
-
+        user = user_res.data
+        # Lấy video studio đã duyệt
+        videos = supabase.table("studio_videos").select("*").eq("author_id", user["id"]).eq("status", "APPROVED").execute().data
+        # Lấy dịch vụ đã duyệt
+        services = supabase.table("services").select("*").eq("partner_id", user["id"]).eq("status", "APPROVED").execute().data
+        
         return {
             "status": "success",
             "data": {
-                "profile": user, "stats": stats,
-                "saved_services": [s["services"] for s in saves.data if s.get("services")] if saves.data else [],
-                "bookings": bookings.data or []
+                "profile": user,
+                "posts": videos or [], 
+                "services": services or [],
+                "stats": {"total_videos": len(videos or []), "total_services": len(services or [])}
             }
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Lỗi máy chủ Profile: {str(e)}")
+    except Exception as e: raise HTTPException(status_code=404, detail=str(e))
 
 @app.patch("/user/profile", tags=["User"])
 def update_user_profile(payload: dict, current_user = Depends(verify_user_token)):
@@ -235,7 +128,7 @@ def update_user_profile(payload: dict, current_user = Depends(verify_user_token)
     return {"status": "success", "data": res.data[0] if res.data else {}}
 
 # ==========================================
-# 5. PARTNER BACKSTAGE
+# 4. PARTNER BACKSTAGE (QUẢN LÝ RIÊNG)
 # ==========================================
 @app.get("/partner/my-services", tags=["Partner"])
 def get_my_services(current_user = Depends(verify_user_token)):
@@ -254,16 +147,107 @@ def delete_my_service(service_id: str, current_user = Depends(verify_user_token)
     res = supabase.table("services").update({"status": "PENDING_DELETE"}).eq("id", service_id).execute()
     return {"status": "success", "message": "Yêu cầu xóa đã được gửi đi"}
 
+@app.get("/partner/my-videos", tags=["Partner"])
+def get_my_videos(current_user = Depends(verify_user_token)):
+    videos = supabase.table("studio_videos").select("*").eq("author_id", current_user.id).order("created_at", desc=True).execute().data
+    return {"status": "success", "data": videos}
+
+@app.patch("/partner/my-videos/{video_id}", tags=["Partner"])
+def update_my_video(video_id: str, payload: dict, current_user = Depends(verify_user_token)):
+    update_data = {k: v for k, v in payload.items() if v is not None}
+    update_data["status"] = "PENDING"
+    res = supabase.table("studio_videos").update(update_data).eq("id", video_id).execute()
+    return {"status": "success", "data": res.data[0]}
+
+@app.delete("/partner/my-videos/{video_id}", tags=["Partner"])
+def delete_my_video(video_id: str, current_user = Depends(verify_user_token)):
+    res = supabase.table("studio_videos").update({"status": "PENDING_DELETE"}).eq("id", video_id).execute()
+    return {"status": "success", "message": "Yêu cầu gỡ video đã được gửi đi"}
+@app.get("/partner/bookings", tags=["Partner"])
+def get_partner_bookings(current_user = Depends(verify_user_token)):
+    """Lấy danh sách đơn hàng liên quan đến Dịch vụ hoặc Video của Partner này"""
+    try:
+        # Lấy tất cả ID dịch vụ và video của partner này
+        my_services = supabase.table("services").select("id").eq("partner_id", current_user.id).execute()
+        my_videos = supabase.table("studio_videos").select("id").eq("author_id", current_user.id).execute()
+        
+        service_ids = [s["id"] for s in my_services.data] if my_services.data else []
+        video_ids = [v["id"] for v in my_videos.data] if my_videos.data else []
+
+        if not service_ids and not video_ids:
+            return {"status": "success", "data": []}
+
+        # Query Bookings
+        query = supabase.table("bookings_transactions").select("*")
+        
+        # Giả lập OR logic cho supabase (Python client có giới hạn, ta fetch cả 2 rồi gộp)
+        bookings = []
+        if service_ids:
+            res_svc = supabase.table("bookings_transactions").select("*").in_("service_id", service_ids).execute()
+            bookings.extend(res_svc.data)
+        if video_ids:
+            res_vid = supabase.table("bookings_transactions").select("*").in_("video_id", video_ids).execute()
+            bookings.extend(res_vid.data)
+            
+        # Loại bỏ trùng lặp nếu có
+        unique_bookings = {b["id"]: b for b in bookings}.values()
+        
+        return {"status": "success", "data": list(unique_bookings)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/bookings/{booking_id}/complete", tags=["Bookings"])
+def complete_booking_escrow(booking_id: str, current_user = Depends(verify_user_token)):
+    """Giải ngân: Chỉ gọi được khi khách đã PAID. Tự động chia 70-20-10"""
+    try:
+        # 1. Kiểm tra đơn hàng
+        booking_res = supabase.table("bookings_transactions").select("*").eq("id", booking_id).single().execute()
+        if not booking_res.data:
+            raise HTTPException(status_code=404, detail="Không tìm thấy đơn hàng")
+        
+        booking = booking_res.data
+        
+        if booking["payment_status"] != "PAID":
+            raise HTTPException(status_code=400, detail="Khách hàng chưa thanh toán, không thể hoàn thành!")
+            
+        if booking["service_status"] == "COMPLETED":
+            raise HTTPException(status_code=400, detail="Đơn này đã được giải ngân rồi!")
+
+        # 2. Tính toán chia tiền (Logic bảo mật tại Server)
+        total = float(booking["total_amount"])
+        partner_rev = total * 0.70
+        platform_fee = total * 0.20
+        affiliate_rev = total * 0.10 if booking.get("affiliate_id") else 0
+        
+        if not booking.get("affiliate_id"):
+            platform_fee += total * 0.10 # Nền tảng giữ luôn nếu ko có người giới thiệu
+
+        # 3. Cập nhật Database
+        update_data = {
+            "service_status": "COMPLETED",
+            "partner_revenue": partner_rev,
+            "platform_fee": platform_fee,
+            "affiliate_revenue": affiliate_rev
+        }
+        
+        res = supabase.table("bookings_transactions").update(update_data).eq("id", booking_id).execute()
+        
+        return {
+            "status": "success", 
+            "message": "Giải ngân thành công",
+            "distribution": update_data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 # ==========================================
-# 6. COMMUNITY (BÀI VIẾT DIỄN ĐÀN)
+# 5. COMMUNITY & STUDIO VIDEOS
 # ==========================================
 @app.get("/community/posts", tags=["Community"])
 def get_community_posts(limit: int = 50):
     try:
         res = supabase.table("posts").select("*, author:users(full_name, avatar_url, role)").order("created_at", desc=True).limit(limit).execute()
         return {"status": "success", "data": res.data or []}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/community/posts", tags=["Community"])
 def create_community_post(post: schemas.CommunityPostCreate, current_user = Depends(verify_user_token)):
@@ -271,50 +255,31 @@ def create_community_post(post: schemas.CommunityPostCreate, current_user = Depe
         data = {"author_id": current_user.id, "content": post.content, "image_url": post.image_url}
         res = supabase.table("posts").insert(data).execute()
         return {"status": "success", "data": res.data[0]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
-# ==========================================
-# 7. STUDIO VIDEOS (TIKTOK FEED TRANG CHỦ)
-# ==========================================
 @app.get("/studio/videos", tags=["Studio"])
 def get_studio_videos(limit: int = 50):
-    """Lấy video đã duyệt để hiển thị Trang chủ"""
     try:
-        res = supabase.table("studio_videos").select(
-            "*, author:users(full_name, avatar_url, username, role)"
-        ).eq("status", "APPROVED").order("created_at", desc=True).limit(limit).execute()
+        res = supabase.table("studio_videos").select("*, author:users(full_name, avatar_url, username, role)").eq("status", "APPROVED").order("created_at", desc=True).limit(limit).execute()
         return {"status": "success", "data": res.data or []}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Lỗi Studio: {str(e)}")
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/studio/videos", tags=["Studio"])
 def create_studio_video(payload: schemas.StudioVideoCreate, current_user = Depends(verify_user_token)):
-    """Partner đăng video lên Studio"""
     try:
-        data = {
-            "author_id": current_user.id,
-            "title": payload.title,
-            "content": payload.content,
-            "video_url": payload.video_url,
-            "price": payload.price,
-            "status": "PENDING" 
-        }
+        data = {"author_id": current_user.id, "title": payload.title, "content": payload.content, "video_url": payload.video_url, "price": payload.price, "status": "PENDING"}
         res = supabase.table("studio_videos").insert(data).execute()
         return {"status": "success", "data": res.data[0]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/studio/videos/{video_id}/{action}", tags=["Studio"])
 def toggle_studio_interaction(video_id: str, action: str, current_user = Depends(verify_user_token)):
-    """Thích hoặc Lưu video Studio"""
     table = "studio_likes" if action == "like" else "studio_saves"
     count_field = "likes_count" if action == "like" else "saves_count"
     try:
         existing = supabase.table(table).select("id").eq("video_id", video_id).eq("user_id", current_user.id).execute()
         video_res = supabase.table("studio_videos").select(count_field).eq("id", video_id).execute()
         current_count = video_res.data[0].get(count_field, 0) if video_res.data else 0
-
         if existing.data:
             supabase.table(table).delete().eq("video_id", video_id).eq("user_id", current_user.id).execute()
             supabase.table("studio_videos").update({count_field: max(0, current_count - 1)}).eq("id", video_id).execute()
@@ -323,65 +288,25 @@ def toggle_studio_interaction(video_id: str, action: str, current_user = Depends
             supabase.table(table).insert({"video_id": video_id, "user_id": current_user.id}).execute()
             supabase.table("studio_videos").update({count_field: current_count + 1}).eq("id", video_id).execute()
             return {"status": "success", "action": f"{action}d"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-@app.get("/partner/my-videos", tags=["Partner"])
-def get_my_videos(current_user = Depends(verify_user_token)):
-    """Lấy danh sách video Studio của chính Partner để theo dõi trạng thái duyệt"""
-    try:
-        res = supabase.table("studio_videos").select("*").eq("author_id", current_user.id).order("created_at", desc=True).execute()
-        return {"status": "success", "data": res.data or []}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
 # ==========================================
-# 8. AI ASSISTANT (Groq)
+# 6. AI & AUTH HELPERS
 # ==========================================
-from groq import Groq
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 @app.post("/ai/chat", tags=["AI Assistant"])
 def chat_with_llama(payload: schemas.AIChatRequest, current_user = Depends(verify_user_token)):
     try:
-        system_prompt = {"role": "system", "content": "Bạn là Trợ lý AI Health. Dùng Markdown. Ngắn gọn."}
-        messages = [system_prompt]
+        messages = [{"role": "system", "content": "Bạn là Trợ lý AI Health. Dùng Markdown. Ngắn gọn."}]
         for msg in payload.messages:
             role = "assistant" if msg.role == "bot" else "user"
             messages.append({"role": role, "content": msg.content})
-
         chat_completion = groq_client.chat.completions.create(messages=messages, model="llama-3.1-8b-instant", temperature=0.6, max_tokens=1024)
-        reply_text = chat_completion.choices[0].message.content
+        return {"status": "success", "data": {"reply": chat_completion.choices[0].message.content}}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
-        supabase.table("ai_chat_history").insert([
-            {"user_id": current_user.id, "role": "user", "content": payload.messages[-1].content},
-            {"user_id": current_user.id, "role": "assistant", "content": reply_text}
-        ]).execute()
-        return {"status": "success", "data": {"reply": reply_text}}
-    except Exception as e: 
-        raise HTTPException(status_code=500, detail=f"Lỗi AI: {str(e)}")
-
-# ==========================================
-# 9. NOTIFICATIONS
-# ==========================================
-@app.get("/notifications", tags=["Notifications"])
-def get_notifications(current_user = Depends(verify_user_token)):
-    try:
-        res = supabase.table("notifications").select("*").eq("user_id", current_user.id).order("created_at", desc=True).limit(50).execute()
-        return {"status": "success", "data": res.data or []}
-    except Exception as e: 
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.patch("/notifications/{notif_id}/read", tags=["Notifications"])
-def mark_notification_read(notif_id: str, current_user = Depends(verify_user_token)):
-    try:
-        res = supabase.table("notifications").update({"is_read": True}).eq("id", notif_id).eq("user_id", current_user.id).execute()
-        return {"status": "success", "data": res.data[0] if res.data else {}}
-    except Exception as e: 
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ==========================================
-# 10. AUTH HELPERS
-# ==========================================
 @app.post("/auth/resolve", tags=["Auth"])
 def resolve_identifier(payload: schemas.AuthResolve):
     ident = payload.identifier.strip()
@@ -397,3 +322,112 @@ def check_username(payload: schemas.UsernameSet):
     existing = supabase.table("users").select("id").eq("username", username).execute()
     if existing.data: raise HTTPException(status_code=400, detail="Tên người dùng này đã tồn tại!")
     return {"status": "success", "message": "Username hợp lệ"}
+
+
+# ==========================================
+# 7. QUẢN TRỊ KIỂM DUYỆT (MODERATION) - ĐÃ BỌC GIÁP CHỐNG LỖI 500
+# ==========================================
+@app.get("/moderation/queue", tags=["Moderation"])
+def get_moderation_queue(current_user = Depends(verify_user_token)):
+    """Lấy danh sách chờ duyệt: Dịch vụ & Video"""
+    try:
+        user_info = supabase.table("users").select("role").eq("id", current_user.id).single().execute()
+        if user_info.data.get("role") not in ["MODERATOR", "SUPER_ADMIN"]:
+            raise HTTPException(status_code=403, detail="Không có quyền truy cập!")
+
+        services_res = supabase.table("services").select("*, users(full_name, email, avatar_url)").in_("status", ["PENDING", "PENDING_DELETE", "PENDING_UPDATE"]).order("created_at", desc=True).execute()
+        videos_res = supabase.table("studio_videos").select("*, author:users(full_name, email, avatar_url)").in_("status", ["PENDING", "PENDING_DELETE", "PENDING_UPDATE"]).order("created_at", desc=True).execute()
+
+        services = services_res.data or []
+        for s in services:
+            s["type"] = "service"
+            s["author"] = s.get("users") or {}
+            
+        videos = videos_res.data or []
+        for v in videos:
+            v["type"] = "video"
+            
+        combined = services + videos
+        # FIX LỖI 500: Ép kiểu str() và xử lý None an toàn
+        combined.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+
+        return {"status": "success", "data": combined}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/moderation/action/{item_type}/{item_id}", tags=["Moderation"])
+def moderate_item(item_type: str, item_id: str, payload: dict, current_user = Depends(verify_user_token)):
+    """Xử lý phê duyệt hoặc từ chối"""
+    try:
+        action = payload.get("action")
+        note = payload.get("note", "")
+        table = "services" if item_type == "service" else "studio_videos"
+
+        final_status = "DELETED" if action == "DELETED" else action
+        update_data = {"status": final_status, "moderation_note": note, "moderated_by": current_user.id}
+        
+        res = supabase.table(table).update(update_data).eq("id", item_id).execute()
+        return {"status": "success", "message": f"Đã xử lý {action} thành công!"}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/moderation/history", tags=["Moderation"])
+def get_moderation_history(current_user = Depends(verify_user_token)):
+    """Lấy lịch sử xử lý: Fix lỗi 500 khi sắp xếp NoneType"""
+    try:
+        services = supabase.table("services").select("*, users(full_name, avatar_url)").eq("moderated_by", current_user.id).order("created_at", desc=True).limit(50).execute()
+        videos = supabase.table("studio_videos").select("*, author:users(full_name, avatar_url)").eq("moderated_by", current_user.id).order("created_at", desc=True).limit(50).execute()
+        
+        svcs = services.data or []
+        for s in svcs: 
+            s["type"] = "service"
+            s["author"] = s.get("users") or {}
+        
+        vids = videos.data or []
+        for v in vids: 
+            v["type"] = "video"
+            
+        combined = svcs + vids
+        # FIX LỖI 500: Đảm bảo không bao giờ sort None
+        combined.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+        return {"status": "success", "data": combined[:50]}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/moderation/stats", tags=["Moderation"])
+def get_moderation_stats(current_user = Depends(verify_user_token)):
+    """API BIỂU ĐỒ: Fix lỗi 500 do cắt chuỗi NoneType"""
+    try:
+        services = supabase.table("services").select("status, created_at").eq("moderated_by", current_user.id).execute()
+        videos = supabase.table("studio_videos").select("status, created_at").eq("moderated_by", current_user.id).execute()
+        
+        all_items = (services.data or []) + (videos.data or [])
+        
+        approved = sum(1 for i in all_items if i.get("status") == "APPROVED")
+        rejected = sum(1 for i in all_items if i.get("status") in ["REJECTED", "DELETED"])
+        
+        from datetime import datetime, timedelta
+        daily_stats = {}
+        # Tạo sẵn 7 ngày gần nhất để biểu đồ không bị trống
+        for i in range(6, -1, -1):
+            d = datetime.now() - timedelta(days=i)
+            daily_stats[d.strftime('%Y-%m-%d')] = {"date": d.strftime('%d/%m'), "Duyệt": 0, "Từ chối": 0}
+            
+        for item in all_items:
+            # FIX LỖI 500: Lấy ngày an toàn tuyệt đối
+            raw_date = str(item.get("created_at") or "")[:10]
+            if raw_date in daily_stats:
+                if item.get("status") == "APPROVED":
+                    daily_stats[raw_date]["Duyệt"] += 1
+                elif item.get("status") in ["REJECTED", "DELETED"]:
+                    daily_stats[raw_date]["Từ chối"] += 1
+        
+        chart_data = list(daily_stats.values())
+        
+        return {
+            "status": "success", 
+            "data": {
+                "total_processed": len(all_items),
+                "approved_count": approved,
+                "rejected_count": rejected,
+                "chart_data": chart_data
+            }
+        }
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
