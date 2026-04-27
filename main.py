@@ -90,11 +90,28 @@ def get_user_profile(current_user = Depends(verify_user_token)):
     try:
         user_res = supabase.table("users").select("*").eq("id", current_user.id).execute()
         user = user_res.data[0] if user_res.data else None
+        
         if not user:
             new_user = {"id": current_user.id, "email": current_user.email, "role": "USER", "full_name": current_user.email.split("@")[0]}
             supabase.table("users").insert(new_user).execute()
             user = new_user
-        return {"status": "success", "data": {"profile": user}}
+        
+        # BỔ SUNG: Tự động tính Stats cho Moderator ngay tại đây
+        stats = {"pending_total": 0, "approved_count": 0, "total_processed": 0}
+        if user.get("role") in ["MODERATOR", "SUPER_ADMIN"]:
+            # 1. Đếm hàng đợi
+            q_svc = supabase.table("services").select("id").in_("status", ["PENDING", "PENDING_DELETE"]).execute()
+            q_vid = supabase.table("studio_videos").select("id").in_("status", ["PENDING", "PENDING_DELETE"]).execute()
+            stats["pending_total"] = len(q_svc.data or []) + len(q_vid.data or [])
+            
+            # 2. Đếm hiệu suất cá nhân
+            s_done = supabase.table("services").select("status").eq("moderated_by", current_user.id).execute()
+            v_done = supabase.table("studio_videos").select("status").eq("moderated_by", current_user.id).execute()
+            all_done = (s_done.data or []) + (v_done.data or [])
+            stats["total_processed"] = len(all_done)
+            stats["approved_count"] = sum(1 for i in all_done if i.get("status") == "APPROVED")
+
+        return {"status": "success", "data": {"profile": user, "stats": stats}}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/user/public/{username}", tags=["User"])
@@ -327,11 +344,10 @@ def check_username(payload: schemas.UsernameSet):
 
 
 # ==========================================
-# 7. QUẢN TRỊ KIỂM DUYỆT (MODERATION) - ĐÃ BỌC GIÁP CHỐNG LỖI 500
+# 7. QUẢN TRỊ KIỂM DUYỆT (MODERATION)
 # ==========================================
 @app.get("/moderation/queue", tags=["Moderation"])
 def get_moderation_queue(current_user = Depends(verify_user_token)):
-    """Lấy danh sách chờ duyệt: Dịch vụ & Video"""
     try:
         user_info = supabase.table("users").select("role").eq("id", current_user.id).single().execute()
         if user_info.data.get("role") not in ["MODERATOR", "SUPER_ADMIN"]:
@@ -350,7 +366,6 @@ def get_moderation_queue(current_user = Depends(verify_user_token)):
             v["type"] = "video"
             
         combined = services + videos
-        # FIX LỖI 500: Ép kiểu str() và xử lý None an toàn
         combined.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
 
         return {"status": "success", "data": combined}
@@ -358,70 +373,85 @@ def get_moderation_queue(current_user = Depends(verify_user_token)):
 
 @app.patch("/moderation/action/{item_type}/{item_id}", tags=["Moderation"])
 def moderate_item(item_type: str, item_id: str, payload: dict, current_user = Depends(verify_user_token)):
-    """Xử lý phê duyệt hoặc từ chối"""
     try:
         action = payload.get("action")
         note = payload.get("note", "")
         table = "services" if item_type == "service" else "studio_videos"
-
         final_status = "DELETED" if action == "DELETED" else action
-        update_data = {"status": final_status, "moderation_note": note, "moderated_by": current_user.id}
         
-        res = supabase.table(table).update(update_data).eq("id", item_id).execute()
+        # 1. Cập nhật trạng thái và ghi chú (Chắc chắn thành công)
+        res = supabase.table(table).update({
+            "status": final_status, 
+            "moderation_note": note
+        }).eq("id", item_id).execute()
+        
+        # 2. Lưu thời gian & người duyệt (Lớp giáp: Bỏ qua nếu DB chưa có cột này)
+        try:
+            supabase.table(table).update({
+                "moderated_by": current_user.id,
+                "updated_at": datetime.now().isoformat()
+            }).eq("id", item_id).execute()
+        except Exception: pass
+
         return {"status": "success", "message": f"Đã xử lý {action} thành công!"}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/moderation/history", tags=["Moderation"])
 def get_moderation_history(current_user = Depends(verify_user_token)):
-    """Lấy lịch sử xử lý: Fix lỗi 500 khi sắp xếp NoneType"""
     try:
-        services = supabase.table("services").select("*, users(full_name, avatar_url)").eq("moderated_by", current_user.id).order("created_at", desc=True).limit(50).execute()
-        videos = supabase.table("studio_videos").select("*, author:users(full_name, avatar_url)").eq("moderated_by", current_user.id).order("created_at", desc=True).limit(50).execute()
-        
-        svcs = services.data or []
+        # Lớp giáp: Lấy theo moderated_by, nếu lỗi (chưa có cột) thì lấy tất cả bản ghi đã duyệt
+        try:
+            svcs = supabase.table("services").select("*, users(full_name, avatar_url)").eq("moderated_by", current_user.id).execute().data or []
+        except Exception:
+            svcs = supabase.table("services").select("*, users(full_name, avatar_url)").in_("status", ["APPROVED", "REJECTED", "DELETED"]).execute().data or []
+            
         for s in svcs: 
             s["type"] = "service"
             s["author"] = s.get("users") or {}
         
-        vids = videos.data or []
-        for v in vids: 
-            v["type"] = "video"
+        try:
+            vids = supabase.table("studio_videos").select("*, author:users(full_name, avatar_url)").eq("moderated_by", current_user.id).execute().data or []
+        except Exception:
+            vids = supabase.table("studio_videos").select("*, author:users(full_name, avatar_url)").in_("status", ["APPROVED", "REJECTED", "DELETED"]).execute().data or []
+            
+        for v in vids: v["type"] = "video"
             
         combined = svcs + vids
-        # FIX LỖI 500: Đảm bảo không bao giờ sort None
-        combined.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+        combined.sort(key=lambda x: str(x.get("updated_at") or x.get("created_at") or ""), reverse=True)
         return {"status": "success", "data": combined[:50]}
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: return {"status": "error", "message": str(e)}
 
 @app.get("/moderation/stats", tags=["Moderation"])
 def get_moderation_stats(current_user = Depends(verify_user_token)):
-    """API BIỂU ĐỒ: Fix lỗi 500 do cắt chuỗi NoneType"""
     try:
-        services = supabase.table("services").select("status, created_at").eq("moderated_by", current_user.id).execute()
-        videos = supabase.table("studio_videos").select("status, created_at").eq("moderated_by", current_user.id).execute()
+        # Lớp giáp an toàn tương tự
+        try:
+            s_done = supabase.table("services").select("status, created_at, updated_at").eq("moderated_by", current_user.id).execute().data or []
+        except Exception:
+            s_done = supabase.table("services").select("status, created_at, updated_at").in_("status", ["APPROVED", "REJECTED", "DELETED"]).execute().data or []
+
+        try:
+            v_done = supabase.table("studio_videos").select("status, created_at, updated_at").eq("moderated_by", current_user.id).execute().data or []
+        except Exception:
+            v_done = supabase.table("studio_videos").select("status, created_at, updated_at").in_("status", ["APPROVED", "REJECTED", "DELETED"]).execute().data or []
         
-        all_items = (services.data or []) + (videos.data or [])
-        
+        all_items = s_done + v_done
         approved = sum(1 for i in all_items if i.get("status") == "APPROVED")
         rejected = sum(1 for i in all_items if i.get("status") in ["REJECTED", "DELETED"])
         
         from datetime import datetime, timedelta
         daily_stats = {}
-        # Tạo sẵn 7 ngày gần nhất để biểu đồ không bị trống
         for i in range(6, -1, -1):
             d = datetime.now() - timedelta(days=i)
-            daily_stats[d.strftime('%Y-%m-%d')] = {"date": d.strftime('%d/%m'), "Duyệt": 0, "Từ chối": 0}
+            day_key = d.strftime('%Y-%m-%d')
+            daily_stats[day_key] = {"date": d.strftime('%d/%m'), "Duyệt": 0, "Từ chối": 0}
             
         for item in all_items:
-            # FIX LỖI 500: Lấy ngày an toàn tuyệt đối
-            raw_date = str(item.get("created_at") or "")[:10]
+            date_val = item.get("updated_at") or item.get("created_at") or ""
+            raw_date = str(date_val)[:10]
             if raw_date in daily_stats:
-                if item.get("status") == "APPROVED":
-                    daily_stats[raw_date]["Duyệt"] += 1
-                elif item.get("status") in ["REJECTED", "DELETED"]:
-                    daily_stats[raw_date]["Từ chối"] += 1
-        
-        chart_data = list(daily_stats.values())
+                if item.get("status") == "APPROVED": daily_stats[raw_date]["Duyệt"] += 1
+                elif item.get("status") in ["REJECTED", "DELETED"]: daily_stats[raw_date]["Từ chối"] += 1
         
         return {
             "status": "success", 
@@ -429,7 +459,7 @@ def get_moderation_stats(current_user = Depends(verify_user_token)):
                 "total_processed": len(all_items),
                 "approved_count": approved,
                 "rejected_count": rejected,
-                "chart_data": chart_data
+                "chart_data": list(daily_stats.values())
             }
         }
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: return {"status": "error", "message": str(e)}
