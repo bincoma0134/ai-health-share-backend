@@ -132,7 +132,8 @@ def update_user_profile(payload: dict, current_user = Depends(verify_user_token)
 # ==========================================
 @app.get("/partner/my-services", tags=["Partner"])
 def get_my_services(current_user = Depends(verify_user_token)):
-    services = supabase.table("services").select("*").eq("partner_id", current_user.id).order("created_at", desc=True).execute().data
+    # Thêm .neq("status", "DELETED") để ẩn các mục đã xóa
+    services = supabase.table("services").select("*").eq("partner_id", current_user.id).neq("status", "DELETED").order("created_at", desc=True).execute().data
     return {"status": "success", "data": services}
 
 @app.patch("/partner/my-services/{service_id}", tags=["Partner"])
@@ -149,7 +150,8 @@ def delete_my_service(service_id: str, current_user = Depends(verify_user_token)
 
 @app.get("/partner/my-videos", tags=["Partner"])
 def get_my_videos(current_user = Depends(verify_user_token)):
-    videos = supabase.table("studio_videos").select("*").eq("author_id", current_user.id).order("created_at", desc=True).execute().data
+    # Thêm .neq("status", "DELETED") để ẩn các mục đã xóa
+    videos = supabase.table("studio_videos").select("*").eq("author_id", current_user.id).neq("status", "DELETED").order("created_at", desc=True).execute().data
     return {"status": "success", "data": videos}
 
 @app.patch("/partner/my-videos/{video_id}", tags=["Partner"])
@@ -249,7 +251,6 @@ def get_community_posts(limit: int = 50):
         return {"status": "success", "data": res.data or []}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
-# Tìm đến dòng 253 và đảm bảo nó trông như thế này:
 @app.post("/community/posts", tags=["Community"])
 def create_community_post(post: schemas.CommunityPostCreate, current_user = Depends(verify_user_token)):
     try:
