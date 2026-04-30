@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from typing import Optional, Dict, Any, List
+from datetime import datetime
 
 # --- 1. CẤU TRÚC NGƯỜI DÙNG ---
 class UserCreate(BaseModel):
@@ -23,23 +24,24 @@ class ServiceCreate(BaseModel):
     service_type: Optional[str] = "RELAXATION"
     status: Optional[str] = "PENDING"
 
-# --- 4. CẤU TRÚC STUDIO (Video Tiktok Trang chủ) ---
-class StudioVideoCreate(BaseModel):
+# --- 4. CẤU TRÚC TIKTOK FEED (Thay thế Studio) ---
+class TikTokFeedCreate(BaseModel):
     title: str
     content: Optional[str] = None
     video_url: str
     price: Optional[float] = None
 
-# --- 5. CẤU TRÚC COMMUNITY (Bài viết diễn đàn Cộng đồng) ---
+# --- 5. CẤU TRÚC COMMUNITY (Bài viết diễn đàn) ---
 class CommunityPostCreate(BaseModel):
     content: str
     image_url: Optional[str] = None
 
-# --- 6. CẤU TRÚC BÌNH LUẬN (Dùng chung) ---
-class CommentCreate(BaseModel):
-    service_id: Optional[str] = None
-    video_id: Optional[str] = None
-    post_id: Optional[str] = None
+# --- 6. CẤU TRÚC BÌNH LUẬN (Chia ranh giới rõ ràng) ---
+class TikTokCommentCreate(BaseModel):
+    content: str
+    parent_id: Optional[str] = None 
+
+class CommunityCommentCreate(BaseModel):
     content: str
     parent_id: Optional[str] = None 
 
@@ -83,3 +85,32 @@ class AuthResolve(BaseModel):
 
 class UsernameSet(BaseModel):
     username: str
+
+# --- 11. CẤU TRÚC LỊCH HẸN THEO LUỒNG MỚI (BẢO CHỨNG KÉP) ---
+class AppointmentRequest(BaseModel):
+    """User gửi yêu cầu từ Modal Đặt lịch (Chưa cần thanh toán)"""
+    partner_id: str
+    service_id: Optional[str] = None
+    video_id: Optional[str] = None
+    customer_name: str
+    customer_phone: str
+    note: Optional[str] = None
+    affiliate_code: Optional[str] = None
+    total_amount: float
+
+class PartnerResponse(BaseModel):
+    """Partner trả lời yêu cầu"""
+    action: str  # "ACCEPT" hoặc "REJECT"
+    start_time: Optional[datetime] = None  # Cần thiết nếu ACCEPT
+    end_time: Optional[datetime] = None    # Cần thiết nếu ACCEPT
+    reason: Optional[str] = None           # Cần thiết nếu REJECT
+
+class AppointmentCheckIn(BaseModel):
+    """Partner quét mã khách khi khách đến"""
+    check_in_code: str
+    partner_notes: Optional[str] = None
+
+class AppointmentConfirm(BaseModel):
+    """User xác nhận hoàn thành dịch vụ"""
+    is_satisfied: bool
+    feedback: Optional[str] = None
