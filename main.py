@@ -160,14 +160,14 @@ def get_my_videos(current_user = Depends(verify_user_token)):
     videos = supabase.table("tiktok_feeds").select("*").eq("author_id", current_user.id).neq("status", "DELETED").order("created_at", desc=True).execute().data
     return {"status": "success", "data": videos}
 
-@app.patch("/partner/my-videos/{video_id}", tags=["Partner"])
+@app.patch("/partner/my-tiktok-feeds/{video_id}", tags=["Partner"])
 def update_my_video(video_id: str, payload: dict, current_user = Depends(verify_user_token)):
     update_data = {k: v for k, v in payload.items() if v is not None}
     update_data["status"] = "PENDING"
     res = supabase.table("tiktok_feeds").update(update_data).eq("id", video_id).execute()
     return {"status": "success", "data": res.data[0]}
 
-@app.delete("/partner/my-videos/{video_id}", tags=["Partner"])
+@app.delete("/partner/my-tiktok-feeds/{video_id}", tags=["Partner"])
 def delete_my_video(video_id: str, current_user = Depends(verify_user_token)):
     res = supabase.table("tiktok_feeds").update({"status": "PENDING_DELETE"}).eq("id", video_id).execute()
     return {"status": "success", "message": "Yêu cầu gỡ video đã được gửi đi"}
@@ -257,8 +257,11 @@ def complete_booking_escrow(booking_id: str, current_user = Depends(verify_user_
 @app.get("/community/posts", tags=["Community"])
 def get_community_posts(limit: int = 50):
     try:
-        res = supabase.table("community_posts").select("*, author:users(full_name, avatar_url, role)").order("created_at", desc=True).limit(limit).execute()
-        return {"status": "success", "data": res.data or []}
+        res = supabase.table("community_posts").select("*, users(full_name, avatar_url, role)").order("created_at", desc=True).limit(limit).execute()
+        data = res.data or []
+        for p in data:
+            p["author"] = p.get("users") or {}
+        return {"status": "success", "data": data}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/community/posts", tags=["Community"])
@@ -273,8 +276,10 @@ def create_community_post(post: schemas.CommunityPostCreate, current_user = Depe
 def get_tiktok_feeds(user_id: str = None, limit: int = 50):
     """Lấy danh sách video kèm trạng thái tương tác của người dùng hiện tại"""
     try:
-        res = supabase.table("tiktok_feeds").select("*, author:users(full_name, avatar_url, username, role)").eq("status", "APPROVED").order("created_at", desc=True).limit(limit).execute()
+        res = supabase.table("tiktok_feeds").select("*, users(full_name, avatar_url, username, role)").eq("status", "APPROVED").order("created_at", desc=True).limit(limit).execute()
         videos = res.data or []
+        for v in videos:
+            v["author"] = v.get("users") or {}
         
         if user_id and videos:
             video_ids = [v['id'] for v in videos]
@@ -390,18 +395,31 @@ def get_moderation_queue(current_user = Depends(verify_user_token)):
         if user_info.data.get("role") not in ["MODERATOR", "SUPER_ADMIN"]:
             raise HTTPException(status_code=403, detail="Không có quyền truy cập!")
 
-        services_res = supabase.table("services").select("*, users(full_name, email, avatar_url)").in_("status", ["PENDING", "PENDING_DELETE", "PENDING_UPDATE"]).execute()
-        videos_res = supabase.table("tiktok_feeds").select("*, author:users(full_name, email, avatar_url)").in_("status", ["PENDING", "PENDING_DELETE", "PENDING_UPDATE"]).execute()
+        # 1. Lấy dữ liệu thô từ 2 bảng
+        services_res = supabase.table("services").select("*").in_("status", ["PENDING", "PENDING_DELETE", "PENDING_UPDATE"]).execute()
+        videos_res = supabase.table("tiktok_feeds").select("*").in_("status", ["PENDING", "PENDING_DELETE", "PENDING_UPDATE"]).execute()
+
+        # 2. Thu thập tất cả ID tác giả để lấy thông tin một lần (Tối ưu performance)
+        author_ids = list(set(
+            [s["partner_id"] for s in (services_res.data or []) if s.get("partner_id")] +
+            [v["author_id"] for v in (videos_res.data or []) if v.get("author_id")]
+        ))
+        
+        authors = {}
+        if author_ids:
+            authors_data = supabase.table("users").select("id, full_name, email, avatar_url").in_("id", author_ids).execute().data or []
+            authors = {a["id"]: a for a in authors_data}
 
         combined = []
         for s in (services_res.data or []):
             s["type"] = "service"
             s["title"] = s.get("service_name")
-            s["author"] = s.get("users") or {}
+            s["author"] = authors.get(s.get("partner_id"), {})
             combined.append(s)
             
         for v in (videos_res.data or []):
             v["type"] = "video"
+            v["author"] = authors.get(v.get("author_id"), {})
             combined.append(v)
             
         combined.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
@@ -438,7 +456,7 @@ def get_moderation_history(current_user = Depends(verify_user_token)):
     try:
         # Lấy tất cả, dùng filter Python để tránh lỗi thiếu cột trong DB
         s_res = supabase.table("services").select("*, users(full_name, avatar_url)").in_("status", ["APPROVED", "REJECTED", "DELETED"]).execute()
-        v_res = supabase.table("tiktok_feeds").select("*, author:users(full_name, avatar_url)").in_("status", ["APPROVED", "REJECTED", "DELETED"]).execute()
+        v_res = supabase.table("tiktok_feeds").select("*, users(full_name, avatar_url)").in_("status", ["APPROVED", "REJECTED", "DELETED"]).execute()
         
         combined = []
         for s in (s_res.data or []):
@@ -450,6 +468,7 @@ def get_moderation_history(current_user = Depends(verify_user_token)):
         for v in (v_res.data or []):
             if v.get("moderated_by") == current_user.id or not v.get("moderated_by"):
                 v["type"] = "video"
+                v["author"] = v.get("users") or {}
                 combined.append(v)
             
         combined.sort(key=lambda x: str(x.get("updated_at") or x.get("created_at") or ""), reverse=True)
