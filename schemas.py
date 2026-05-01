@@ -40,10 +40,15 @@ class CommunityPostCreate(BaseModel):
 class TikTokCommentCreate(BaseModel):
     content: str
     parent_id: Optional[str] = None 
+    # Bổ sung thêm các trường này với giá trị mặc định để tránh lỗi 400 nếu Frontend vô tình gửi thừa
+    video_id: Optional[str] = None
+    user_id: Optional[str] = None
 
 class CommunityCommentCreate(BaseModel):
     content: str
     parent_id: Optional[str] = None 
+    post_id: Optional[str] = None
+    user_id: Optional[str] = None 
 
 # --- 7. CẤU TRÚC ĐẶT LỊCH (Bảo chứng Escrow hỗ trợ cả Service và Video) ---
 class BookingCreate(BaseModel):
@@ -114,3 +119,10 @@ class AppointmentConfirm(BaseModel):
     """User xác nhận hoàn thành dịch vụ"""
     is_satisfied: bool
     feedback: Optional[str] = None
+
+
+class WithdrawalRequest(BaseModel):
+    amount: float
+    bank_name: str
+    account_number: str
+    account_name: str

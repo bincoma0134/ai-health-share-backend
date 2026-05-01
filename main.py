@@ -251,17 +251,65 @@ def complete_booking_escrow(booking_id: str, current_user = Depends(verify_user_
         return {"status": "success", "message": "Dịch vụ hoàn tất! Tiền đã được cộng vào Ví của bạn.", "distribution": update_data}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/partner/withdraw", tags=["Partner"])
+def create_withdrawal_request(payload: schemas.WithdrawalRequest, current_user = Depends(verify_user_token)):
+    """API RÚT TIỀN: Backend tự kiểm tra số dư và trừ tiền an toàn"""
+    try:
+        # 1. Kiểm tra số dư ví thật trong DB
+        wlt = supabase.table("wallets").select("*").eq("user_id", current_user.id).single().execute()
+        if not wlt.data or float(wlt.data["balance"]) < payload.amount:
+            raise HTTPException(status_code=400, detail="Số dư không đủ để thực hiện giao dịch!")
+        
+        if payload.amount < 50000:
+            raise HTTPException(status_code=400, detail="Số tiền rút tối thiểu là 50.000 VND")
+
+        # 2. Tạo bản ghi yêu cầu rút
+        withdrawal_data = {
+            "user_id": current_user.id,
+            "amount": payload.amount,
+            "status": "PENDING",
+            "payout_info": {
+                "bank_name": payload.bank_name,
+                "account_number": payload.account_number,
+                "account_name": payload.account_name
+            }
+        }
+        res = supabase.table("withdrawal_requests").insert(withdrawal_data).execute()
+
+        # 3. TRỪ TIỀN VÍ (Thực hiện tại Server)
+        new_balance = float(wlt.data["balance"]) - payload.amount
+        supabase.table("wallets").update({"balance": new_balance}).eq("user_id", current_user.id).execute()
+
+        return {"status": "success", "message": "Yêu cầu giải ngân đã được gửi thành công!"}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/partner/withdrawals", tags=["Partner"])
+def get_my_withdrawals(current_user = Depends(verify_user_token)):
+    """Lấy danh sách lịch sử yêu cầu rút tiền của chính Partner"""
+    try:
+        res = supabase.table("withdrawal_requests").select("*").eq("user_id", current_user.id).order("created_at", desc=True).execute()
+        return {"status": "success", "data": res.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+        
 # ==========================================
 # 5. COMMUNITY & TIKTOK FEEDS (QUẢN LÝ NỘI DUNG)
 # ==========================================
 @app.get("/community/posts", tags=["Community"])
 def get_community_posts(limit: int = 50):
     try:
-        res = supabase.table("community_posts").select("*, users(full_name, avatar_url, role)").order("created_at", desc=True).limit(limit).execute()
-        data = res.data or []
-        for p in data:
-            p["author"] = p.get("users") or {}
-        return {"status": "success", "data": data}
+        res = supabase.table("community_posts").select("*").order("created_at", desc=True).limit(limit).execute()
+        posts = res.data or []
+        
+        author_ids = list(set([p["author_id"] for p in posts if p.get("author_id")]))
+        authors = {a["id"]: a for a in (supabase.table("users").select("id, full_name, avatar_url, role").in_("id", author_ids).execute().data or [])} if author_ids else {}
+        
+        for p in posts:
+            p["author"] = authors.get(p.get("author_id"), {})
+            
+        return {"status": "success", "data": posts}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/community/posts", tags=["Community"])
@@ -274,28 +322,28 @@ def create_community_post(post: schemas.CommunityPostCreate, current_user = Depe
 
 @app.get("/tiktok/feeds", tags=["TikTok Feeds"])
 def get_tiktok_feeds(user_id: str = None, limit: int = 50):
-    """Lấy danh sách video kèm trạng thái tương tác của người dùng hiện tại"""
     try:
-        res = supabase.table("tiktok_feeds").select("*, users(full_name, avatar_url, username, role)").eq("status", "APPROVED").order("created_at", desc=True).limit(limit).execute()
+        res = supabase.table("tiktok_feeds").select("*").eq("status", "APPROVED").order("created_at", desc=True).limit(limit).execute()
         videos = res.data or []
-        for v in videos:
-            v["author"] = v.get("users") or {}
+        
+        author_ids = list(set([v["author_id"] for v in videos if v.get("author_id")]))
+        authors = {a["id"]: a for a in (supabase.table("users").select("id, full_name, avatar_url, username, role").in_("id", author_ids).execute().data or [])} if author_ids else {}
         
         if user_id and videos:
             video_ids = [v['id'] for v in videos]
             likes = supabase.table("tiktok_feed_likes").select("video_id").eq("user_id", user_id).in_("video_id", video_ids).execute().data or []
             saves = supabase.table("tiktok_feed_saves").select("video_id").eq("user_id", user_id).in_("video_id", video_ids).execute().data or []
-            
             liked_set = {l['video_id'] for l in likes}
             saved_set = {s['video_id'] for s in saves}
-            
             for v in videos:
                 v['is_liked'] = v['id'] in liked_set
                 v['is_saved'] = v['id'] in saved_set
+                v["author"] = authors.get(v.get("author_id"), {})
         else:
             for v in videos:
                 v['is_liked'] = False
                 v['is_saved'] = False
+                v["author"] = authors.get(v.get("author_id"), {})
                 
         return {"status": "success", "data": videos}
     except Exception as e: 
@@ -320,36 +368,6 @@ def create_tiktok_feed(payload: schemas.TikTokFeedCreate, current_user = Depends
         return {"status": "success", "data": res.data[0]}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/tiktok/feeds/{video_id}/{action}", tags=["TikTok Feeds"])
-def toggle_tiktok_interaction(video_id: str, action: str, current_user = Depends(verify_user_token)):
-    """Logic siêu việt: Ghi vết VÀ tự động Update biến đếm trong bảng chính"""
-    if action not in ["like", "save", "share"]:
-        raise HTTPException(status_code=400, detail="Action không hợp lệ")
-    
-    try:
-        if action == "share":
-            supabase.table("tiktok_feed_shares").insert({"video_id": video_id, "user_id": current_user.id}).execute()
-            feed_res = supabase.table("tiktok_feeds").select("shares_count").eq("id", video_id).single().execute()
-            new_count = (feed_res.data.get("shares_count") or 0) + 1
-            supabase.table("tiktok_feeds").update({"shares_count": new_count}).eq("id", video_id).execute()
-            return {"status": "success", "action": "shared"}
-
-        table = "tiktok_feed_likes" if action == "like" else "tiktok_feed_saves"
-        count_col = "likes_count" if action == "like" else "saves_count"
-
-        existing = supabase.table(table).select("id").eq("video_id", video_id).eq("user_id", current_user.id).execute()
-        feed_res = supabase.table("tiktok_feeds").select(count_col).eq("id", video_id).single().execute()
-        current_count = feed_res.data.get(count_col) or 0
-
-        if existing.data:
-            supabase.table(table).delete().eq("video_id", video_id).eq("user_id", current_user.id).execute()
-            supabase.table("tiktok_feeds").update({count_col: max(0, current_count - 1)}).eq("id", video_id).execute()
-            return {"status": "success", "action": f"un{action}d"}
-        else:
-            supabase.table(table).insert({"video_id": video_id, "user_id": current_user.id}).execute()
-            supabase.table("tiktok_feeds").update({count_col: current_count + 1}).eq("id", video_id).execute()
-            return {"status": "success", "action": f"{action}d"}
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 # ==========================================
 # 6. AI & AUTH HELPERS
@@ -454,21 +472,23 @@ def moderate_item(item_type: str, item_id: str, payload: dict, current_user = De
 @app.get("/moderation/history", tags=["Moderation"])
 def get_moderation_history(current_user = Depends(verify_user_token)):
     try:
-        # Lấy tất cả, dùng filter Python để tránh lỗi thiếu cột trong DB
-        s_res = supabase.table("services").select("*, users(full_name, avatar_url)").in_("status", ["APPROVED", "REJECTED", "DELETED"]).execute()
-        v_res = supabase.table("tiktok_feeds").select("*, users(full_name, avatar_url)").in_("status", ["APPROVED", "REJECTED", "DELETED"]).execute()
+        s_res = supabase.table("services").select("*").in_("status", ["APPROVED", "REJECTED", "DELETED"]).execute()
+        v_res = supabase.table("tiktok_feeds").select("*").in_("status", ["APPROVED", "REJECTED", "DELETED"]).execute()
         
+        author_ids = list(set([s.get("partner_id") for s in (s_res.data or []) if s.get("partner_id")] + [v.get("author_id") for v in (v_res.data or []) if v.get("author_id")]))
+        authors = {a["id"]: a for a in (supabase.table("users").select("id, full_name, avatar_url").in_("id", author_ids).execute().data or [])} if author_ids else {}
+
         combined = []
         for s in (s_res.data or []):
             if s.get("moderated_by") == current_user.id or not s.get("moderated_by"):
                 s["type"] = "service"
                 s["title"] = s.get("service_name")
-                s["author"] = s.get("users") or {}
+                s["author"] = authors.get(s.get("partner_id"), {})
                 combined.append(s)
         for v in (v_res.data or []):
             if v.get("moderated_by") == current_user.id or not v.get("moderated_by"):
                 v["type"] = "video"
-                v["author"] = v.get("users") or {}
+                v["author"] = authors.get(v.get("author_id"), {})
                 combined.append(v)
             
         combined.sort(key=lambda x: str(x.get("updated_at") or x.get("created_at") or ""), reverse=True)
@@ -670,85 +690,123 @@ def get_admin_dashboard_stats(current_user = Depends(verify_user_token)):
 
 @app.get("/admin/withdrawals", tags=["Admin"])
 def get_withdrawals(current_user = Depends(verify_user_token)):
-    """Lấy danh sách yêu cầu rút tiền / Giải ngân"""
+    """Lấy danh sách yêu cầu rút tiền / Giải ngân với chỉ định FK rõ ràng"""
     try:
-        try:
-            res = supabase.table("withdrawal_requests").select("*, users(full_name, email, role)").order("created_at", desc=True).execute()
-            data = res.data or []
-        except Exception:
-            data = [] # Trả mảng rỗng nếu bảng chưa tồn tại
-        return {"status": "success", "data": data}
-    except Exception as e: return {"status": "error", "message": str(e)}
+        # Sử dụng dấu ! để chỉ định tên Constraint FK giúp Supabase Join chính xác
+        res = supabase.table("withdrawal_requests").select(
+            "*, users!withdrawal_requests_user_id_fkey(full_name, email, role)"
+        ).order("created_at", desc=True).execute()
+        
+        return {"status": "success", "data": res.data or []}
+    except Exception as e: 
+        print(f"LỖI TRUY VẤN RÚT TIỀN: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
 
 @app.patch("/admin/withdrawals/{w_id}", tags=["Admin"])
 def process_withdrawal(w_id: str, payload: schemas.WithdrawalUpdate, current_user = Depends(verify_user_token)):
-    """Duyệt hoặc từ chối lệnh rút tiền"""
+    """Duyệt hoặc từ chối lệnh rút tiền - ĐÃ VÁ LỖI THIẾU CỘT VÀ SINGLE()"""
     try:
+        # 1. Lấy thông tin lệnh rút (Dùng execute() thay vì single() để an toàn)
+        w_res = supabase.table("withdrawal_requests").select("*").eq("id", w_id).execute()
+        if not w_res.data: 
+            raise HTTPException(status_code=404, detail="Không tìm thấy lệnh rút tiền này")
+        request = w_res.data[0]
+
+        # 2. Nếu từ chối (REJECTED), hoàn tiền vào ví cho Partner
+        if payload.status == "REJECTED" and request["status"] == "PENDING":
+            wlt_res = supabase.table("wallets").select("*").eq("user_id", request["user_id"]).execute()
+            if wlt_res.data:
+                wallet = wlt_res.data[0]
+                new_bal = float(wallet["balance"]) + float(request["amount"])
+                supabase.table("wallets").update({"balance": new_bal}).eq("user_id", request["user_id"]).execute()
+
+        # 3. Cập nhật trạng thái lệnh rút (Đảm bảo cột processed_by đã được thêm ở Bước 1)
         update_data = {
             "status": payload.status, 
-            "admin_note": payload.admin_note, 
+            "admin_note": payload.admin_note if payload.admin_note else "", 
             "processed_by": current_user.id, 
             "updated_at": datetime.now().isoformat()
         }
+        
         supabase.table("withdrawal_requests").update(update_data).eq("id", w_id).execute()
-        return {"status": "success", "message": "Đã xử lý lệnh giải ngân thành công"}
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/admin/partners", tags=["Admin"])
-def get_admin_partners(current_user = Depends(verify_user_token)):
-    """Danh sách Quản lý Đối tác"""
-    try:
-        partners = supabase.table("users").select("id, full_name, email, created_at, role").eq("role", "PARTNER").execute().data or []
-        return {"status": "success", "data": partners}
-    except Exception as e: return {"status": "error", "message": str(e)}
+        
+        return {"status": "success", "message": f"Đã xử lý: {payload.status}"}
+    except Exception as e: 
+        print(f"DEBUG ERROR: {str(e)}") # Theo dõi lỗi cụ thể tại terminal backend
+        raise HTTPException(status_code=500, detail="Lỗi hệ thống khi xử lý yêu cầu")
 
 
 # ==========================================
-# 10. HỆ THỐNG BÌNH LUẬN (CHUYÊN BIỆT TIKTOK FEED)
+# 10. HỆ THỐNG BÌNH LUẬN & TƯƠNG TÁC (VIDEO)
 # ==========================================
 @app.get("/tiktok/feeds/{video_id}/comments", tags=["Comments"])
 def get_tiktok_comments(video_id: str):
-    """Lấy toàn bộ bình luận của một video TikTok"""
     try:
-        res = supabase.table("tiktok_feed_comments").select("*, users(full_name, username, avatar_url, role)")\
-            .eq("video_id", video_id)\
-            .order("created_at", desc=False).execute()
-        return {"status": "success", "data": res.data or []}
-    except Exception as e: 
-        return {"status": "error", "message": str(e)}
+        res = supabase.table("tiktok_feed_comments").select("*").eq("video_id", video_id).order("created_at", desc=False).execute()
+        comments = res.data or []
+        author_ids = list(set([c["user_id"] for c in comments if c.get("user_id")]))
+        authors = {a["id"]: a for a in (supabase.table("users").select("id, full_name, username, avatar_url, role").in_("id", author_ids).execute().data or [])} if author_ids else {}
+        for c in comments:
+            c["users"] = authors.get(c.get("user_id"), {})
+        return {"status": "success", "data": comments}
+    except Exception as e: return {"status": "error", "message": str(e)}
 
 @app.post("/tiktok/feeds/{video_id}/comments", tags=["Comments"])
-def create_tiktok_comment(video_id: str, payload: schemas.TikTokCommentCreate, current_user = Depends(verify_user_token)):
+def create_tiktok_comment(video_id: str, payload: dict, current_user = Depends(verify_user_token)):
     try:
-        data = {"video_id": video_id, "user_id": current_user.id, "content": payload.content}
-        if payload.parent_id: data["parent_id"] = payload.parent_id
-            
+        content = payload.get("content", "").strip()
+        if not content: raise HTTPException(status_code=400, detail="Nội dung trống")
+        data = {"video_id": video_id, "user_id": current_user.id, "content": content}
+        if payload.get("parent_id"): data["parent_id"] = payload.get("parent_id")
         res = supabase.table("tiktok_feed_comments").insert(data).execute()
-        
-        # Tự động Tăng biến đếm comments
-        feed_res = supabase.table("tiktok_feeds").select("comments_count").eq("id", video_id).single().execute()
-        new_count = (feed_res.data.get("comments_count") or 0) + 1
+        # Cập nhật số lượng bình luận (comments_count)
+        f_res = supabase.table("tiktok_feeds").select("comments_count").eq("id", video_id).single().execute()
+        new_count = (f_res.data.get("comments_count") or 0) + 1
         supabase.table("tiktok_feeds").update({"comments_count": new_count}).eq("id", video_id).execute()
-
-        inserted_data = res.data[0] if res.data and len(res.data) > 0 else data
-        return {"status": "success", "data": inserted_data}
+        return {"status": "success", "data": res.data[0] if res.data else data}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/tiktok/feeds/comments/{comment_id}", tags=["Comments"])
 def delete_tiktok_comment(comment_id: str, current_user = Depends(verify_user_token)):
     try:
-        # Lấy video_id trước khi xóa để Update lại đếm số lượng
-        comment = supabase.table("tiktok_feed_comments").select("video_id").eq("id", comment_id).single().execute()
-        if comment.data:
-            video_id = comment.data["video_id"]
+        c_res = supabase.table("tiktok_feed_comments").select("video_id").eq("id", comment_id).single().execute()
+        if c_res.data:
+            vid = c_res.data["video_id"]
             supabase.table("tiktok_feed_comments").delete().eq("id", comment_id).execute()
+            f_res = supabase.table("tiktok_feeds").select("comments_count").eq("id", vid).single().execute()
+            new_count = max(0, (f_res.data.get("comments_count") or 0) - 1)
+            supabase.table("tiktok_feeds").update({"comments_count": new_count}).eq("id", vid).execute()
+        return {"status": "success", "message": "Đã xóa"}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
-            # Tự động Giảm biến đếm comments
-            feed_res = supabase.table("tiktok_feeds").select("comments_count").eq("id", video_id).single().execute()
-            new_count = max(0, (feed_res.data.get("comments_count") or 0) - 1)
-            supabase.table("tiktok_feeds").update({"comments_count": new_count}).eq("id", video_id).execute()
+# ĐẶT HÀM DƯỚI CÙNG ĐỂ TRÁNH XUNG ĐỘT ROUTING
+@app.post("/tiktok/feeds/{video_id}/{action}", tags=["TikTok Feeds"])
+def toggle_tiktok_interaction(video_id: str, action: str, current_user = Depends(verify_user_token)):
+    if action not in ["like", "save", "share"]: raise HTTPException(status_code=400, detail="Lỗi")
+    try:
+        if action == "share":
+            supabase.table("tiktok_feed_shares").insert({"video_id": video_id, "user_id": current_user.id}).execute()
+            f_res = supabase.table("tiktok_feeds").select("shares_count").eq("id", video_id).single().execute()
+            supabase.table("tiktok_feeds").update({"shares_count": (f_res.data.get("shares_count") or 0) + 1}).eq("id", video_id).execute()
+            return {"status": "success", "action": "shared"}
 
-        return {"status": "success", "message": "Đã xóa bình luận"}
+        table = "tiktok_feed_likes" if action == "like" else "tiktok_feed_saves"
+        count_col = "likes_count" if action == "like" else "saves_count"
+        
+        # Kiểm tra sự tồn tại (Dùng video_id thay vì id để an toàn)
+        exist = supabase.table(table).select("video_id").eq("video_id", video_id).eq("user_id", current_user.id).execute()
+        f_res = supabase.table("tiktok_feeds").select(count_col).eq("id", video_id).single().execute()
+        curr = f_res.data.get(count_col) or 0
+
+        if exist.data:
+            supabase.table(table).delete().eq("video_id", video_id).eq("user_id", current_user.id).execute()
+            supabase.table("tiktok_feeds").update({count_col: max(0, curr - 1)}).eq("id", video_id).execute()
+            return {"status": "success", "action": f"un{action}d"}
+        else:
+            supabase.table(table).insert({"video_id": video_id, "user_id": current_user.id}).execute()
+            supabase.table("tiktok_feeds").update({count_col: curr + 1}).eq("id", video_id).execute()
+            return {"status": "success", "action": f"{action}d"}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -919,17 +977,70 @@ def check_in_appointment(appointment_id: str, payload: schemas.AppointmentCheckI
 
 @app.patch("/appointments/{appointment_id}/user-confirm", tags=["Scheduling"])
 def confirm_appointment(appointment_id: str, payload: schemas.AppointmentConfirm, current_user = Depends(verify_user_token)):
-    """BƯỚC 5: User xác nhận đã nhận dịch vụ tốt -> Giải ngân"""
+    """BƯỚC 5: User xác nhận -> Hệ thống TỰ ĐỘNG CHIA TIỀN VÀ GIẢI NGÂN (CHUẨN SCHEMA)"""
     try:
-        appt_res = supabase.table("appointments").select("*").eq("id", appointment_id).single().execute()
-        appt = appt_res.data
+        # 1. Lấy thông tin lịch hẹn (Dùng execute thay vì single để an toàn)
+        appt_res = supabase.table("appointments").select("*").eq("id", appointment_id).execute()
+        if not appt_res.data:
+            raise HTTPException(status_code=404, detail="Không tìm thấy lịch hẹn!")
+        appt = appt_res.data[0]
 
-        if appt["user_id"] != current_user.id: raise HTTPException(status_code=403, detail="Không có quyền!")
-        if appt["status"] != "SERVED": raise HTTPException(status_code=400, detail="Cơ sở chưa phục vụ xong!")
+        if appt["user_id"] != current_user.id: 
+            raise HTTPException(status_code=403, detail="Bạn không có quyền thực hiện thao tác này!")
+        if appt["status"] != "SERVED": 
+            raise HTTPException(status_code=400, detail="Cơ sở chưa phục vụ xong, không thể xác nhận!")
 
-        supabase.table("appointments").update({"status": "COMPLETED", "user_confirmed": True}).eq("id", appointment_id).execute()
+        # 2. Xử lý giải ngân an toàn
+        booking_id = appt.get("booking_id")
+        if booking_id:
+            booking_res = supabase.table("bookings_transactions").select("*").eq("id", booking_id).execute()
+            if booking_res.data:
+                booking = booking_res.data[0]
+                if booking["payment_status"] == "PAID" and booking["service_status"] != "COMPLETED":
+                    total = float(booking["total_amount"])
+                    partner_rev = total * 0.70
+                    platform_fee = total * 0.20
+                    affiliate_rev = total * 0.10 if booking.get("affiliate_id") else 0
+                    if not booking.get("affiliate_id"): 
+                        platform_fee += total * 0.10
+
+                    # 2.1. Chốt đơn Escrow
+                    supabase.table("bookings_transactions").update({
+                        "service_status": "COMPLETED", 
+                        "partner_revenue": partner_rev, 
+                        "platform_fee": platform_fee, 
+                        "affiliate_revenue": affiliate_rev
+                    }).eq("id", booking_id).execute()
+
+                    # 2.2. Cộng tiền vào Ví cho Partner
+                    wallet_res = supabase.table("wallets").select("*").eq("user_id", appt["partner_id"]).execute()
+                    if wallet_res.data:
+                        new_balance = float(wallet_res.data[0]["balance"]) + partner_rev
+                        new_earned = float(wallet_res.data[0]["total_earned"]) + partner_rev
+                        supabase.table("wallets").update({
+                            "balance": new_balance, 
+                            "total_earned": new_earned
+                        }).eq("user_id", appt["partner_id"]).execute()
+                    else:
+                        supabase.table("wallets").insert({
+                            "user_id": appt["partner_id"], 
+                            "balance": partner_rev, 
+                            "total_earned": partner_rev
+                        }).execute()
+
+        # 3. Đóng Lịch hẹn (Xóa bỏ cột feedback không tồn tại)
+        supabase.table("appointments").update({
+            "status": "COMPLETED", 
+            "user_confirmed": True
+        }).eq("id", appointment_id).execute()
+
         return {"status": "success", "message": "Cảm ơn bạn! Đã giải ngân thành công cho đối tác."}
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+    
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"[LỖI XÁC NHẬN NGHIÊM TRỌNG]: {str(e)}")
+        raise HTTPException(status_code=500, detail="Lỗi hệ thống khi giải ngân. Vui lòng liên hệ Admin!")
 
 
 @app.patch("/appointments/{appointment_id}/cancel", tags=["Scheduling"])
@@ -954,3 +1065,37 @@ def cancel_appointment(appointment_id: str, current_user = Depends(verify_user_t
         
         return {"status": "success", "message": "Đã hủy yêu cầu đặt lịch thành công."}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==========================================
+# 12. PAYOS WEBHOOK (ĐẢM BẢO KHÔNG RỚT ĐƠN)
+# ==========================================
+from fastapi import Request
+
+@app.post("/payos/webhook", tags=["Payment"])
+async def payos_webhook(request: Request):
+    """PayOS sẽ âm thầm gọi API này khi nhận được tiền từ Ngân hàng"""
+    try:
+        body = await request.json()
+        
+        # Kiểm tra xem có phải giao dịch thành công (Mã 00) không
+        if body.get("success") and body.get("code") == "00":
+            data = body.get("data", {})
+            orderCode = data.get("orderCode")
+            
+            # 1. Tìm đơn hàng
+            booking_res = supabase.table("bookings_transactions").select("*").eq("order_code", orderCode).single().execute()
+            if booking_res.data and booking_res.data["payment_status"] != "PAID":
+                booking_id = booking_res.data["id"]
+                
+                # 2. Cập nhật Đơn hàng -> PAID
+                supabase.table("bookings_transactions").update({"payment_status": "PAID"}).eq("id", booking_id).execute()
+                
+                # 3. Cập nhật Lịch hẹn -> CONFIRMED
+                supabase.table("appointments").update({"status": "CONFIRMED"}).eq("booking_id", booking_id).execute()
+                print(f"[Webhook] Đã xác nhận thành công đơn {orderCode}")
+
+        return {"success": True, "message": "Webhook received"}
+    except Exception as e:
+        print(f"[Webhook Error]: {str(e)}")
+        return {"success": False}
