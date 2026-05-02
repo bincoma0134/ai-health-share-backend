@@ -41,15 +41,31 @@ def health_check(): return {"status": "success", "message": "Backend AI Health �
 # ==========================================
 @app.get("/services", tags=["Services"])
 def get_services(user_id: str = None):
+    """API Explore: Lấy danh sách dịch vụ kèm thông tin đối tác chi tiết"""
     try:
-        services = supabase.table("services").select("*").eq("status", "APPROVED").execute().data
+        # Lấy các dịch vụ đã được duyệt và sắp xếp mới nhất
+        res = supabase.table("services").select("*").eq("status", "APPROVED").order("created_at", desc=True).execute()
+        services = res.data or []
+        
+        # Tối ưu truy vấn: Lấy thông tin Partner một lần duy nhất
         partner_ids = list(set([s["partner_id"] for s in services if s.get("partner_id")]))
-        partners = supabase.table("users").select("id, avatar_url, full_name, username").in_("id", partner_ids).execute().data
-        p_dict = {p["id"]: p for p in partners}
+        
+        p_dict = {}
+        if partner_ids:
+            # Bổ sung physical_address để hiển thị vị trí trên thẻ dịch vụ
+            partners = supabase.table("users").select("id, avatar_url, full_name, username, physical_address").in_("id", partner_ids).execute().data or []
+            p_dict = {p["id"]: p for p in partners}
+            
         for s in services:
+            # Gắn thông tin User (Partner) vào dịch vụ
             s["users"] = p_dict.get(s.get("partner_id"), {})
+            # Đồng bộ biến service_type cho Frontend dễ dàng bắt filter
+            s["service_type_enum"] = s.get("service_type", "RELAXATION")
+            
         return {"status": "success", "data": services}
-    except Exception as e: raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e: 
+        print(f"[API Explore Error]: {str(e)}")
+        raise HTTPException(status_code=500, detail="Lỗi truy xuất dữ liệu Khám phá")
 
 @app.post("/services", tags=["Services"])
 def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify_user_token)):
@@ -292,7 +308,6 @@ def get_my_withdrawals(current_user = Depends(verify_user_token)):
         return {"status": "success", "data": res.data or []}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
         
 # ==========================================
 # 5. COMMUNITY & TIKTOK FEEDS (QUẢN LÝ NỘI DUNG)
