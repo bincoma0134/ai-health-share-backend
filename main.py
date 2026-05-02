@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi import FastAPI, HTTPException, Depends, Security, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -114,30 +114,51 @@ def get_user_profile(current_user = Depends(verify_user_token)):
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/user/public/{username}", tags=["User"])
-def get_public_profile(username: str):
+def get_public_profile(username: str, request: Request):
     """API QUAN TRỌNG: Lấy thông tin công khai để hiển thị profile"""
     try:
-        # Tìm user theo username
+        # Tìm user theo username (Đã bao gồm cột followers_count nhờ Trigger)
         user_res = supabase.table("users").select("*").ilike("username", username).single().execute()
         if not user_res.data: raise HTTPException(status_code=404, detail="Người dùng không tồn tại!")
         
         user = user_res.data
         
-        # 1. Lấy Video Studio
+        # 1. Đếm số người mà user này ĐANG THEO DÕI (following_count)
+        try:
+            following_res = supabase.table("user_follows").select("id", count="exact").eq("follower_id", user["id"]).execute()
+            user["following_count"] = following_res.count or 0
+        except Exception:
+            user["following_count"] = 0
+
+        # 2. KIỂM TRA TRẠNG THÁI FOLLOW (Đọc Token thụ động)
+        user["is_followed"] = False
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            try:
+                curr_user = supabase.auth.get_user(token).user
+                if curr_user:
+                    exist = supabase.table("user_follows").select("id").eq("follower_id", curr_user.id).eq("following_id", user["id"]).execute()
+                    if exist.data: 
+                        user["is_followed"] = True
+            except Exception: 
+                pass # Bỏ qua nếu Token hết hạn, mặc định là False
+        
+        # 3. Lấy Video Studio
         videos = supabase.table("tiktok_feeds").select("*").eq("author_id", user["id"]).eq("status", "APPROVED").order("created_at", desc=True).execute().data
         
-        # 2. Lấy Bài đăng Cộng đồng
+        # 4. Lấy Bài đăng Cộng đồng
         posts = supabase.table("community_posts").select("*").eq("author_id", user["id"]).order("created_at", desc=True).execute().data
         
-        # 3. Lấy Dịch vụ (dành cho Partner)
+        # 5. Lấy Dịch vụ (dành cho Partner)
         services = supabase.table("services").select("*").eq("partner_id", user["id"]).eq("status", "APPROVED").order("created_at", desc=True).execute().data
         
         return {
             "status": "success",
             "data": {
                 "profile": user,
-                "videos": videos or [],   # Tách biệt mảng Video
-                "community_posts": posts or [],     # Tách biệt mảng Bài đăng
+                "videos": videos or [],   
+                "community_posts": posts or [],     
                 "services": services or [],
                 "stats": {"total_videos": len(videos or []), "total_services": len(services or [])}
             }
@@ -1114,3 +1135,96 @@ async def payos_webhook(request: Request):
     except Exception as e:
         print(f"[Webhook Error]: {str(e)}")
         return {"success": False}
+
+# ==========================================
+# 13. HỆ THỐNG BẢN ĐỒ (LEAFLET MAP HUB)
+# ==========================================
+@app.get("/map/partners", tags=["Map"])
+def get_map_partners():
+    """API lấy danh sách Đối tác có tọa độ để render lên Bản đồ"""
+    try:
+        # 1. Chỉ tìm PARTNER_ADMIN vì Database Enum không có giá trị PARTNER
+        res_partners = supabase.table("users").select(
+            "id, full_name, username, avatar_url, physical_address, latitude, longitude"
+        ).eq("role", "PARTNER_ADMIN").execute()
+        
+        # Lọc toạ độ IS NOT NULL bằng Python thuần để triệt tiêu hoàn toàn lỗi cú pháp Supabase
+        raw_partners = res_partners.data or []
+        partners = [p for p in raw_partners if p.get("latitude") is not None and p.get("longitude") is not None]
+        
+        if not partners:
+            return {"status": "success", "data": []}
+            
+        # 2. Lấy dịch vụ (Approved) của các Partner này
+        partner_ids = [p["id"] for p in partners]
+        res_services = supabase.table("services").select(
+            "id, partner_id, service_name, price, service_type"
+        ).eq("status", "APPROVED").in_("partner_id", partner_ids).execute()
+        
+        services = res_services.data or []
+        
+        # 3. Gom nhóm Dịch vụ theo Partner
+        from collections import defaultdict
+        services_map = defaultdict(list)
+        for s in services:
+            services_map[s["partner_id"]].append(s)
+            
+        # 4. Lắp ráp dữ liệu chuẩn bị cho Frontend
+        for p in partners:
+            p_services = services_map.get(p["id"], [])
+            p["services"] = p_services[:3] # Chỉ lấy 3 dịch vụ tiêu biểu cho Card Map
+            
+            # Lấy trực tiếp loại hình dịch vụ để khớp với Filter Frontend
+            raw_tags = list(set([s.get("service_type") for s in p_services if s.get("service_type")]))
+            # Map dữ liệu chuẩn: TREATMENT -> Trị liệu, RELAXATION -> Massage, v.v..
+            p["tags"] = raw_tags if raw_tags else ["Cơ sở Y tế"]
+            
+            # Gắn khoảng cách giả định (Sẽ được tính toán chuẩn tại Frontend dựa trên GPS người dùng)
+            p["distance"] = round(random.uniform(0.5, 5.0), 1)
+
+        return {"status": "success", "data": partners}
+    except Exception as e:
+        print(f"[MAP API ERROR]: {str(e)}")
+        raise HTTPException(status_code=500, detail="Lỗi trích xuất dữ liệu không gian")
+
+# ==========================================
+# 14. HỆ THỐNG FOLLOW (QUAN TÂM DOANH NGHIỆP)
+# ==========================================
+@app.post("/user/follow/{target_id}", tags=["Follow"])
+def toggle_follow(target_id: str, current_user = Depends(verify_user_token)):
+    """API Toggle: Nhấn để Follow, nhấn lại để Unfollow"""
+    if target_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Bạn không thể tự theo dõi chính mình!")
+    
+    try:
+        # 1. Kiểm tra đối tác có tồn tại không
+        target_check = supabase.table("users").select("id").eq("id", target_id).execute()
+        if not target_check.data:
+            raise HTTPException(status_code=404, detail="Người dùng không tồn tại!")
+
+        # 2. Kiểm tra trạng thái Follow hiện tại
+        exist = supabase.table("user_follows").select("id").eq("follower_id", current_user.id).eq("following_id", target_id).execute()
+        
+        if exist.data:
+            # Đã follow -> Thực hiện Unfollow
+            supabase.table("user_follows").delete().eq("follower_id", current_user.id).eq("following_id", target_id).execute()
+            return {"status": "success", "action": "unfollowed", "message": "Đã bỏ quan tâm cơ sở này."}
+        else:
+            # Chưa follow -> Thực hiện Follow
+            supabase.table("user_follows").insert({
+                "follower_id": current_user.id, 
+                "following_id": target_id
+            }).execute()
+            return {"status": "success", "action": "followed", "message": "Đã quan tâm cơ sở thành công!"}
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/user/follow-status/{target_id}", tags=["Follow"])
+def check_follow_status(target_id: str, current_user = Depends(verify_user_token)):
+    """API Check: Frontend gọi hàm này để biết nút hiển thị 'Quan tâm' hay 'Đang theo dõi'"""
+    try:
+        exist = supabase.table("user_follows").select("id").eq("follower_id", current_user.id).eq("following_id", target_id).execute()
+        return {"status": "success", "is_followed": len(exist.data) > 0}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
