@@ -359,8 +359,14 @@ def create_community_post(post: schemas.CommunityPostCreate, current_user = Depe
 @app.get("/tiktok/feeds", tags=["TikTok Feeds"])
 def get_tiktok_feeds(user_id: str = None, limit: int = 50):
     try:
-        res = supabase.table("tiktok_feeds").select("*").eq("status", "APPROVED").order("created_at", desc=True).limit(limit).execute()
+        # THAY ĐỔI: Chỉ định rõ ràng dùng 'tiktok_feeds_author_id_fkey'
+        res = supabase.table("tiktok_feeds").select(
+            "*, author:users!tiktok_feeds_author_id_fkey(id, full_name, avatar_url, username, role)"
+        ).eq("status", "APPROVED").order("created_at", desc=True).limit(limit).execute()
+        
         videos = res.data or []
+        # Sau đó cậu có thể bỏ toàn bộ phần code bóc tách 'author_ids' thủ công ở phía dưới
+        # ...
         
         author_ids = list(set([v["author_id"] for v in videos if v.get("author_id")]))
         authors = {a["id"]: a for a in (supabase.table("users").select("id, full_name, avatar_url, username, role").in_("id", author_ids).execute().data or [])} if author_ids else {}
