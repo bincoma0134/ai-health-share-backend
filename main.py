@@ -10,6 +10,7 @@ import os
 from datetime import datetime
 from fastapi import UploadFile, File 
 from groq import Groq
+from utils import send_notification  # Import hàm gửi thông báo
 
 # --- CẤU HÌNH CỔNG THANH TOÁN PAYOS ---
 from payos import PayOS
@@ -883,6 +884,17 @@ def request_appointment(payload: schemas.AppointmentRequest, current_user = Depe
         data["check_in_code"] = str(random.randint(100000, 999999))
         
         res = supabase.table("appointments").insert(data).execute()
+        appt_id = res.data[0]["id"]
+        
+        # 🚀 GỬI THÔNG BÁO CHO PARTNER NGAY SAU KHI INSERT THÀNH CÔNG
+        send_notification(
+            user_id=data["partner_id"],
+            noti_type="BOOKING",
+            title="Lịch hẹn mới",
+            message=f"Khách hàng {data['customer_name']} vừa gửi yêu cầu đặt lịch.",
+            action_url="/features/calendar" # Dẫn đối tác thẳng vào màn hình Lịch để xem
+        )
+
         return jsonable_encoder({"status": "success", "message": "Đã gửi yêu cầu đến cơ sở!", "data": res.data[0]})
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
@@ -1233,4 +1245,35 @@ def check_follow_status(target_id: str, current_user = Depends(verify_user_token
         exist = supabase.table("user_follows").select("id").eq("follower_id", current_user.id).eq("following_id", target_id).execute()
         return {"status": "success", "is_followed": len(exist.data) > 0}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# 15. HỆ THỐNG THÔNG BÁO (NOTIFICATIONS)
+# ==========================================
+@app.get("/notifications", tags=["Notifications"])
+def get_my_notifications(limit: int = 50, current_user = Depends(verify_user_token)):
+    """Lấy danh sách thông báo của người dùng hiện tại"""
+    try:
+        res = supabase.table("notifications").select("*").eq("user_id", current_user.id).order("created_at", desc=True).limit(limit).execute()
+        return {"status": "success", "data": res.data or []}
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/notifications/{notification_id}/read", tags=["Notifications"])
+def mark_notification_read(notification_id: str, current_user = Depends(verify_user_token)):
+    """Đánh dấu 1 thông báo là đã đọc"""
+    try:
+        # Bảo mật: Chỉ cho phép người dùng tự đổi trạng thái thông báo của mình
+        supabase.table("notifications").update({"is_read": True}).eq("id", notification_id).eq("user_id", current_user.id).execute()
+        return {"status": "success"}
+    except Exception as e: 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/notifications/read-all", tags=["Notifications"])
+def mark_all_notifications_read(current_user = Depends(verify_user_token)):
+    """Đánh dấu TẤT CẢ thông báo là đã đọc"""
+    try:
+        supabase.table("notifications").update({"is_read": True}).eq("user_id", current_user.id).eq("is_read", False).execute()
+        return {"status": "success"}
+    except Exception as e: 
         raise HTTPException(status_code=500, detail=str(e))
