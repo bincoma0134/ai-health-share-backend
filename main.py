@@ -117,11 +117,11 @@ def get_user_profile(current_user = Depends(verify_user_token)):
 def get_public_profile(username: str, request: Request):
     """API QUAN TRỌNG: Lấy thông tin công khai để hiển thị profile"""
     try:
-        # Tìm user theo username (Đã bao gồm cột followers_count nhờ Trigger)
-        user_res = supabase.table("users").select("*").ilike("username", username).single().execute()
+        # SỬA LỖI .single() GÂY CRASH VÀ TỐI ƯU TRUY VẤN THEO ROLE
+        user_res = supabase.table("users").select("*").ilike("username", username).execute()
         if not user_res.data: raise HTTPException(status_code=404, detail="Người dùng không tồn tại!")
         
-        user = user_res.data
+        user = user_res.data[0]
         
         # 1. Đếm số người mà user này ĐANG THEO DÕI (following_count)
         try:
@@ -142,16 +142,16 @@ def get_public_profile(username: str, request: Request):
                     if exist.data: 
                         user["is_followed"] = True
             except Exception: 
-                pass # Bỏ qua nếu Token hết hạn, mặc định là False
+                pass 
         
-        # 3. Lấy Video Studio
-        videos = supabase.table("tiktok_feeds").select("*").eq("author_id", user["id"]).eq("status", "APPROVED").order("created_at", desc=True).execute().data
+        # 3. Lấy Video & Bài đăng (Tất cả Role đều có)
+        videos = supabase.table("tiktok_feeds").select("*").eq("author_id", user["id"]).eq("status", "APPROVED").order("created_at", desc=True).execute().data or []
+        posts = supabase.table("community_posts").select("*").eq("author_id", user["id"]).order("created_at", desc=True).execute().data or []
         
-        # 4. Lấy Bài đăng Cộng đồng
-        posts = supabase.table("community_posts").select("*").eq("author_id", user["id"]).order("created_at", desc=True).execute().data
-        
-        # 5. Lấy Dịch vụ (dành cho Partner)
-        services = supabase.table("services").select("*").eq("partner_id", user["id"]).eq("status", "APPROVED").order("created_at", desc=True).execute().data
+        # 4. TỐI ƯU: Chỉ truy vấn Dịch vụ nếu là Đối tác/Admin
+        services = []
+        if user.get("role") in ["PARTNER", "PARTNER_ADMIN", "SUPER_ADMIN"]:
+            services = supabase.table("services").select("*").eq("partner_id", user["id"]).eq("status", "APPROVED").order("created_at", desc=True).execute().data or []
         
         return {
             "status": "success",
