@@ -674,7 +674,7 @@ def get_admin_dashboard_stats(current_user = Depends(verify_user_token)):
 
         # 3. Tổng User & Đối tác
         users_count = supabase.table("users").select("id", count="exact").execute().count or 0
-        partners_count = supabase.table("users").select("id", count="exact").eq("role", "PARTNER").execute().count or 0
+        partners_count = supabase.table("users").select("id", count="exact").in_("role", ["PARTNER", "PARTNER_ADMIN"]).execute().count or 0
 
         # 4. Biểu đồ GMV 7 ngày qua
         from datetime import datetime, timedelta
