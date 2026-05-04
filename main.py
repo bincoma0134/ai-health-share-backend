@@ -753,6 +753,24 @@ def process_withdrawal(w_id: str, payload: schemas.WithdrawalUpdate, current_use
         print(f"DEBUG ERROR: {str(e)}") # Theo dõi lỗi cụ thể tại terminal backend
         raise HTTPException(status_code=500, detail="Lỗi hệ thống khi xử lý yêu cầu")
 
+@app.get("/admin/partners", tags=["Admin"])
+def get_admin_partners(current_user = Depends(verify_user_token)):
+    """API lấy danh sách đối tác thật kèm thống kê sơ bộ cho Admin"""
+    try:
+        # 1. Kiểm tra quyền Super Admin
+        user_info = supabase.table("users").select("role").eq("id", current_user.id).single().execute()
+        if user_info.data.get("role") != "SUPER_ADMIN":
+            raise HTTPException(status_code=403, detail="Không có quyền truy cập!")
+
+        # 2. Lấy danh sách Partner và Partner Admin
+        res = supabase.table("users").select("id, full_name, email, avatar_url, created_at, role")\
+            .in_("role", ["PARTNER", "PARTNER_ADMIN"])\
+            .order("created_at", desc=True).execute()
+        
+        return {"status": "success", "data": res.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ==========================================
 # 10. HỆ THỐNG BÌNH LUẬN & TƯƠNG TÁC (VIDEO)
