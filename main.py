@@ -88,30 +88,13 @@ def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify
 @app.get("/user/profile", tags=["User"])
 def get_user_profile(current_user = Depends(verify_user_token)):
     try:
-        user_res = supabase.table("users").select("*").eq("id", current_user.id).execute()
-        user = user_res.data[0] if user_res.data else None
+        res = supabase.rpc("get_user_profile_with_stats", {"p_user_id": current_user.id}).execute()
+        if res.data: return {"status": "success", "data": res.data}
         
-        if not user:
-            new_user = {"id": current_user.id, "email": current_user.email, "role": "USER", "full_name": current_user.email.split("@")[0]}
-            supabase.table("users").insert(new_user).execute()
-            user = new_user
-        
-        # BỔ SUNG: Tự động tính Stats cho Moderator ngay tại đây
-        stats = {"pending_total": 0, "approved_count": 0, "total_processed": 0}
-        if user.get("role") in ["MODERATOR", "SUPER_ADMIN"]:
-            # 1. Đếm hàng đợi
-            q_svc = supabase.table("services").select("id").in_("status", ["PENDING", "PENDING_DELETE"]).execute()
-            q_vid = supabase.table("tiktok_feeds").select("id").in_("status", ["PENDING", "PENDING_DELETE"]).execute()
-            stats["pending_total"] = len(q_svc.data or []) + len(q_vid.data or [])
-            
-            # 2. Đếm hiệu suất cá nhân
-            s_done = supabase.table("services").select("status").eq("moderated_by", current_user.id).execute()
-            v_done = supabase.table("tiktok_feeds").select("status").eq("moderated_by", current_user.id).execute()
-            all_done = (s_done.data or []) + (v_done.data or [])
-            stats["total_processed"] = len(all_done)
-            stats["approved_count"] = sum(1 for i in all_done if i.get("status") == "APPROVED")
-
-        return {"status": "success", "data": {"profile": user, "stats": stats}}
+        # Fallback cho user mới
+        new_user = {"id": current_user.id, "email": current_user.email, "role": "USER", "full_name": current_user.email.split("@")[0]}
+        supabase.table("users").insert(new_user).execute()
+        return {"status": "success", "data": {"profile": new_user, "stats": {"pending_total": 0, "approved_count": 0, "total_processed": 0}}}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/user/public/{username}", tags=["User"])
@@ -334,37 +317,18 @@ def create_community_post(post: schemas.CommunityPostCreate, current_user = Depe
 @app.get("/tiktok/feeds", tags=["TikTok Feeds"])
 def get_tiktok_feeds(user_id: str = None, limit: int = 50):
     try:
-        # THAY ĐỔI: Chỉ định rõ ràng dùng 'tiktok_feeds_author_id_fkey'
-        res = supabase.table("tiktok_feeds").select(
-            "*, author:users!tiktok_feeds_author_id_fkey(id, full_name, avatar_url, username, role)"
-        ).eq("status", "APPROVED").order("created_at", desc=True).limit(limit).execute()
-        
+        query = supabase.table("tiktok_feeds").select("*, author:users!tiktok_feeds_author_id_fkey(id, full_name, avatar_url, username, role)")
+        res = query.eq("status", "APPROVED").order("created_at", desc=True).limit(limit).execute()
         videos = res.data or []
-        # Sau đó cậu có thể bỏ toàn bộ phần code bóc tách 'author_ids' thủ công ở phía dưới
-        # ...
-        
-        author_ids = list(set([v["author_id"] for v in videos if v.get("author_id")]))
-        authors = {a["id"]: a for a in (supabase.table("users").select("id, full_name, avatar_url, username, role").in_("id", author_ids).execute().data or [])} if author_ids else {}
         
         if user_id and videos:
-            video_ids = [v['id'] for v in videos]
-            likes = supabase.table("tiktok_feed_likes").select("video_id").eq("user_id", user_id).in_("video_id", video_ids).execute().data or []
-            saves = supabase.table("tiktok_feed_saves").select("video_id").eq("user_id", user_id).in_("video_id", video_ids).execute().data or []
-            liked_set = {l['video_id'] for l in likes}
-            saved_set = {s['video_id'] for s in saves}
+            v_ids = [v['id'] for v in videos]
+            likes = {l['video_id'] for l in supabase.table("tiktok_feed_likes").select("video_id").eq("user_id", user_id).in_("video_id", v_ids).execute().data or []}
+            saves = {s['video_id'] for s in supabase.table("tiktok_feed_saves").select("video_id").eq("user_id", user_id).in_("video_id", v_ids).execute().data or []}
             for v in videos:
-                v['is_liked'] = v['id'] in liked_set
-                v['is_saved'] = v['id'] in saved_set
-                v["author"] = authors.get(v.get("author_id"), {})
-        else:
-            for v in videos:
-                v['is_liked'] = False
-                v['is_saved'] = False
-                v["author"] = authors.get(v.get("author_id"), {})
-                
+                v['is_liked'], v['is_saved'] = v['id'] in likes, v['id'] in saves
         return {"status": "success", "data": videos}
-    except Exception as e: 
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/tiktok/feeds", tags=["TikTok Feeds"])
 def create_tiktok_feed(payload: schemas.TikTokFeedCreate, current_user = Depends(verify_user_token)):
@@ -652,58 +616,11 @@ def get_admin_content(current_user = Depends(verify_user_token)):
 # ==========================================
 @app.get("/admin/dashboard-stats", tags=["Admin"])
 def get_admin_dashboard_stats(current_user = Depends(verify_user_token)):
-    """Lấy số liệu tổng quan toàn hệ thống (Tập trung Tài chính & Escrow)"""
     try:
-        user_info = supabase.table("users").select("role").eq("id", current_user.id).single().execute()
-        if user_info.data.get("role") != "SUPER_ADMIN":
-            raise HTTPException(status_code=403, detail="Truy cập bị từ chối")
-
-        # 1. Thống kê Tài chính từ bảng bookings_transactions
-        bookings = supabase.table("bookings_transactions").select("total_amount, platform_fee, payment_status, service_status, created_at").execute().data or []
-        
-        gmv = sum(b.get("total_amount", 0) for b in bookings if b.get("payment_status") == "PAID")
-        platform_revenue = sum(b.get("platform_fee", 0) for b in bookings if b.get("service_status") == "COMPLETED")
-        escrow_holding = sum(b.get("total_amount", 0) for b in bookings if b.get("payment_status") == "PAID" and b.get("service_status") != "COMPLETED")
-
-        # 2. Yêu cầu rút tiền (Withdrawals)
-        # Bọc giáp try-catch phòng trường hợp bảng withdrawals chưa được tạo
-        pending_withdrawals = 0
-        try:
-            pending_withdrawals = supabase.table("withdrawal_requests").select("id", count="exact").eq("status", "PENDING").execute().count or 0
-        except Exception: pass
-
-        # 3. Tổng User & Đối tác
-        users_count = supabase.table("users").select("id", count="exact").execute().count or 0
-        partners_count = supabase.table("users").select("id", count="exact").in_("role", ["PARTNER", "PARTNER_ADMIN"]).execute().count or 0
-
-        # 4. Biểu đồ GMV 7 ngày qua
-        from datetime import datetime, timedelta
-        daily_stats = {}
-        for i in range(6, -1, -1):
-            d = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
-            daily_stats[d] = {"date": d[8:10] + "/" + d[5:7], "GMV": 0, "Doanh thu": 0}
-            
-        for b in bookings:
-            if b.get("payment_status") == "PAID":
-                raw_date = str(b.get("created_at") or "")[:10]
-                if raw_date in daily_stats:
-                    daily_stats[raw_date]["GMV"] += b.get("total_amount", 0)
-                    if b.get("service_status") == "COMPLETED":
-                        daily_stats[raw_date]["Doanh thu"] += b.get("platform_fee", 0)
-
-        return {
-            "status": "success",
-            "data": {
-                "gmv": gmv,
-                "platform_revenue": platform_revenue,
-                "escrow_holding": escrow_holding,
-                "pending_withdrawals": pending_withdrawals,
-                "total_users": users_count,
-                "total_partners": partners_count,
-                "chart_data": list(daily_stats.values())
-            }
-        }
-    except Exception as e: return {"status": "error", "message": str(e)}
+        res = supabase.rpc("get_admin_dashboard_stats_rpc", {"p_user_id": current_user.id}).execute()
+        if not res.data: raise HTTPException(status_code=403, detail="Truy cập bị từ chối")
+        return {"status": "success", "data": res.data}
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/admin/withdrawals", tags=["Admin"])
 def get_withdrawals(current_user = Depends(verify_user_token)):
