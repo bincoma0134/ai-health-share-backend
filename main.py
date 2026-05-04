@@ -679,9 +679,9 @@ def get_admin_partners(current_user = Depends(verify_user_token)):
         if user_info.data.get("role") != "SUPER_ADMIN":
             raise HTTPException(status_code=403, detail="Không có quyền truy cập!")
 
-        # 2. Lấy danh sách Partner và Partner Admin
+        # 2. Lấy danh sách Partner Admin
         res = supabase.table("users").select("id, full_name, email, avatar_url, created_at, role")\
-            .in_("role", ["PARTNER", "PARTNER_ADMIN"])\
+            .eq("role", "PARTNER_ADMIN")\
             .order("created_at", desc=True).execute()
         
         return {"status": "success", "data": res.data or []}
