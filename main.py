@@ -116,55 +116,29 @@ def get_user_profile(current_user = Depends(verify_user_token)):
 
 @app.get("/user/public/{username}", tags=["User"])
 def get_public_profile(username: str, request: Request):
-    """API QUAN TRỌNG: Lấy thông tin công khai để hiển thị profile"""
+    """API QUAN TRỌNG: Lấy thông tin siêu tốc qua RPC (Khắc phục hoàn toàn Errno 11)"""
     try:
-        # SỬA LỖI .single() GÂY CRASH VÀ TỐI ƯU TRUY VẤN THEO ROLE
-        user_res = supabase.table("users").select("*").ilike("username", username).execute()
-        if not user_res.data: raise HTTPException(status_code=404, detail="Người dùng không tồn tại!")
-        
-        user = user_res.data[0]
-        
-        # 1. Đếm số người mà user này ĐANG THEO DÕI (following_count)
-        try:
-            following_res = supabase.table("user_follows").select("id", count="exact").eq("follower_id", user["id"]).execute()
-            user["following_count"] = following_res.count or 0
-        except Exception:
-            user["following_count"] = 0
-
-        # 2. KIỂM TRA TRẠNG THÁI FOLLOW (Đọc Token thụ động)
-        user["is_followed"] = False
+        viewer_id = None
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]
             try:
                 curr_user = supabase.auth.get_user(token).user
-                if curr_user:
-                    exist = supabase.table("user_follows").select("id").eq("follower_id", curr_user.id).eq("following_id", user["id"]).execute()
-                    if exist.data: 
-                        user["is_followed"] = True
-            except Exception: 
-                pass 
+                if curr_user: viewer_id = curr_user.id
+            except Exception: pass 
+
+        # Đẩy TOÀN BỘ 6 truy vấn xuống SQL xử lý trong 1 kết nối duy nhất
+        # Xử lý xóa dấu @ ở đầu username nếu có để khớp với DB
+        clean_username = username.lstrip('@')
+        rpc_res = supabase.rpc("get_public_profile_data", {"p_username": clean_username, "p_viewer_id": viewer_id}).execute()
         
-        # 3. Lấy Video & Bài đăng (Tất cả Role đều có)
-        videos = supabase.table("tiktok_feeds").select("*").eq("author_id", user["id"]).eq("status", "APPROVED").order("created_at", desc=True).execute().data or []
-        posts = supabase.table("community_posts").select("*").eq("author_id", user["id"]).order("created_at", desc=True).execute().data or []
-        
-        # 4. TỐI ƯU: Chỉ truy vấn Dịch vụ nếu là Đối tác/Admin
-        services = []
-        if user.get("role") in ["PARTNER", "PARTNER_ADMIN", "SUPER_ADMIN"]:
-            services = supabase.table("services").select("*").eq("partner_id", user["id"]).eq("status", "APPROVED").order("created_at", desc=True).execute().data or []
-        
-        return {
-            "status": "success",
-            "data": {
-                "profile": user,
-                "videos": videos or [],   
-                "community_posts": posts or [],     
-                "services": services or [],
-                "stats": {"total_videos": len(videos or []), "total_services": len(services or [])}
-            }
-        }
-    except Exception as e: raise HTTPException(status_code=404, detail=str(e))
+        if not rpc_res.data:
+            raise HTTPException(status_code=404, detail="Người dùng không tồn tại!")
+            
+        return {"status": "success", "data": rpc_res.data}
+    except Exception as e: 
+        print(f"[ERR PROFILE API] {str(e)}") # Báo đỏ terminal nếu lỗi
+        raise HTTPException(status_code=404, detail=str(e))
 
 @app.patch("/user/profile", tags=["User"])
 def update_user_profile(payload: dict, current_user = Depends(verify_user_token)):
