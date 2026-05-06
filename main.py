@@ -146,7 +146,13 @@ def update_my_service(service_id: str, payload: dict, current_user = Depends(ver
 
 @app.delete("/partner/my-services/{service_id}", tags=["Partner"])
 def delete_my_service(service_id: str, current_user = Depends(verify_user_token)):
-    res = supabase.table("services").update({"status": "PENDING_DELETE"}).eq("id", service_id).execute()
+    # Bảo mật: Chỉ chủ sở hữu mới có quyền gửi yêu cầu xóa
+    res = supabase.table("services").update({
+        "status": "PENDING_DELETE",
+        "updated_at": datetime.now().isoformat() # Cập nhật thời điểm gửi yêu cầu
+    }).eq("id", service_id).eq("partner_id", current_user.id).execute() # Thêm check partner_id
+    
+    if not res.data: raise HTTPException(status_code=403, detail="Bạn không có quyền xóa dịch vụ này!")
     return {"status": "success", "message": "Yêu cầu xóa đã được gửi đi"}
 
 @app.get("/partner/my-tiktok-feeds", tags=["Partner"])
@@ -164,7 +170,13 @@ def update_my_video(video_id: str, payload: dict, current_user = Depends(verify_
 
 @app.delete("/partner/my-tiktok-feeds/{video_id}", tags=["Partner"])
 def delete_my_video(video_id: str, current_user = Depends(verify_user_token)):
-    res = supabase.table("tiktok_feeds").update({"status": "PENDING_DELETE"}).eq("id", video_id).execute()
+    # Bảo mật: Chỉ tác giả mới có quyền gửi yêu cầu gỡ video
+    res = supabase.table("tiktok_feeds").update({
+        "status": "PENDING_DELETE",
+        "updated_at": datetime.now().isoformat()
+    }).eq("id", video_id).eq("author_id", current_user.id).execute() # Thêm check author_id
+    
+    if not res.data: raise HTTPException(status_code=403, detail="Bạn không có quyền gỡ video này!")
     return {"status": "success", "message": "Yêu cầu gỡ video đã được gửi đi"}
 @app.get("/partner/bookings", tags=["Partner"])
 def get_partner_bookings(current_user = Depends(verify_user_token)):
@@ -421,7 +433,7 @@ def get_moderation_queue(current_user = Depends(verify_user_token)):
             v["author"] = authors.get(v.get("author_id"), {})
             combined.append(v)
             
-        combined.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+        combined.sort(key=lambda x: str(x.get("updated_at") or x.get("created_at") or ""), reverse=True)
         return {"status": "success", "data": combined}
     except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
