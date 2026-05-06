@@ -835,6 +835,18 @@ def respond_appointment(appointment_id: str, payload: schemas.PartnerResponse, c
             update_data["rejection_reason"] = payload.reason
             
         res = supabase.table("appointments").update(update_data).eq("id", appointment_id).execute()
+        
+        # --- BẮN THÔNG BÁO CHO USER ---
+        status_msg = "đã CHẤP NHẬN lịch hẹn. Vui lòng thanh toán bảo chứng." if payload.action == "ACCEPT" else f"đã TỪ CHỐI lịch hẹn. Lý do: {payload.reason}"
+        send_notification(
+            user_id=appt_res.data["user_id"],
+            sender_id=current_user.id,
+            noti_type="BOOKING",
+            title="Cập nhật Lịch hẹn",
+            message=f"Cơ sở {status_msg}",
+            metadata={"appointment_id": appointment_id, "status": update_data["status"]}
+        )
+        
         return jsonable_encoder({"status": "success", "message": "Đã phản hồi khách hàng!", "data": res.data[0]})
     except Exception as e:
         if "no_overlap" in str(e): raise HTTPException(status_code=400, detail="Khung giờ bạn ấn định đã bị trùng với lịch khác!")
@@ -914,7 +926,19 @@ def verify_appointment_payment(orderCode: int, current_user = Depends(verify_use
         supabase.table("bookings_transactions").update({"payment_status": "PAID"}).eq("id", booking["id"]).execute()
 
         # 4. Cập nhật bảng appointments -> CONFIRMED
-        supabase.table("appointments").update({"status": "CONFIRMED"}).eq("booking_id", booking["id"]).execute()
+        appt_res = supabase.table("appointments").update({"status": "CONFIRMED"}).eq("booking_id", booking["id"]).execute()
+        
+        # --- BẮN THÔNG BÁO CHO PARTNER (TIỀN VÀO ESCROW) ---
+        if appt_res.data:
+            appt = appt_res.data[0]
+            send_notification(
+                user_id=appt["partner_id"],
+                sender_id=appt["user_id"],
+                noti_type="ESCROW",
+                title="Thanh toán Bảo chứng thành công",
+                message=f"Khách hàng {appt['customer_name']} đã thanh toán {booking['total_amount']:,.0f}đ vào quỹ Escrow. Bạn có thể an tâm phục vụ.",
+                metadata={"booking_id": booking["id"], "amount": booking['total_amount']}
+            )
 
         return {"status": "success", "message": "Xác nhận thanh toán thành công!"}
     except Exception as e:
@@ -997,6 +1021,16 @@ def confirm_appointment(appointment_id: str, payload: schemas.AppointmentConfirm
             "user_confirmed": True
         }).eq("id", appointment_id).execute()
 
+        # --- BẮN THÔNG BÁO CHO PARTNER (TIỀN VỀ VÍ) ---
+        send_notification(
+            user_id=appt["partner_id"],
+            sender_id=current_user.id,
+            noti_type="ESCROW",
+            title="Đã nhận Doanh thu",
+            message=f"Khách hàng đã xác nhận hoàn thành. {partner_rev:,.0f}đ đã được chuyển vào Ví của bạn.",
+            metadata={"appointment_id": appointment_id, "revenue": partner_rev}
+        )
+
         return {"status": "success", "message": "Cảm ơn bạn! Đã giải ngân thành công cho đối tác."}
     
     except HTTPException as he:
@@ -1055,7 +1089,21 @@ async def payos_webhook(request: Request):
                 supabase.table("bookings_transactions").update({"payment_status": "PAID"}).eq("id", booking_id).execute()
                 
                 # 3. Cập nhật Lịch hẹn -> CONFIRMED
-                supabase.table("appointments").update({"status": "CONFIRMED"}).eq("booking_id", booking_id).execute()
+                appt_res = supabase.table("appointments").update({"status": "CONFIRMED"}).eq("booking_id", booking_id).execute()
+                
+                # --- BẮN THÔNG BÁO CHO PARTNER (TIỀN VÀO ESCROW QUA WEBHOOK) ---
+                if appt_res.data:
+                    appt = appt_res.data[0]
+                    booking_data = booking_res.data
+                    send_notification(
+                        user_id=appt["partner_id"],
+                        sender_id=appt["user_id"],
+                        noti_type="ESCROW",
+                        title="Thanh toán Bảo chứng thành công",
+                        message=f"Khách hàng {appt.get('customer_name', 'Khách hàng')} đã thanh toán {booking_data['total_amount']:,.0f}đ qua hệ thống cổng thanh toán. Quỹ Escrow đã ghi nhận.",
+                        metadata={"booking_id": booking_id, "amount": booking_data['total_amount']}
+                    )
+                    
                 print(f"[Webhook] Đã xác nhận thành công đơn {orderCode}")
 
         return {"success": True, "message": "Webhook received"}
@@ -1163,7 +1211,10 @@ def check_follow_status(target_id: str, current_user = Depends(verify_user_token
 def get_my_notifications(limit: int = 50, current_user = Depends(verify_user_token)):
     """Lấy danh sách thông báo của người dùng hiện tại"""
     try:
-        res = supabase.table("notifications").select("*").eq("user_id", current_user.id).order("created_at", desc=True).limit(limit).execute()
+        # Sử dụng Foreign Key để nối (Join) thông tin người gửi (sender)
+        res = supabase.table("notifications").select(
+            "*, sender:users!notifications_sender_id_fkey(full_name, username, avatar_url, role)"
+        ).eq("user_id", current_user.id).order("created_at", desc=True).limit(limit).execute()
         return {"status": "success", "data": res.data or []}
     except Exception as e: 
         raise HTTPException(status_code=500, detail=str(e))

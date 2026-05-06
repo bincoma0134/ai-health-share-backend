@@ -8,12 +8,13 @@ def send_notification(
     title: str, 
     message: str, 
     action_url: Optional[str] = None,
-    reference_id: Optional[str] = None
+    reference_id: Optional[str] = None,
+    sender_id: Optional[str] = None,
+    metadata: Optional[dict] = None
 ):
     """
     Hàm trung tâm dùng để đẩy thông báo vào Database.
-    - user_id: ID người nhận
-    - noti_type: "SYSTEM", "BOOKING", "SOCIAL", "MODERATION"
+    Đã nâng cấp: Hỗ trợ định danh người gửi (sender_id) và dữ liệu ngữ cảnh (metadata)
     """
     try:
         data = {
@@ -23,10 +24,10 @@ def send_notification(
             "message": message,
             "is_read": False
         }
-        if action_url:
-            data["action_url"] = action_url
-        if reference_id:
-            data["reference_id"] = reference_id
+        if action_url: data["action_url"] = action_url
+        if reference_id: data["reference_id"] = reference_id
+        if sender_id: data["sender_id"] = sender_id
+        if metadata: data["metadata"] = metadata
             
         # Ghi vào bảng notifications
         supabase.table("notifications").insert(data).execute()
