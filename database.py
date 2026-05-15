@@ -1,16 +1,26 @@
 import os
-from supabase import create_client, Client
 from dotenv import load_dotenv
+import psycopg2
+from psycopg2 import pool
 
-# Tải biến môi trường từ file .env (nếu chạy local)
 load_dotenv()
 
-# Lấy biến môi trường an toàn
-url: str = os.environ.get("SUPABASE_URL")
-key: str = os.environ.get("SUPABASE_SERVICE_KEY")
+DATABASE_URL = os.environ.get("NEON_DATABASE_URL")
+if not DATABASE_URL:
+    raise ValueError("Thiếu cấu hình NEON_DATABASE_URL trong file .env")
 
-if not url or not key:
-    raise ValueError("Thiếu cấu hình SUPABASE_URL hoặc SUPABASE_SERVICE_KEY")
+# Khởi tạo Connection Pooler (Chống nghẽn cổ chai)
+try:
+    db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, DATABASE_URL)
+    if db_pool:
+        print("✅ Đã kết nối thành công tới Database Neon.tech qua PgBouncer Pooler!")
+except Exception as e:
+    raise RuntimeError(f"❌ Lỗi kết nối Database: {e}")
 
-# Khởi tạo client với Service Role Key
-supabase: Client = create_client(url, key)
+def get_db_connection():
+    """Hàm cấp phát kết nối DB cho mỗi lượt Request API"""
+    conn = db_pool.getconn()
+    try:
+        yield conn
+    finally:
+        db_pool.putconn(conn)

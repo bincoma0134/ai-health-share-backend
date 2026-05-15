@@ -2,6 +2,18 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
+# --- CẤU TRÚC AUTH TỰ CHỦ (MỚI) ---
+class UserLogin(BaseModel):
+    email: str 
+    password: str
+
+class UserRegister(BaseModel):
+    email: EmailStr
+    password: str
+    username: str
+    full_name: str
+    role: str = "USER"
+
 # --- 1. CẤU TRÚC NGƯỜI DÙNG ---
 class UserCreate(BaseModel):
     email: EmailStr
