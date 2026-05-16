@@ -960,12 +960,14 @@ r2_client = boto3.client(
 )
 
 @app.post("/media/upload", tags=["Media"])
-async def upload_media(file: UploadFile = File(...), folder: str = Form("general")):
+async def upload_media(request: Request, file: UploadFile = File(...), folder: str = Form(None)):
     try:
         file_content = await file.read()
 
-        # Làm sạch chuỗi folder để tránh lỗi phân tách NoneType của botocore
-        clean_folder = str(folder).strip().strip('/') if folder else ""
+        # Quét tìm thư mục từ cả Form Data lẫn Query URL, nếu không có mới dùng 'general'
+        actual_folder = folder or request.query_params.get("folder") or "general"
+        clean_folder = str(actual_folder).strip().strip('/')
+        
         if clean_folder:
             file_key = f"{clean_folder}/{file.filename}"
         else:
