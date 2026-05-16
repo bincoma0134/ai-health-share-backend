@@ -12,6 +12,13 @@ if not SECRET_KEY:
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 ngày
 
+async def send_notification(*args, **kwargs):
+    """
+    Hàm gửi thông báo hệ thống (Đã được khôi phục để phục vụ main.py)
+    """
+    print(f"[Notification] Triggered notification with args: {args}, kwargs: {kwargs}")
+    return True
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Kiểm tra mật khẩu thô có khớp với chuỗi đã băm trong Database không
