@@ -715,6 +715,44 @@ def toggle_tiktok_interaction(video_id: str, action: str, current_user = Depends
 
  
 
+@app.get("/affiliates/validate", tags=["Affiliates"])
+def validate_affiliate(code: str, conn=Depends(get_db_connection)):
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Tạm thời query theo id hoặc username để xác thực Affiliate
+        cur.execute("SELECT id, full_name, avatar_url FROM users WHERE id = %s OR username = %s LIMIT 1", (code, code))
+        affiliate = cur.fetchone()
+        if not affiliate: 
+            raise HTTPException(status_code=404, detail="Mã giới thiệu không tồn tại")
+        return {"status": "success", "data": affiliate}
+    finally:
+        cur.close()
+
+@app.post("/appointments/request", tags=["Scheduling"])
+def request_appointment(payload: dict, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        service_id = payload.get("service_id")
+        affiliate_code = payload.get("affiliate_code")
+        notes = payload.get("notes", "")
+        
+        # Thêm mới một bản ghi giao dịch chờ xử lý (Escrow/Pending)
+        cur.execute("""
+            INSERT INTO bookings_transactions 
+            (user_id, service_id, payment_status, service_status, created_at, updated_at) 
+            VALUES (%s, %s, 'UNPAID', 'PENDING', NOW(), NOW()) 
+            RETURNING *
+        """, (current_user.id, service_id))
+        
+        new_appt = cur.fetchone()
+        conn.commit()
+        return {"status": "success", "data": new_appt}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+
 @app.patch("/appointments/{appointment_id}/respond", tags=["Scheduling"])
 def respond_appointment(appointment_id: str, payload: schemas.PartnerResponse, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
