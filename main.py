@@ -589,14 +589,59 @@ def get_admin_content(current_user = Depends(verify_user_token), conn=Depends(ge
 def get_admin_dashboard_stats(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        cur.execute("SELECT count(*) FROM users")
-        total_users = cur.fetchone()["count"]
-        cur.execute("SELECT count(*) FROM services WHERE status = 'APPROVED'")
-        total_services = cur.fetchone()["count"]
+        # 1. Tổng GMV (Dòng tiền đã thanh toán)
+        cur.execute("SELECT COALESCE(SUM(total_amount), 0) FROM bookings_transactions WHERE payment_status = 'PAID'")
+        gmv = cur.fetchone()["coalesce"]
+
+        # 2. Doanh thu nền tảng (Platform Revenue)
         cur.execute("SELECT COALESCE(SUM(platform_fee), 0) FROM bookings_transactions WHERE service_status = 'COMPLETED'")
-        total_revenue = cur.fetchone()["coalesce"]
-        return {"status": "success", "data": {"total_users": total_users, "total_services": total_services, "total_revenue": float(total_revenue)}}
-    finally: cur.close()
+        platform_revenue = cur.fetchone()["coalesce"]
+
+        # 3. Quỹ tạm giữ Escrow (Khách đã trả tiền nhưng chưa Check-in)
+        cur.execute("SELECT COALESCE(SUM(total_amount), 0) FROM bookings_transactions WHERE payment_status = 'PAID' AND service_status = 'PENDING'")
+        escrow_holding = cur.fetchone()["coalesce"]
+
+        # 4. Yêu cầu rút tiền cần duyệt
+        cur.execute("SELECT count(*) FROM withdrawal_requests WHERE status = 'PENDING'")
+        pending_withdrawals = cur.fetchone()["count"]
+
+        # 5. Phân bổ User và Partner
+        cur.execute("SELECT count(*) FROM users WHERE role = 'USER'")
+        total_users = cur.fetchone()["count"]
+        
+        cur.execute("SELECT count(*) FROM users WHERE role != 'USER'")
+        total_partners = cur.fetchone()["count"]
+
+        # 6. Biểu đồ 7 ngày qua (Dùng hàm Sinh ngày của Postgres để biểu đồ không bị đứt quãng)
+        cur.execute("""
+            WITH last_7_days AS (
+                SELECT generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, '1 day')::date AS date
+            )
+            SELECT 
+                TO_CHAR(d.date, 'DD/MM') as date,
+                COALESCE(SUM(b.total_amount) FILTER (WHERE b.payment_status = 'PAID'), 0) as "GMV",
+                COALESCE(SUM(b.platform_fee) FILTER (WHERE b.service_status = 'COMPLETED'), 0) as "Doanh thu"
+            FROM last_7_days d
+            LEFT JOIN bookings_transactions b ON DATE(b.created_at) = d.date
+            GROUP BY d.date
+            ORDER BY d.date ASC
+        """)
+        chart_data = cur.fetchall()
+
+        return {
+            "status": "success", 
+            "data": {
+                "gmv": float(gmv),
+                "platform_revenue": float(platform_revenue),
+                "escrow_holding": float(escrow_holding),
+                "pending_withdrawals": pending_withdrawals,
+                "total_users": total_users,
+                "total_partners": total_partners,
+                "chart_data": chart_data
+            }
+        }
+    finally: 
+        cur.close()
 
 @app.get("/admin/withdrawals", tags=["Admin"])
 def get_withdrawals(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
