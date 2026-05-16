@@ -217,8 +217,13 @@ def update_my_service(service_id: str, payload: dict, current_user = Depends(ver
         
         for k, v in payload.items():
             if k in allowed_cols and v is not None:
-                updates.append(f"{k} = %s")
-                values.append(v)
+                if k == "tags":
+                    # Ép kiểu cưỡng chế trực tiếp trong câu lệnh SQL sang jsonb để khớp với kiểu dữ liệu của Postgres
+                    updates.append(f"{k} = %s::jsonb")
+                    values.append(json.dumps(v))
+                else:
+                    updates.append(f"{k} = %s")
+                    values.append(v)
                 
         values.extend([service_id, current_user.id])
         cur.execute(f"UPDATE services SET {', '.join(updates)} WHERE id = %s AND partner_id = %s RETURNING *", tuple(values))
