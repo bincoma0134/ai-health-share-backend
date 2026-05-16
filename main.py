@@ -736,11 +736,11 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
         affiliate_code = payload.get("affiliate_code")
         notes = payload.get("notes", "")
         
-        # Thêm mới một bản ghi giao dịch chờ xử lý (Escrow/Pending)
+        # Thêm mới một bản ghi giao dịch chờ xử lý (Bỏ cột updated_at đi vì Database không có)
         cur.execute("""
             INSERT INTO bookings_transactions 
-            (user_id, service_id, payment_status, service_status, created_at, updated_at) 
-            VALUES (%s, %s, 'UNPAID', 'PENDING', NOW(), NOW()) 
+            (user_id, service_id, payment_status, service_status, created_at) 
+            VALUES (%s, %s, 'UNPAID', 'PENDING', NOW()) 
             RETURNING *
         """, (current_user.id, service_id))
         
