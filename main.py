@@ -963,16 +963,24 @@ r2_client = boto3.client(
 async def upload_media(file: UploadFile = File(...), folder: str = Form("general")):
     try:
         file_content = await file.read()
-        file_key = f"{folder}/{file.filename}" if folder else file.filename
+
+        # Làm sạch chuỗi folder để tránh lỗi phân tách NoneType của botocore
+        clean_folder = str(folder).strip().strip('/') if folder else ""
+        if clean_folder:
+            file_key = f"{clean_folder}/{file.filename}"
+        else:
+            file_key = file.filename
 
         r2_client.put_object(
-            Bucket=R2_BUCKET_NAME,
-            Key=file_key,
+            Bucket=str(R2_BUCKET_NAME).strip(),
+            Key=str(file_key).strip(),
             Body=file_content,
             ContentType=file.content_type
         )
 
-        public_url = f"{R2_PUBLIC_DOMAIN.rstrip('/')}/{file_key}"
+        # Chuẩn hóa URL trả về sạch sẽ
+        base_domain = str(R2_PUBLIC_DOMAIN).strip().rstrip('/')
+        public_url = f"{base_domain}/{file_key}"
         return {"status": "success", "url": public_url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi R2: {str(e)}")
