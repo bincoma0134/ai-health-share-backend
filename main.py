@@ -13,8 +13,9 @@ import random
 import os
 import json
 from datetime import datetime
-from fastapi import UploadFile, File 
+from fastapi import UploadFile, File, Form
 from groq import Groq
+import boto3
 
 # --- CẤU HÌNH CỔNG THANH TOÁN PAYOS ---
 from payos import PayOS
@@ -941,3 +942,37 @@ def mark_all_notifications_read(current_user = Depends(verify_user_token), conn=
         conn.commit()
         return {"status": "success"}
     finally: cur.close()
+
+# ==========================================
+# 16. CLOUDFLARE R2 MEDIA UPLOAD
+# ==========================================
+R2_ENDPOINT_URL = os.environ.get("R2_ENDPOINT_URL")
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY")
+R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME")
+R2_PUBLIC_DOMAIN = os.environ.get("R2_PUBLIC_DOMAIN")
+
+r2_client = boto3.client(
+    "s3",
+    endpoint_url=R2_ENDPOINT_URL,
+    aws_access_key_id=R2_ACCESS_KEY_ID,
+    aws_secret_access_key=R2_SECRET_ACCESS_KEY
+)
+
+@app.post("/media/upload", tags=["Media"])
+async def upload_media(file: UploadFile = File(...), folder: str = Form("general")):
+    try:
+        file_content = await file.read()
+        file_key = f"{folder}/{file.filename}" if folder else file.filename
+
+        r2_client.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=file_key,
+            Body=file_content,
+            ContentType=file.content_type
+        )
+
+        public_url = f"{R2_PUBLIC_DOMAIN.rstrip('/')}/{file_key}"
+        return {"status": "success", "url": public_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi R2: {str(e)}")
