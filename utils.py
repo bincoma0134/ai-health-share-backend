@@ -1,53 +1,56 @@
 import os
-import json
 from datetime import datetime, timedelta
 from typing import Optional
-from passlib.context import CryptContext
+import bcrypt
 from jose import JWTError, jwt
 
-# CẤU HÌNH JWT BẢO MẬT
-SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "fallback_secret_key")
-ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30 # 30 Ngày
+# Cấu hình JWT từ biến môi trường
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("Thiếu cấu hình JWT_SECRET_KEY trong file .env")
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 ngày
 
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-def send_notification(
-    conn, # Bắt buộc truyền connection database
-    user_id: str, 
-    noti_type: str, 
-    title: str, 
-    message: str, 
-    action_url: Optional[str] = None,
-    reference_id: Optional[str] = None,
-    sender_id: Optional[str] = None,
-    metadata: Optional[dict] = None
-):
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Kiểm tra mật khẩu thô có khớp với chuỗi đã băm trong Database không
+    """
     try:
-        cur = conn.cursor()
-        meta_json = json.dumps(metadata) if metadata else "{}"
-        query = """
-            INSERT INTO public.notifications 
-            (user_id, type, title, message, is_read, action_url, reference_id, sender_id, metadata)
-            VALUES (%s, %s, %s, %s, False, %s, %s, %s, %s)
-        """
-        cur.execute(query, (user_id, noti_type, title, message, action_url, reference_id, sender_id, meta_json))
-        conn.commit()
-        cur.close()
-        return True
-    except Exception as e:
-        print(f"[Notifier Error]: {str(e)}")
-        conn.rollback()
+        return bcrypt.checkpw(
+            plain_password.encode('utf-8'), 
+            hashed_password.encode('utf-8')
+        )
+    except Exception:
         return False
+
+def get_password_hash(password: str) -> str:
+    """
+    Băm mật khẩu nguyên bản sang chuỗi bảo mật để lưu vào Database
+    """
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    """
+    Tạo JSON Web Token (JWT) cho phiên đăng nhập
+    """
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def decode_access_token(token: str):
+    """
+    Giải mã và kiểm tra tính hợp lệ của JWT
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except JWTError:
+        return None
