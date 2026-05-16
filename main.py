@@ -728,6 +728,26 @@ def validate_affiliate(code: str, conn=Depends(get_db_connection)):
     finally:
         cur.close()
 
+@app.get("/appointments/me", tags=["Scheduling"])
+def get_my_appointments(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Nối bảng appointments với bookings_transactions và services để lấy đủ các trường hiển thị trên giao diện công khai
+        query = """
+            SELECT a.*, 
+                   b.total_amount, b.customer_name, b.customer_phone, b.note, b.video_id,
+                   json_build_object('service_name', s.service_name) as services
+            FROM appointments a
+            LEFT JOIN bookings_transactions b ON a.booking_id = b.id
+            LEFT JOIN services s ON a.service_id = s.id
+            WHERE a.partner_id = %s OR a.user_id = %s
+            ORDER BY a.created_at DESC
+        """
+        cur.execute(query, (current_user.id, current_user.id))
+        return {"status": "success", "data": cur.fetchall()}
+    finally:
+        cur.close()
+
 @app.post("/appointments/request", tags=["Scheduling"])
 def request_appointment(payload: dict, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
