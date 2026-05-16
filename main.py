@@ -744,13 +744,13 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
         
         price = svc["price"] or 0
         
-        # 2. Thêm mới bản ghi giao dịch, điền đầy đủ giá tiền vào hóa đơn (amount, total_amount)
+        # 2. Thêm mới bản ghi giao dịch, ĐÚNG THEO CẤU TRÚC: chỉ ghi vào cột total_amount
         cur.execute("""
             INSERT INTO bookings_transactions 
-            (user_id, service_id, payment_status, service_status, created_at, amount, total_amount) 
-            VALUES (%s, %s, 'UNPAID', 'PENDING', NOW(), %s, %s) 
+            (user_id, service_id, payment_status, service_status, created_at, total_amount) 
+            VALUES (%s, %s, 'UNPAID', 'PENDING', NOW(), %s) 
             RETURNING *
-        """, (current_user.id, service_id, price, price))
+        """, (current_user.id, service_id, price))
         
         new_appt = cur.fetchone()
         conn.commit()
