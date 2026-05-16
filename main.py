@@ -732,14 +732,13 @@ def validate_affiliate(code: str, conn=Depends(get_db_connection)):
 def get_my_appointments(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        # Nối bảng appointments với bookings_transactions và services để lấy đủ các trường hiển thị trên giao diện công khai
         query = """
             SELECT a.*, 
-                   b.total_amount, b.customer_name, b.customer_phone, b.note, b.video_id,
-                   json_build_object('service_name', s.service_name) as services
+                   json_build_object('service_name', s.service_name) as services,
+                   json_build_object('full_name', u.full_name, 'phone', u.phone) as users
             FROM appointments a
-            LEFT JOIN bookings_transactions b ON a.booking_id = b.id
             LEFT JOIN services s ON a.service_id = s.id
+            LEFT JOIN users u ON a.user_id = u.id
             WHERE a.partner_id = %s OR a.user_id = %s
             ORDER BY a.created_at DESC
         """
@@ -755,30 +754,17 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
         service_id = payload.get("service_id")
         partner_id = payload.get("partner_id")
         video_id = payload.get("video_id")
-        affiliate_code = payload.get("affiliate_code")
         total_amount = payload.get("total_amount", 0)
         customer_name = payload.get("customer_name", "")
         customer_phone = payload.get("customer_phone", "")
         note = payload.get("note", "")
 
-        # 1. BƯỚC 1 CỦA LUỒNG: Tạo Transaction (Hóa đơn lưu vết Escrow)
-        cur.execute("""
-            INSERT INTO bookings_transactions 
-            (user_id, service_id, video_id, total_amount, payment_status, service_status, created_at, customer_name, customer_phone, note) 
-            VALUES (%s, %s, %s, %s, 'UNPAID', 'PENDING', NOW(), %s, %s, %s) 
-            RETURNING id
-        """, (current_user.id, service_id, video_id, total_amount, customer_name, customer_phone, note))
-        
-        booking_id = cur.fetchone()["id"]
-        
-        # 2. BƯỚC 2 CỦA LUỒNG: Tạo Appointment (Lịch hẹn để hiển thị lên Dashboard của Partner)
-        # Trạng thái đặt ban đầu là 'PENDING' để đồng bộ hóa hoàn toàn với luồng cũ và cấu trúc hiển thị cũ của cậu
         cur.execute("""
             INSERT INTO appointments 
-            (booking_id, user_id, partner_id, service_id, status, created_at) 
-            VALUES (%s, %s, %s, %s, 'PENDING', NOW()) 
+            (user_id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, status, created_at) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WAITING_PARTNER', NOW()) 
             RETURNING *
-        """, (booking_id, current_user.id, partner_id, service_id))
+        """, (current_user.id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note))
         
         new_appt = cur.fetchone()
         conn.commit()
