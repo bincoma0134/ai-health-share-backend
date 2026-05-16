@@ -733,28 +733,36 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         service_id = payload.get("service_id")
+        partner_id = payload.get("partner_id")
+        video_id = payload.get("video_id")
         affiliate_code = payload.get("affiliate_code")
-        notes = payload.get("notes", "")
-        
-        # 1. Quét DB để lấy giá tiền thực tế của Dịch vụ
-        cur.execute("SELECT price FROM services WHERE id = %s", (service_id,))
-        svc = cur.fetchone()
-        if not svc:
-            raise HTTPException(status_code=404, detail="Không tìm thấy dịch vụ")
-        
-        price = svc["price"] or 0
-        
-        # 2. Thêm mới bản ghi giao dịch, ĐÚNG THEO CẤU TRÚC: chỉ ghi vào cột total_amount
+        total_amount = payload.get("total_amount", 0)
+        customer_name = payload.get("customer_name", "")
+        customer_phone = payload.get("customer_phone", "")
+        note = payload.get("note", "")
+
+        # 1. BƯỚC 1 CỦA LUỒNG: Tạo Transaction (Hóa đơn lưu vết Escrow)
         cur.execute("""
             INSERT INTO bookings_transactions 
-            (user_id, service_id, payment_status, service_status, created_at, total_amount) 
-            VALUES (%s, %s, 'UNPAID', 'PENDING', NOW(), %s) 
+            (user_id, service_id, video_id, total_amount, payment_status, service_status, created_at, customer_name, customer_phone, note) 
+            VALUES (%s, %s, %s, %s, 'UNPAID', 'PENDING', NOW(), %s, %s, %s) 
+            RETURNING id
+        """, (current_user.id, service_id, video_id, total_amount, customer_name, customer_phone, note))
+        
+        booking_id = cur.fetchone()["id"]
+        
+        # 2. BƯỚC 2 CỦA LUỒNG: Tạo Appointment (Lịch hẹn để hiển thị lên Dashboard của Partner)
+        # Trạng thái đặt ban đầu là 'PENDING' để đồng bộ hóa hoàn toàn với luồng cũ và cấu trúc hiển thị cũ của cậu
+        cur.execute("""
+            INSERT INTO appointments 
+            (booking_id, user_id, partner_id, service_id, status, created_at) 
+            VALUES (%s, %s, %s, %s, 'PENDING', NOW()) 
             RETURNING *
-        """, (current_user.id, service_id, price))
+        """, (booking_id, current_user.id, partner_id, service_id))
         
         new_appt = cur.fetchone()
         conn.commit()
-        return {"status": "success", "data": new_appt}
+        return {"status": "success", "message": "Yêu cầu đã được gửi! Vui lòng theo dõi tại tab 'Lịch hẹn'.", "data": new_appt}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
