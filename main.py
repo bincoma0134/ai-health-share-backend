@@ -736,13 +736,21 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
         affiliate_code = payload.get("affiliate_code")
         notes = payload.get("notes", "")
         
-        # Thêm mới một bản ghi giao dịch chờ xử lý (Bỏ cột updated_at đi vì Database không có)
+        # 1. Quét DB để lấy giá tiền thực tế của Dịch vụ
+        cur.execute("SELECT price FROM services WHERE id = %s", (service_id,))
+        svc = cur.fetchone()
+        if not svc:
+            raise HTTPException(status_code=404, detail="Không tìm thấy dịch vụ")
+        
+        price = svc["price"] or 0
+        
+        # 2. Thêm mới bản ghi giao dịch, điền đầy đủ giá tiền vào hóa đơn (amount, total_amount)
         cur.execute("""
             INSERT INTO bookings_transactions 
-            (user_id, service_id, payment_status, service_status, created_at) 
-            VALUES (%s, %s, 'UNPAID', 'PENDING', NOW()) 
+            (user_id, service_id, payment_status, service_status, created_at, amount, total_amount) 
+            VALUES (%s, %s, 'UNPAID', 'PENDING', NOW(), %s, %s) 
             RETURNING *
-        """, (current_user.id, service_id))
+        """, (current_user.id, service_id, price, price))
         
         new_appt = cur.fetchone()
         conn.commit()
