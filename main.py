@@ -211,11 +211,15 @@ def get_my_services(current_user = Depends(verify_user_token), conn=Depends(get_
 def update_my_service(service_id: str, payload: dict, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
+        # Bộ lọc chỉ cho phép các cột thực tế của bảng services được cập nhật
+        allowed_cols = {"service_name", "description", "price", "image_url", "video_url", "tags", "service_type"}
         updates, values = ["status = 'PENDING'"], []
+        
         for k, v in payload.items():
-            if v is not None:
+            if k in allowed_cols and v is not None:
                 updates.append(f"{k} = %s")
                 values.append(v)
+                
         values.extend([service_id, current_user.id])
         cur.execute(f"UPDATE services SET {', '.join(updates)} WHERE id = %s AND partner_id = %s RETURNING *", tuple(values))
         updated = cur.fetchone()
@@ -245,11 +249,15 @@ def get_my_videos(current_user = Depends(verify_user_token), conn=Depends(get_db
 def update_my_video(video_id: str, payload: dict, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
+        # Bộ lọc chỉ cho phép các cột thực tế của bảng tiktok_feeds được cập nhật
+        allowed_cols = {"title", "content", "video_url", "price"}
         updates, values = ["status = 'PENDING'"], []
+        
         for k, v in payload.items():
-            if v is not None:
+            if k in allowed_cols and v is not None:
                 updates.append(f"{k} = %s")
                 values.append(v)
+                
         values.extend([video_id, current_user.id])
         cur.execute(f"UPDATE tiktok_feeds SET {', '.join(updates)} WHERE id = %s AND author_id = %s RETURNING *", tuple(values))
         updated = cur.fetchone()
