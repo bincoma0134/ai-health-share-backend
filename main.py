@@ -808,7 +808,7 @@ def respond_appointment(appointment_id: str, payload: schemas.PartnerResponse, c
     finally: cur.close()
 
 @app.post("/appointments/{appointment_id}/pay", tags=["Scheduling"])
-def create_appointment_payment(appointment_id: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+def create_appointment_payment(appointment_id: str, request: Request, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         cur.execute("SELECT * FROM appointments WHERE id = %s", (appointment_id,))
@@ -824,7 +824,20 @@ def create_appointment_payment(appointment_id: str, current_user = Depends(verif
         cur.execute("UPDATE appointments SET booking_id = %s WHERE id = %s", (booking_id, appointment_id))
         conn.commit()
 
-        payment_data = PaymentData(orderCode=order_code, amount=int(appt.get("total_amount", 0)), description=f"Lich {order_code}", returnUrl="http://localhost:3000/features/calendar", cancelUrl="http://localhost:3000/features/calendar")
+        # Nhận diện động Origin từ Frontend để chuyển hướng linh hoạt giữa Local và Production Vercel
+        frontend_origin = request.headers.get("origin", "https://ai-health-share-frontend.vercel.app").rstrip('/')
+        if "localhost" in frontend_origin or "127.0.0.1" in frontend_origin:
+            target_url = f"{frontend_origin}/features/calendar"
+        else:
+            target_url = "https://ai-health-share-frontend.vercel.app/features/calendar"
+
+        payment_data = PaymentData(
+            orderCode=order_code, 
+            amount=int(appt.get("total_amount", 0)), 
+            description=f"Lich {order_code}", 
+            returnUrl=target_url, 
+            cancelUrl=target_url
+        )
         return {"status": "success", "checkout_url": payos_client.createPaymentLink(paymentData=payment_data).checkoutUrl}
     except Exception as e: 
         conn.rollback()
