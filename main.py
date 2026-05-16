@@ -435,13 +435,13 @@ def get_moderation_queue(current_user = Depends(verify_user_token), conn=Depends
         
         cur.execute("""
             SELECT s.*, 'service' as type, s.service_name as title, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url) as author
-            FROM services s LEFT JOIN users u ON s.partner_id = u.id WHERE s.status IN ('PENDING', 'PENDING_DELETE', 'PENDING_UPDATE')
+            FROM services s LEFT JOIN users u ON s.partner_id = u.id WHERE s.status::text IN ('PENDING', 'PENDING_DELETE', 'PENDING_UPDATE')
         """)
         s_data = cur.fetchall()
         
         cur.execute("""
-            SELECT v.*, 'video' as type, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url) as author
-            FROM tiktok_feeds v LEFT JOIN users u ON v.author_id = u.id WHERE v.status IN ('PENDING', 'PENDING_DELETE', 'PENDING_UPDATE')
+            SELECT v.*, 'video' as type, v.title as title, v.content as description, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url) as author
+            FROM tiktok_feeds v LEFT JOIN users u ON v.author_id = u.id WHERE v.status::text IN ('PENDING', 'PENDING_DELETE', 'PENDING_UPDATE')
         """)
         v_data = cur.fetchall()
         
@@ -470,13 +470,13 @@ def get_moderation_history(current_user = Depends(verify_user_token), conn=Depen
     try:
         cur.execute("""
             SELECT s.*, 'service' as type, s.service_name as title, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url) as author
-            FROM services s LEFT JOIN users u ON s.partner_id = u.id WHERE s.status IN ('APPROVED', 'REJECTED', 'DELETED') AND (s.moderated_by = %s OR s.moderated_by IS NULL)
+            FROM services s LEFT JOIN users u ON s.partner_id = u.id WHERE s.status::text IN ('APPROVED', 'REJECTED', 'DELETED') AND (s.moderated_by = %s OR s.moderated_by IS NULL)
         """, (current_user.id,))
         s_data = cur.fetchall()
         
         cur.execute("""
-            SELECT v.*, 'video' as type, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url) as author
-            FROM tiktok_feeds v LEFT JOIN users u ON v.author_id = u.id WHERE v.status IN ('APPROVED', 'REJECTED', 'DELETED') AND (v.moderated_by = %s OR v.moderated_by IS NULL)
+            SELECT v.*, 'video' as type, v.title as title, v.content as description, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url) as author
+            FROM tiktok_feeds v LEFT JOIN users u ON v.author_id = u.id WHERE v.status::text IN ('APPROVED', 'REJECTED', 'DELETED') AND (v.moderated_by = %s OR v.moderated_by IS NULL)
         """, (current_user.id,))
         v_data = cur.fetchall()
         
@@ -964,14 +964,25 @@ async def upload_media(request: Request, file: UploadFile = File(...), folder: s
     try:
         file_content = await file.read()
 
-        # Quét tìm thư mục từ cả Form Data lẫn Query URL, nếu không có mới dùng 'general'
-        actual_folder = folder or request.query_params.get("folder") or "general"
-        clean_folder = str(actual_folder).strip().strip('/')
+        # 1. Đọc thư mục từ Request (Form Data hoặc URL)
+        actual_folder = folder or request.query_params.get("folder")
         
-        if clean_folder:
-            file_key = f"{clean_folder}/{file.filename}"
-        else:
-            file_key = file.filename
+        # 2. Safety Net: Tự động phân loại nếu Front-End không truyền
+        if not actual_folder or actual_folder == "general":
+            f_lower = file.filename.lower()
+            c_type = file.content_type.lower() if file.content_type else ""
+            
+            if c_type.startswith("video/") or f_lower.endswith(('.mp4', '.mov')):
+                actual_folder = "tiktok_feeds/videos" if "feed" in f_lower or "tiktok" in f_lower else "services/videos"
+            elif c_type.startswith("image/") or f_lower.endswith(('.jpg', '.png', '.webp')):
+                if "avatar" in f_lower or "profile" in f_lower: actual_folder = "users/avatars"
+                elif "cover" in f_lower: actual_folder = "users/covers"
+                else: actual_folder = "services/images"
+            else:
+                actual_folder = "general"
+
+        clean_folder = str(actual_folder).strip().strip('/')
+        file_key = f"{clean_folder}/{file.filename}" if clean_folder else file.filename
 
         r2_client.put_object(
             Bucket=str(R2_BUCKET_NAME).strip(),
