@@ -113,6 +113,49 @@ def get_services(user_id: str = None, conn=Depends(get_db_connection)):
         return {"status": "success", "data": services}
     finally: cur.close()
 
+@app.get("/map/partners", tags=["Map Explore"])
+def get_map_partners(conn=Depends(get_db_connection)):
+    """
+    API phục vụ phân hệ Bản đồ khám phá (Map Explore).
+    Tự động kết hợp dữ liệu Tọa độ Đối tác, gắn nhãn (tags) ngẫu nhiên dựa trên tên và đóng gói mảng Dịch vụ đi kèm.
+    """
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Sử dụng Subquery kết hợp COALESCE và json_agg để đóng gói mảng services native từ DB
+        query = """
+            SELECT 
+                u.id, 
+                u.username, 
+                u.full_name, 
+                COALESCE(u.avatar_url, 'https://ui-avatars.com/api/?name=' || u.username || '&background=80BF84&color=fff') as avatar_url,
+                COALESCE(u.latitude, 21.028511) as latitude, 
+                COALESCE(u.longitude, 105.804817) as longitude,
+                ROUND((RANDOM() * 5.5 + 1.2)::numeric, 1) as distance,
+                CASE 
+                    WHEN u.username ILIKE '%spa%' OR u.full_name ILIKE '%Spa%' THEN json_build_array('Spa & Clinic', 'Chăm sóc da')
+                    WHEN u.username ILIKE '%lab%' OR u.full_name ILIKE '%Lab%' THEN json_build_array('Xét nghiệm', 'Chẩn đoán')
+                    ELSE json_build_array('Trị liệu Đông Y', 'Phục hồi chức năng')
+                END as tags,
+                COALESCE(
+                    (
+                        SELECT json_agg(json_build_object('id', s.id, 'service_name', s.service_name, 'price', s.price))
+                        FROM services s
+                        WHERE s.partner_id = u.id AND s.status = 'APPROVED'
+                    ),
+                    '[]'::json
+                ) as services
+            FROM users u
+            WHERE u.role = 'PARTNER_ADMIN'
+            ORDER BY u.created_at DESC
+        """
+        cur.execute(query)
+        partners_data = cur.fetchall()
+        return {"status": "success", "data": partners_data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi truy vấn dữ liệu bản đồ: {str(e)}")
+    finally:
+        cur.close()
+
 @app.post("/services", tags=["Services"])
 def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
