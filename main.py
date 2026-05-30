@@ -215,9 +215,12 @@ def get_public_profile(username: str, request: Request, conn=Depends(get_db_conn
         cur.execute("SELECT * FROM tiktok_feeds WHERE author_id = %s AND status = 'APPROVED' ORDER BY created_at DESC", (target_id,))
         videos = cur.fetchall()
         
+        cur.execute("SELECT * FROM community_posts WHERE author_id = %s ORDER BY created_at DESC", (target_id,))
+        posts = cur.fetchall()
+        
         data = {
-            "profile": user, "is_followed": is_followed, "services": services, "videos": videos,
-            "stats": {"followers_count": user.get("followers_count", 0), "services_count": len(services), "videos_count": len(videos)}
+            "profile": user, "is_followed": is_followed, "services": services, "videos": videos, "posts": posts,
+            "stats": {"followers_count": user.get("followers_count", 0), "services_count": len(services), "videos_count": len(videos), "posts_count": len(posts)}
         }
         return {"status": "success", "data": data}
     finally: cur.close()
@@ -902,30 +905,67 @@ def create_appointment_payment(appointment_id: str, request: Request, current_us
         cur.execute("SELECT * FROM appointments WHERE id = %s", (appointment_id,))
         appt = cur.fetchone()
         if appt["status"] != "PENDING_PAYMENT": raise HTTPException(status_code=400, detail="Không ở trạng thái chờ thanh toán!")
+        
+        original_amount = float(appt.get("total_amount", 0))
+        partner_id = appt.get("partner_id")
+        
+        # 1. Nhả mã bị kẹt quá 10 phút trước
+        cur.execute("UPDATE user_vouchers SET status = 'UNUSED', locked_until = NULL WHERE status = 'LOCKED' AND locked_until < NOW()")
+        
+        # 2. Tìm mã tốt nhất trong ví
+        cur.execute("""
+            SELECT uv.id as user_voucher_id, v.id as voucher_id, v.issuer_type, v.discount_type, 
+                   v.discount_value, v.max_discount_amount
+            FROM user_vouchers uv JOIN vouchers v ON uv.voucher_id = v.id
+            WHERE uv.user_id = %s AND uv.status = 'UNUSED' AND v.valid_until > NOW()
+              AND v.min_order_value <= %s AND (v.issuer_type = 'ADMIN' OR (v.issuer_type = 'PARTNER' AND v.issuer_id = %s))
+        """, (current_user.id, original_amount, partner_id))
+        
+        best_voucher = None
+        max_discount = 0.0
+        
+        for v in cur.fetchall():
+            discount = float(v["discount_value"])
+            if v["discount_type"] == 'PERCENTAGE':
+                discount = (discount / 100) * original_amount
+                if v["max_discount_amount"] and discount > float(v["max_discount_amount"]):
+                    discount = float(v["max_discount_amount"])
+            if discount > max_discount:
+                max_discount = discount
+                best_voucher = v
+                
+        final_amount = original_amount - max_discount
+        if final_amount < 10000: final_amount = 10000 # Ràng buộc PayOS tối thiểu 10k
             
         order_code = int(time.time() * 1000) % 1000000000 + random.randint(100, 999)
-        cur.execute("""INSERT INTO bookings_transactions (user_id, service_id, video_id, total_amount, payment_status, service_status, order_code, customer_name, customer_phone, note)
-                       VALUES (%s, %s, %s, %s, 'UNPAID', 'PENDING', %s, %s, %s, %s) RETURNING id""",
-                    (current_user.id, appt.get("service_id"), appt.get("video_id"), appt.get("total_amount", 0), order_code, appt.get("customer_name"), appt.get("customer_phone"), appt.get("note")))
+        
+        # 3. Insert kèm 4 trường kế toán
+        applied_v_id = best_voucher["voucher_id"] if best_voucher else None
+        funded_by = best_voucher["issuer_type"] if best_voucher else None
+        
+        cur.execute("""INSERT INTO bookings_transactions 
+                       (user_id, service_id, video_id, total_amount, payment_status, service_status, order_code, 
+                        customer_name, customer_phone, note, applied_voucher_id, voucher_discount_amount, discount_funded_by, final_paid_amount)
+                       VALUES (%s, %s, %s, %s, 'UNPAID', 'PENDING', %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                    (current_user.id, appt.get("service_id"), appt.get("video_id"), original_amount, order_code, 
+                     appt.get("customer_name"), appt.get("customer_phone"), appt.get("note"), 
+                     applied_v_id, max_discount, funded_by, final_amount))
         booking_id = cur.fetchone()["id"]
         
         cur.execute("UPDATE appointments SET booking_id = %s WHERE id = %s", (booking_id, appointment_id))
+        
+        # 4. Khóa mã 10 phút
+        if best_voucher:
+            from datetime import timedelta
+            lock_time = datetime.now() + timedelta(minutes=10)
+            cur.execute("UPDATE user_vouchers SET status = 'LOCKED', locked_until = %s WHERE id = %s", (lock_time, best_voucher["user_voucher_id"]))
+            
         conn.commit()
 
-        # Nhận diện động Origin từ Frontend để chuyển hướng linh hoạt giữa Local và Production Vercel
         frontend_origin = request.headers.get("origin", "https://ai-health-share-frontend.vercel.app").rstrip('/')
-        if "localhost" in frontend_origin or "127.0.0.1" in frontend_origin:
-            target_url = f"{frontend_origin}/features/calendar"
-        else:
-            target_url = "https://ai-health-share-frontend.vercel.app/features/calendar"
+        target_url = f"{frontend_origin}/features/calendar" if "localhost" in frontend_origin or "127.0.0.1" in frontend_origin else "https://ai-health-share-frontend.vercel.app/features/calendar"
 
-        payment_data = PaymentData(
-            orderCode=order_code, 
-            amount=int(appt.get("total_amount", 0)), 
-            description=f"Lich {order_code}", 
-            returnUrl=target_url, 
-            cancelUrl=target_url
-        )
+        payment_data = PaymentData(orderCode=order_code, amount=int(final_amount), description=f"Lich {order_code}", returnUrl=target_url, cancelUrl=target_url)
         return {"status": "success", "checkout_url": payos_client.createPaymentLink(paymentData=payment_data).checkoutUrl}
     except Exception as e: 
         conn.rollback()
@@ -945,6 +985,12 @@ def verify_appointment_payment(orderCode: int, current_user = Depends(verify_use
         if booking["payment_status"] == "PAID": return {"status": "success", "message": "Đã xác nhận"}
 
         cur.execute("UPDATE bookings_transactions SET payment_status = 'PAID' WHERE id = %s", (booking["id"],))
+        
+        # LOGIC VOUCHER: Đổi sang USED và tăng biến đếm
+        if booking.get("applied_voucher_id"):
+            cur.execute("UPDATE user_vouchers SET status = 'USED' WHERE user_id = %s AND voucher_id = %s AND status = 'LOCKED'", (booking["user_id"], booking["applied_voucher_id"]))
+            cur.execute("UPDATE vouchers SET used_quantity = used_quantity + 1 WHERE id = %s", (booking["applied_voucher_id"],))
+
         cur.execute("UPDATE appointments SET status = 'CONFIRMED' WHERE booking_id = %s RETURNING partner_id, customer_name, user_id", (booking["id"],))
         appt = cur.fetchone()
         
@@ -988,11 +1034,17 @@ def confirm_appointment(appointment_id: str, payload: schemas.AppointmentConfirm
             cur.execute("SELECT * FROM bookings_transactions WHERE id = %s", (booking_id,))
             booking = cur.fetchone()
             if booking and booking["payment_status"] == "PAID" and booking["service_status"] != "COMPLETED":
-                total = float(booking["total_amount"])
-                partner_rev = total * 0.70
-                platform_fee = total * 0.20
-                affiliate_rev = total * 0.10 if booking.get("affiliate_id") else 0
-                if not booking.get("affiliate_id"): platform_fee += total * 0.10
+                original_total = float(booking["total_amount"])
+                discount_amount = float(booking.get("voucher_discount_amount") or 0)
+                funded_by = booking.get("discount_funded_by")
+                
+                # Xác định doanh thu thực tế để tính phế (Ai tạo mã người nấy chịu)
+                revenue_base = original_total - discount_amount if funded_by == 'PARTNER' else original_total
+
+                partner_rev = revenue_base * 0.70
+                platform_fee = revenue_base * 0.20
+                affiliate_rev = revenue_base * 0.10 if booking.get("affiliate_id") else 0
+                if not booking.get("affiliate_id"): platform_fee += revenue_base * 0.10
 
                 cur.execute("UPDATE bookings_transactions SET service_status = 'COMPLETED', partner_revenue = %s, platform_fee = %s, affiliate_revenue = %s WHERE id = %s", 
                             (partner_rev, platform_fee, affiliate_rev, booking_id))
@@ -1028,6 +1080,67 @@ def cancel_appointment(appointment_id: str, current_user = Depends(verify_user_t
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    finally: cur.close()
+
+# ==========================================
+# 11. VOUCHER & KHUYẾN MÃI
+# ==========================================
+@app.post("/vouchers", tags=["Vouchers"])
+def create_voucher(payload: schemas.VoucherCreate, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        issuer_type = "ADMIN" if current_user.role == "SUPER_ADMIN" else "PARTNER"
+        status = "APPROVED" if issuer_type == "ADMIN" else "PENDING"
+        
+        cur.execute("""
+            INSERT INTO vouchers (code, issuer_type, issuer_id, discount_type, discount_value, max_discount_amount, 
+                                  min_order_value, applicable_services, total_quantity, valid_from, valid_until, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::uuid[], %s, %s, %s, %s) RETURNING *
+        """, (payload.code, issuer_type, current_user.id if issuer_type == "PARTNER" else None, 
+              payload.discount_type, payload.discount_value, payload.max_discount_amount, payload.min_order_value, 
+              payload.applicable_services, payload.total_quantity, payload.valid_from, payload.valid_until, status))
+        new_voucher = cur.fetchone()
+        conn.commit()
+        return {"status": "success", "data": new_voucher}
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail="Mã code này đã tồn tại trên hệ thống!")
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally: cur.close()
+
+@app.post("/vouchers/{voucher_code}/claim", tags=["Vouchers"])
+def claim_voucher(voucher_code: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT id, total_quantity, used_quantity, valid_until, status FROM vouchers WHERE code = %s", (voucher_code,))
+        voucher = cur.fetchone()
+        if not voucher or voucher['status'] != 'APPROVED': raise HTTPException(status_code=400, detail="Mã không tồn tại hoặc chưa duyệt.")
+        if voucher['used_quantity'] >= voucher['total_quantity']: raise HTTPException(status_code=400, detail="Mã này đã hết lượt dùng.")
+        if voucher['valid_until'] < datetime.now(): raise HTTPException(status_code=400, detail="Mã này đã hết hạn.")
+            
+        cur.execute("INSERT INTO user_vouchers (user_id, voucher_id) VALUES (%s, %s) RETURNING id", (current_user.id, voucher['id']))
+        conn.commit()
+        return {"status": "success", "message": "Đã lưu Voucher vào ví!"}
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail="Bạn đã có mã này trong ví rồi!")
+    finally: cur.close()
+
+@app.get("/vouchers/me", tags=["Vouchers"])
+def get_my_vouchers(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Giải phóng mã bị kẹt quá 10 phút trước khi query
+        cur.execute("UPDATE user_vouchers SET status = 'UNUSED', locked_until = NULL WHERE status = 'LOCKED' AND locked_until < NOW()")
+        conn.commit()
+        
+        cur.execute("""
+            SELECT uv.id as user_voucher_id, uv.status as wallet_status, v.* FROM user_vouchers uv JOIN vouchers v ON uv.voucher_id = v.id 
+            WHERE uv.user_id = %s ORDER BY v.valid_until ASC
+        """, (current_user.id,))
+        return {"status": "success", "data": cur.fetchall()}
     finally: cur.close()
 
 # ==========================================
@@ -1134,21 +1247,21 @@ r2_client = boto3.client(
 )
 
 @app.post("/media/upload", tags=["Media"])
-async def upload_media(request: Request, file: UploadFile = File(...), folder: str = Form(None)):
+async def upload_media(request: Request, file: UploadFile = File(...), folder: str = Form(default="")):
     try:
         file_content = await file.read()
 
-        # 1. Đọc thư mục từ Request (Form Data hoặc URL)
+        # 1. Đọc thư mục từ Request
         actual_folder = folder or request.query_params.get("folder")
         
         # 2. Safety Net: Tự động phân loại nếu Front-End không truyền
         if not actual_folder or actual_folder == "general":
-            f_lower = file.filename.lower()
-            c_type = file.content_type.lower() if file.content_type else ""
+            f_lower = str(file.filename or "").lower()
+            c_type = str(file.content_type or "").lower()
             
             if c_type.startswith("video/") or f_lower.endswith(('.mp4', '.mov')):
                 actual_folder = "tiktok_feeds/videos" if "feed" in f_lower or "tiktok" in f_lower else "services/videos"
-            elif c_type.startswith("image/") or f_lower.endswith(('.jpg', '.png', '.webp')):
+            elif c_type.startswith("image/") or f_lower.endswith(('.jpg', '.jpeg', '.png', '.webp')):
                 if "avatar" in f_lower or "profile" in f_lower: actual_folder = "users/avatars"
                 elif "cover" in f_lower: actual_folder = "users/covers"
                 else: actual_folder = "services/images"
@@ -1156,18 +1269,167 @@ async def upload_media(request: Request, file: UploadFile = File(...), folder: s
                 actual_folder = "general"
 
         clean_folder = str(actual_folder).strip().strip('/')
-        file_key = f"{clean_folder}/{file.filename}" if clean_folder else file.filename
+        
+        # 3. VÁ LỖ HỔNG KÝ TỰ TỪ MOBILE: Tự động sinh tên file an toàn (Safe Filename)
+        import time
+        import random
+        original_name = str(file.filename or "")
+        ext = original_name.split('.')[-1].lower() if '.' in original_name else 'bin'
+        safe_filename = f"{int(time.time() * 1000)}_{random.randint(100,999)}.{ext}"
+        
+        file_key = f"{clean_folder}/{safe_filename}" if clean_folder else safe_filename
 
         r2_client.put_object(
             Bucket=str(R2_BUCKET_NAME).strip(),
             Key=str(file_key).strip(),
             Body=file_content,
-            ContentType=file.content_type
+            ContentType=file.content_type or "application/octet-stream"
         )
 
-        # Chuẩn hóa URL trả về sạch sẽ
+        # 4. Chuẩn hóa URL
         base_domain = str(R2_PUBLIC_DOMAIN).strip().rstrip('/')
         public_url = f"{base_domain}/{file_key}"
         return {"status": "success", "url": public_url}
     except Exception as e:
+        print(f"LỖI UPLOAD R2: {e}") # Bắn log ra Terminal để kiểm soát nếu có sự cố khác
         raise HTTPException(status_code=500, detail=f"Lỗi R2: {str(e)}")
+
+
+# ==========================================
+# 17. FEATURE VOUCHER
+# ==========================================
+
+@app.post("/vouchers/{voucher_code}/claim")
+def claim_voucher(voucher_code: str, req: Request, db=Depends(get_db_connection)):
+    """User thu thập Voucher đưa vào ví (Private Profile)"""
+    token = req.headers.get("Authorization", "").replace("Bearer ", "")
+    user_id = verify_token_and_get_user_id(token) # Hàm lấy ID từ token của cậu
+    
+    cur = db.cursor(cursor_factory=RealDictCursor)
+    try:
+        # 1. Quét mã gốc xem có khả dụng không
+        cur.execute("""
+            SELECT id, total_quantity, used_quantity, valid_until, status 
+            FROM vouchers WHERE code = %s
+        """, (voucher_code,))
+        voucher = cur.fetchone()
+        
+        if not voucher or voucher['status'] != 'APPROVED':
+            raise HTTPException(status_code=400, detail="Mã không tồn tại hoặc chưa được duyệt.")
+        if voucher['used_quantity'] >= voucher['total_quantity']:
+            raise HTTPException(status_code=400, detail="Mã này đã hết lượt sử dụng.")
+        if voucher['valid_until'] < datetime.now():
+            raise HTTPException(status_code=400, detail="Mã này đã hết hạn.")
+            
+        # 2. Lưu vào ví người dùng (Database sẽ tự ném lỗi nếu lưu trùng nhờ hàm UNIQUE)
+        cur.execute("""
+            INSERT INTO user_vouchers (user_id, voucher_id) 
+            VALUES (%s, %s) RETURNING id
+        """, (user_id, voucher['id']))
+        
+        db.commit()
+        return {"status": "success", "message": "Đã lưu Voucher vào ví thành công!"}
+        
+    except psycopg2.IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Bạn đã có mã này trong ví rồi!")
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        cur.close()
+
+@app.post("/bookings/checkout")
+def checkout_and_lock_vouchers(payload: dict, req: Request, db=Depends(get_db_connection)):
+    """Khởi tạo giao dịch PayOS, tự động áp mã, khóa mã 10 phút"""
+    # payload chứa: partner_id, service_id, total_amount (Giá gốc)
+    user_id = verify_token_and_get_user_id(...) 
+    original_price = payload['total_amount']
+    partner_id = payload['partner_id']
+    
+    cur = db.cursor(cursor_factory=RealDictCursor)
+    try:
+        # 1. TÌM TẤT CẢ VOUCHER HỢP LỆ TRONG VÍ KHÁCH HÀNG (Cả Admin & Partner)
+        cur.execute("""
+            SELECT uv.id as user_voucher_id, v.id as voucher_id, v.issuer_type, v.discount_type, 
+                   v.discount_value, v.max_discount_amount
+            FROM user_vouchers uv
+            JOIN vouchers v ON uv.voucher_id = v.id
+            WHERE uv.user_id = %s 
+              AND uv.status = 'UNUSED'
+              AND v.valid_until > NOW()
+              AND v.min_order_value <= %s
+              AND (v.issuer_type = 'ADMIN' OR v.issuer_id = %s)
+        """, (user_id, original_price, partner_id))
+        
+        available_vouchers = cur.fetchall()
+        
+        # 2. THUẬT TOÁN AUTO-APPLY TỐI ƯU NHẤT
+        platform_voucher = None
+        partner_voucher = None
+        best_platform_discount = 0
+        best_partner_discount = 0
+        
+        for v in available_vouchers:
+            # Tính số tiền giảm thực tế của mã này
+            discount_amt = v['discount_value']
+            if v['discount_type'] == 'PERCENTAGE':
+                discount_amt = (v['discount_value'] / 100) * original_price
+                if v['max_discount_amount'] and discount_amt > v['max_discount_amount']:
+                    discount_amt = v['max_discount_amount']
+            
+            # Phân loại và so sánh chọn mã to nhất
+            if v['issuer_type'] == 'ADMIN' and discount_amt > best_platform_discount:
+                best_platform_discount = discount_amt
+                platform_voucher = v
+            elif v['issuer_type'] == 'PARTNER' and discount_amt > best_partner_discount:
+                best_partner_discount = discount_amt
+                partner_voucher = v
+                
+        # 3. KẾ TOÁN BILL & ĐỀ PHÒNG ÂM TIỀN
+        final_amount = original_price - best_platform_discount - best_partner_discount
+        if final_amount < 10000: # Cổng PayOS tối thiểu là 10k
+            final_amount = 10000 
+            
+        # 4. TẠO BOOKING VÀ GHI NHẬN 4 TRƯỜNG KẾ TOÁN MỚI
+        cur.execute("""
+            INSERT INTO bookings (user_id, partner_id, service_id, total_amount, 
+                                 applied_platform_voucher_id, platform_discount_amount,
+                                 applied_partner_voucher_id, partner_discount_amount, final_amount, payment_status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'PENDING') RETURNING id
+        """, (user_id, partner_id, payload['service_id'], original_price, 
+              platform_voucher['voucher_id'] if platform_voucher else None, best_platform_discount,
+              partner_voucher['voucher_id'] if partner_voucher else None, best_partner_discount,
+              final_amount))
+        booking_id = cur.fetchone()['id']
+        
+        # 5. KHÓA MÃ TRONG 10 PHÚT (LOCKED)
+        lock_time = datetime.now() + timedelta(minutes=10)
+        vouchers_to_lock = []
+        if platform_voucher: vouchers_to_lock.append(platform_voucher['user_voucher_id'])
+        if partner_voucher: vouchers_to_lock.append(partner_voucher['user_voucher_id'])
+        
+        if vouchers_to_lock:
+            cur.execute("""
+                UPDATE user_vouchers 
+                SET status = 'LOCKED', locked_until = %s 
+                WHERE id = ANY(%s)
+            """, (lock_time, vouchers_to_lock))
+            
+        db.commit()
+        
+        # 6. GỌI API PAYOS TẠO MÃ QR TẠI ĐÂY (TRẢ VỀ qrCode cho Frontend vẽ)
+        # payos_data = payos.create_payment_link(orderCode=booking_id, amount=final_amount, ...)
+        
+        return {
+            "status": "success", 
+            "booking_id": booking_id,
+            "final_amount": final_amount,
+            "platform_discount": best_platform_discount,
+            "partner_discount": best_partner_discount,
+            # "qrCode": payos_data.qrCode 
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise e

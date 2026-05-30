@@ -138,3 +138,32 @@ class WithdrawalRequest(BaseModel):
     bank_name: str
     account_number: str
     account_name: str
+
+# --- 11.5. CẤU TRÚC VOUCHER & KHUYẾN MÃI ---
+class VoucherCreate(BaseModel):
+    code: str
+    discount_type: str # "PERCENTAGE" hoặc "FIXED_AMOUNT"
+    discount_value: float
+    max_discount_amount: Optional[float] = None
+    min_order_value: float = 0
+    total_quantity: int
+    valid_from: datetime
+    valid_until: datetime
+    applicable_services: Optional[List[str]] = None
+
+# --- 12. CẤU TRÚC VÍ & QUYẾT TOÁN ---
+class WalletResponse(BaseModel):
+    balance: float
+    pending_amount: float
+    currency: str = "VND"
+
+class WithdrawalCreate(BaseModel):
+    bank_account_number: str
+    bank_name: str
+    amount: float  # Backend cần validate amount >= 50000
+
+class WithdrawalHistory(BaseModel):
+    id: str
+    amount: float
+    status: str # 'PENDING', 'COMPLETED', 'REJECTED'
+    created_at: datetime
