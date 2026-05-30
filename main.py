@@ -217,10 +217,29 @@ def get_public_profile(username: str, request: Request, conn=Depends(get_db_conn
         
         cur.execute("SELECT * FROM community_posts WHERE author_id = %s ORDER BY created_at DESC", (target_id,))
         posts = cur.fetchall()
+
+        # Lấy danh sách Voucher của riêng đối tác này (Chỉ hiển thị mã đã duyệt và còn hạn)
+        cur.execute("""
+            SELECT * FROM vouchers 
+            WHERE issuer_id = %s AND issuer_type = 'PARTNER' AND status = 'APPROVED' AND valid_until > NOW()
+            ORDER BY created_at DESC
+        """, (target_id,))
+        vouchers = cur.fetchall()
         
         data = {
-            "profile": user, "is_followed": is_followed, "services": services, "videos": videos, "posts": posts,
-            "stats": {"followers_count": user.get("followers_count", 0), "services_count": len(services), "videos_count": len(videos), "posts_count": len(posts)}
+            "profile": user, 
+            "is_followed": is_followed, 
+            "services": services, 
+            "videos": videos, 
+            "posts": posts,
+            "vouchers": vouchers,
+            "stats": {
+                "followers_count": user.get("followers_count", 0), 
+                "services_count": len(services), 
+                "videos_count": len(videos), 
+                "posts_count": len(posts),
+                "vouchers_count": len(vouchers)
+            }
         }
         return {"status": "success", "data": data}
     finally: cur.close()
@@ -1180,6 +1199,48 @@ def get_my_vouchers(current_user = Depends(verify_user_token), conn=Depends(get_
             SELECT uv.id as user_voucher_id, uv.status as wallet_status, v.* FROM user_vouchers uv JOIN vouchers v ON uv.voucher_id = v.id 
             WHERE uv.user_id = %s ORDER BY v.valid_until ASC
         """, (current_user.id,))
+        return {"status": "success", "data": cur.fetchall()}
+    finally: cur.close()
+
+@app.get("/vouchers/public", tags=["Vouchers"])
+def get_public_vouchers(conn=Depends(get_db_connection)):
+    """Lấy tất cả voucher hệ thống (ADMIN) đang hoạt động và còn lượt phát hành để trưng bày tại Feature Voucher và TikTok Feeds"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT * FROM vouchers 
+            WHERE issuer_type = 'ADMIN' AND status = 'APPROVED' AND valid_until > NOW() AND used_quantity < total_quantity
+            ORDER BY created_at DESC
+        """)
+        return {"status": "success", "data": cur.fetchall()}
+    finally: cur.close()
+
+@app.get("/partner/vouchers", tags=["Partner"])
+def get_partner_vouchers(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Đối tác truy vấn danh sách toàn bộ mã ưu đãi do chính cơ sở mình tạo lập phục vụ hiển thị tại Partner Dashboard"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT * FROM vouchers 
+            WHERE issuer_id = %s AND status != 'DELETED'
+            ORDER BY created_at DESC
+        """, (current_user.id,))
+        return {"status": "success", "data": cur.fetchall()}
+    finally: cur.close()
+
+@app.get("/admin/vouchers", tags=["Admin"])
+def get_admin_vouchers(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Quản trị viên hệ thống quản lý tổng thể kho mã ưu đãi toàn sàn phục vụ hiển thị tại Admin Dashboard"""
+    if current_user.role != "SUPER_ADMIN": 
+        raise HTTPException(status_code=403, detail="Cấm quyền truy cập!")
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT v.*, u.full_name as issuer_name, u.email as issuer_email
+            FROM vouchers v
+            LEFT JOIN users u ON v.issuer_id = u.id
+            ORDER BY v.created_at DESC
+        """)
         return {"status": "success", "data": cur.fetchall()}
     finally: cur.close()
 
