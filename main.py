@@ -503,8 +503,14 @@ def get_moderation_queue(current_user = Depends(verify_user_token), conn=Depends
             FROM tiktok_feeds v LEFT JOIN users u ON v.author_id = u.id WHERE v.status::text IN ('PENDING', 'PENDING_DELETE', 'PENDING_UPDATE')
         """)
         v_data = cur.fetchall()
+
+        cur.execute("""
+            SELECT vc.*, 'voucher' as type, vc.code as title, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url) as author
+            FROM vouchers vc LEFT JOIN users u ON vc.issuer_id = u.id WHERE vc.status::text IN ('PENDING')
+        """)
+        vc_data = cur.fetchall()
         
-        combined = s_data + v_data
+        combined = s_data + v_data + vc_data
         combined.sort(key=lambda x: str(x.get("updated_at") or x.get("created_at") or ""), reverse=True)
         return {"status": "success", "data": combined}
     finally: cur.close()
@@ -515,7 +521,15 @@ def moderate_item(item_type: str, item_id: str, payload: dict, current_user = De
     try:
         action = payload.get("action")
         status = "DELETED" if action == "DELETED" else action
-        table = "services" if item_type == "service" else "tiktok_feeds"
+        
+        if item_type == "service":
+            table = "services"
+        elif item_type == "video":
+            table = "tiktok_feeds"
+        elif item_type == "voucher":
+            table = "vouchers"
+        else:
+            raise HTTPException(status_code=400, detail="Loại mục kiểm duyệt không hợp lệ")
         
         cur.execute(f"UPDATE {table} SET status = %s, moderation_note = %s, moderated_by = %s, updated_at = now() WHERE id = %s", 
                     (status, payload.get("note", ""), current_user.id, item_id))
