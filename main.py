@@ -734,6 +734,32 @@ def process_withdrawal(w_id: str, payload: schemas.WithdrawalUpdate, current_use
         raise HTTPException(status_code=500, detail=str(e))
     finally: cur.close()
 
+@app.post("/vouchers/{voucher_code}/claim", tags=["Vouchers"])
+def claim_voucher(voucher_code: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT id, total_quantity, used_quantity, valid_until, status FROM vouchers WHERE code = %s", (voucher_code,))
+        voucher = cur.fetchone()
+        
+        if not voucher or voucher['status'] != 'APPROVED': 
+            raise HTTPException(status_code=400, detail="Mã không tồn tại hoặc chưa duyệt.")
+        if voucher['used_quantity'] >= voucher['total_quantity']: 
+            raise HTTPException(status_code=400, detail="Mã này đã hết lượt dùng.")
+        if voucher['valid_until'] < datetime.now(): 
+            raise HTTPException(status_code=400, detail="Mã này đã hết hạn.")
+            
+        cur.execute("INSERT INTO user_vouchers (user_id, voucher_id) VALUES (%s, %s) RETURNING id", (current_user.id, voucher['id']))
+        conn.commit()
+        return {"status": "success", "message": "Đã lưu Voucher vào ví!"}
+        
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail="Bạn đã có mã này trong ví rồi!")
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally: cur.close()
+
 @app.get("/admin/partners", tags=["Admin"])
 def get_admin_partners(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
