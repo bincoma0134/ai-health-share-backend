@@ -910,6 +910,28 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
         service_id = payload.get("service_id")
         partner_id = payload.get("partner_id")
         video_id = payload.get("video_id")
+        
+        # Tiền xử lý chuỗi rỗng để tránh lỗi UUID Format của PostgreSQL
+        if not video_id or video_id == "": video_id = None
+        if not service_id or service_id == "": service_id = None
+
+        # --- BỌC THÉP TỰ ĐỘNG CHỮA LỖI (SELF-HEALING) ---
+        # 1. Kiểm tra video_id xem có thực sự nằm trong bảng tiktok_feeds không
+        if video_id:
+            cur.execute("SELECT id FROM tiktok_feeds WHERE id = %s", (video_id,))
+            if not cur.fetchone():
+                # Không tìm thấy trong tiktok_feeds -> Quét xuống bảng services
+                cur.execute("SELECT id FROM services WHERE id = %s", (video_id,))
+                if cur.fetchone():
+                    service_id = video_id  # Cứu dữ liệu: Đẩy ID này sang đúng cột service_id
+                video_id = None  # Xóa sạch video_id rác để tránh lỗi Foreign Key
+                
+        # 2. Quét dọn luôn cột service_id để đảm bảo an toàn tuyệt đối
+        if service_id:
+            cur.execute("SELECT id FROM services WHERE id = %s", (service_id,))
+            if not cur.fetchone():
+                service_id = None
+
         total_amount = payload.get("total_amount", 0)
         customer_name = payload.get("customer_name", "")
         customer_phone = payload.get("customer_phone", "")
