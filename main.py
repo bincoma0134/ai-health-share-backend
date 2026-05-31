@@ -374,11 +374,17 @@ def complete_booking_escrow(booking_id: str, current_user = Depends(verify_user_
         appt = cur.fetchone()
         if appt and appt["status"] not in ["SERVED", "COMPLETED"]: raise HTTPException(status_code=400, detail="Khách chưa Check-in!")
 
-        total = float(booking["total_amount"])
-        partner_rev = total * 0.70
-        platform_fee = total * 0.20
-        affiliate_rev = total * 0.10 if booking.get("affiliate_id") else 0
-        if not booking.get("affiliate_id"): platform_fee += total * 0.10
+        # ĐỒNG BỘ CÔNG THỨC TOÁN HỌC ESCROW BỌC THÉP
+        original_total = float(booking["total_amount"])
+        discount_amount = float(booking.get("voucher_discount_amount") or 0)
+        funded_by = booking.get("discount_funded_by")
+        
+        revenue_base = original_total - discount_amount if funded_by == 'PARTNER' else original_total
+
+        partner_rev = revenue_base * 0.70
+        platform_fee = revenue_base * 0.20
+        affiliate_rev = revenue_base * 0.10 if booking.get("affiliate_id") else 0
+        if not booking.get("affiliate_id"): platform_fee += revenue_base * 0.10
 
         cur.execute("UPDATE bookings_transactions SET service_status = 'COMPLETED', partner_revenue = %s, platform_fee = %s, affiliate_revenue = %s WHERE id = %s", 
                     (partner_rev, platform_fee, affiliate_rev, booking_id))
@@ -1317,6 +1323,12 @@ async def payos_webhook(request: Request, conn=Depends(get_db_connection)):
             booking = cur.fetchone()
             if booking and booking["payment_status"] != "PAID":
                 cur.execute("UPDATE bookings_transactions SET payment_status = 'PAID' WHERE id = %s", (booking["id"],))
+                
+                # BỌC THÉP LOGIC VOUCHER CHO WEBHOOK
+                if booking.get("applied_voucher_id"):
+                    cur.execute("UPDATE user_vouchers SET status = 'USED' WHERE user_id = %s AND voucher_id = %s AND status = 'LOCKED'", (booking["user_id"], booking["applied_voucher_id"]))
+                    cur.execute("UPDATE vouchers SET used_quantity = used_quantity + 1 WHERE id = %s", (booking["applied_voucher_id"],))
+
                 cur.execute("UPDATE appointments SET status = 'CONFIRMED' WHERE booking_id = %s RETURNING partner_id, customer_name, user_id", (booking["id"],))
                 appt = cur.fetchone()
                 if appt:
@@ -1445,15 +1457,6 @@ async def upload_media(request: Request, file: UploadFile = File(...), folder: s
         )
 
         # 4. Chuẩn hóa URL
-        base_domain = str(R2_PUBLIC_DOMAIN).strip().rstrip('/')
-        public_url = f"{base_domain}/{file_key}"
-        return {"status": "success", "url": public_url}
-    except Exception as e:
-        print(f"LỖI UPLOAD R2: {e}") # Bắn log ra Terminal để kiểm soát nếu có sự cố khác
-        raise HTTPException(status_code=500, detail=f"Lỗi R2: {str(e)}")
-
-
-# 4. Chuẩn hóa URL
         base_domain = str(R2_PUBLIC_DOMAIN).strip().rstrip('/')
         public_url = f"{base_domain}/{file_key}"
         return {"status": "success", "url": public_url}
