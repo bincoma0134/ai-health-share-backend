@@ -1294,7 +1294,7 @@ def get_partner_vouchers(current_user = Depends(verify_user_token), conn=Depends
 @app.get("/admin/vouchers", tags=["Admin"])
 def get_admin_vouchers(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     """Quản trị viên hệ thống quản lý tổng thể kho mã ưu đãi toàn sàn phục vụ hiển thị tại Admin Dashboard"""
-    if current_user.role != "SUPER_ADMIN": 
+    if current_user.role not in ["SUPER_ADMIN", "MODERATOR"]: 
         raise HTTPException(status_code=403, detail="Cấm quyền truy cập!")
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
@@ -1305,6 +1305,33 @@ def get_admin_vouchers(current_user = Depends(verify_user_token), conn=Depends(g
             ORDER BY v.created_at DESC
         """)
         return {"status": "success", "data": cur.fetchall()}
+    finally: cur.close()
+
+@app.patch("/admin/vouchers/{voucher_id}/status", tags=["Admin"])
+async def update_voucher_status(voucher_id: str, request: Request, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Kiểm duyệt mã ưu đãi (APPROVED / REJECTED) bởi Moderator hoặc Admin"""
+    if current_user.role not in ["SUPER_ADMIN", "MODERATOR"]:
+        raise HTTPException(status_code=403, detail="Cấm quyền truy cập!")
+    
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    new_status = payload.get("status")
+    if new_status not in ["APPROVED", "REJECTED", "DELETED"]:
+        raise HTTPException(status_code=400, detail="Trạng thái không hợp lệ")
+
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE vouchers SET status = %s WHERE id = %s RETURNING id", (new_status, voucher_id))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Không tìm thấy mã ưu đãi")
+        conn.commit()
+        return {"status": "success", "message": f"Đã cập nhật trạng thái thành {new_status}"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally: cur.close()
 
 # ==========================================
