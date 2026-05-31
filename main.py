@@ -957,6 +957,63 @@ def respond_appointment(appointment_id: str, payload: schemas.PartnerResponse, c
         raise HTTPException(status_code=500, detail=str(e))
     finally: cur.close()
 
+@app.get("/appointments/{appointment_id}/preview", tags=["Scheduling"])
+def preview_appointment_payment(appointment_id: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """API giả lập thanh toán: Trả về số tiền tạm tính và mã tự động áp dụng để hiển thị Pop-up cho khách"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM appointments WHERE id = %s", (appointment_id,))
+        appt = cur.fetchone()
+        if not appt: raise HTTPException(status_code=404, detail="Không tìm thấy lịch hẹn")
+        if appt["status"] != "PENDING_PAYMENT": raise HTTPException(status_code=400, detail="Không ở trạng thái chờ thanh toán!")
+        
+        original_amount = float(appt.get("total_amount", 0))
+        partner_id = appt.get("partner_id")
+        
+        # 1. Nhả mã bị kẹt (Bảo vệ Lỗ hổng 3)
+        cur.execute("UPDATE user_vouchers SET status = 'UNUSED', locked_until = NULL WHERE status = 'LOCKED' AND locked_until < NOW()")
+        conn.commit() 
+        
+        # 2. Tìm mã tốt nhất trong ví
+        cur.execute("""
+            SELECT uv.id as user_voucher_id, v.id as voucher_id, v.code, v.issuer_type, v.discount_type, 
+                   v.discount_value, v.max_discount_amount
+            FROM user_vouchers uv JOIN vouchers v ON uv.voucher_id = v.id
+            WHERE uv.user_id = %s AND uv.status = 'UNUSED' AND v.valid_until > NOW()
+              AND v.min_order_value <= %s AND (v.issuer_type = 'ADMIN' OR (v.issuer_type = 'PARTNER' AND v.issuer_id = %s))
+        """, (current_user.id, original_amount, partner_id))
+        
+        best_voucher = None
+        max_discount = 0.0
+        
+        for v in cur.fetchall():
+            discount = float(v["discount_value"])
+            if v["discount_type"] == 'PERCENTAGE':
+                discount = (discount / 100) * original_amount
+                if v["max_discount_amount"] and discount > float(v["max_discount_amount"]):
+                    discount = float(v["max_discount_amount"])
+            if discount > max_discount:
+                max_discount = discount
+                best_voucher = v
+                
+        final_amount = original_amount - max_discount
+        if final_amount < 10000: final_amount = 10000 
+            
+        return {
+            "status": "success", 
+            "data": {
+                "original_amount": original_amount,
+                "discount_amount": max_discount,
+                "final_amount": final_amount,
+                "applied_voucher_code": best_voucher["code"] if best_voucher else None,
+                "discount_funded_by": best_voucher["issuer_type"] if best_voucher else None
+            }
+        }
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally: cur.close()
+
 @app.post("/appointments/{appointment_id}/pay", tags=["Scheduling"])
 def create_appointment_payment(appointment_id: str, request: Request, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
