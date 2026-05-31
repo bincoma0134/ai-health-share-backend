@@ -1267,13 +1267,17 @@ def get_my_vouchers(current_user = Depends(verify_user_token), conn=Depends(get_
 
 @app.get("/vouchers/public", tags=["Vouchers"])
 def get_public_vouchers(conn=Depends(get_db_connection)):
-    """Lấy tất cả voucher hệ thống (ADMIN) đang hoạt động và còn lượt phát hành để trưng bày tại Feature Voucher và TikTok Feeds"""
+    """Hiển thị tất cả mã ưu đãi công khai (Cả ADMIN và PARTNER) đã được duyệt và còn hạn/số lượng"""
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         cur.execute("""
-            SELECT * FROM vouchers 
-            WHERE issuer_type = 'ADMIN' AND status = 'APPROVED' AND valid_until > NOW() AND used_quantity < total_quantity
-            ORDER BY created_at DESC
+            SELECT v.*, u.full_name as partner_name 
+            FROM vouchers v
+            LEFT JOIN users u ON v.issuer_id = u.id
+            WHERE v.status = 'APPROVED' 
+              AND v.valid_until > NOW() 
+              AND v.used_quantity < v.total_quantity
+            ORDER BY v.issuer_type ASC, v.created_at DESC
         """)
         return {"status": "success", "data": cur.fetchall()}
     finally: cur.close()
