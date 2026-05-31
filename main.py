@@ -888,13 +888,22 @@ def validate_affiliate(code: str, conn=Depends(get_db_connection)):
 def get_my_appointments(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
+        # Bổ sung tự động tạo cột nếu chưa có để tránh lỗi
+        cur.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS applied_user_voucher_id UUID")
+        conn.commit()
+        
         query = """
             SELECT a.*, 
-                   json_build_object('service_name', s.service_name) as services,
-                   json_build_object('full_name', u.full_name, 'phone', u.phone) as users
+                   json_build_object('service_name', s.service_name, 'price', s.price) as services,
+                   json_build_object('full_name', u.full_name, 'phone', u.phone) as users,
+                   json_build_object('username', pu.username, 'physical_address', pu.physical_address) as partner,
+                   json_build_object('issuer_type', v.issuer_type, 'discount_type', v.discount_type, 'discount_value', v.discount_value, 'max_discount_amount', v.max_discount_amount) as vouchers
             FROM appointments a
             LEFT JOIN services s ON a.service_id = s.id
             LEFT JOIN users u ON a.user_id = u.id
+            LEFT JOIN users pu ON a.partner_id = pu.id
+            LEFT JOIN user_vouchers uv ON a.applied_user_voucher_id = uv.id
+            LEFT JOIN vouchers v ON uv.voucher_id = v.id
             WHERE a.partner_id = %s OR a.user_id = %s
             ORDER BY a.created_at DESC
         """
@@ -936,13 +945,28 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
         customer_name = payload.get("customer_name", "")
         customer_phone = payload.get("customer_phone", "")
         note = payload.get("note", "")
+        voucher_code = payload.get("voucher_code")
+
+        cur.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS applied_user_voucher_id UUID")
+        
+        applied_uv_id = None
+        if voucher_code:
+            cur.execute("""
+                SELECT uv.id FROM user_vouchers uv 
+                JOIN vouchers v ON uv.voucher_id = v.id 
+                WHERE uv.user_id = %s AND uv.status = 'UNUSED' AND v.code = %s AND v.valid_until > NOW()
+            """, (current_user.id, voucher_code))
+            uv = cur.fetchone()
+            if uv:
+                applied_uv_id = uv["id"]
+                cur.execute("UPDATE user_vouchers SET status = 'LOCKED', locked_until = NULL WHERE id = %s", (applied_uv_id,))
 
         cur.execute("""
             INSERT INTO appointments 
-            (user_id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, status, created_at) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WAITING_PARTNER', NOW()) 
+            (user_id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, status, applied_user_voucher_id, created_at) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WAITING_PARTNER', %s, NOW()) 
             RETURNING *
-        """, (current_user.id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note))
+        """, (current_user.id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, applied_uv_id))
         
         new_appt = cur.fetchone()
         conn.commit()
@@ -970,6 +994,8 @@ def respond_appointment(appointment_id: str, payload: schemas.PartnerResponse, c
         else:
             updates.extend(["status = 'CANCELLED'", "rejection_reason = %s"])
             values.append(payload.reason)
+            if appt.get("applied_user_voucher_id"):
+                cur.execute("UPDATE user_vouchers SET status = 'UNUSED', locked_until = NULL WHERE id = %s", (appt["applied_user_voucher_id"],))
             
         values.append(appointment_id)
         cur.execute(f"UPDATE appointments SET {', '.join(updates)} WHERE id = %s RETURNING *", tuple(values))
@@ -998,31 +1024,27 @@ def preview_appointment_payment(appointment_id: str, current_user = Depends(veri
         original_amount = float(appt.get("total_amount", 0))
         partner_id = appt.get("partner_id")
         
-        # 1. Nhả mã bị kẹt (Bảo vệ Lỗ hổng 3)
-        cur.execute("UPDATE user_vouchers SET status = 'UNUSED', locked_until = NULL WHERE status = 'LOCKED' AND locked_until < NOW()")
-        conn.commit() 
-        
-        # 2. Tìm mã tốt nhất trong ví
-        cur.execute("""
-            SELECT uv.id as user_voucher_id, v.id as voucher_id, v.code, v.issuer_type, v.discount_type, 
-                   v.discount_value, v.max_discount_amount
-            FROM user_vouchers uv JOIN vouchers v ON uv.voucher_id = v.id
-            WHERE uv.user_id = %s AND uv.status = 'UNUSED' AND v.valid_until > NOW()
-              AND v.min_order_value <= %s AND (v.issuer_type = 'ADMIN' OR (v.issuer_type = 'PARTNER' AND v.issuer_id = %s))
-        """, (current_user.id, original_amount, partner_id))
-        
+        # Sử dụng đúng mã Voucher đã bị khóa từ lúc Request
+        applied_uv_id = appt.get("applied_user_voucher_id")
         best_voucher = None
         max_discount = 0.0
         
-        for v in cur.fetchall():
-            discount = float(v["discount_value"])
-            if v["discount_type"] == 'PERCENTAGE':
-                discount = (discount / 100) * original_amount
-                if v["max_discount_amount"] and discount > float(v["max_discount_amount"]):
-                    discount = float(v["max_discount_amount"])
-            if discount > max_discount:
+        if applied_uv_id:
+            cur.execute("""
+                SELECT uv.id as user_voucher_id, v.id as voucher_id, v.code, v.issuer_type, v.discount_type, 
+                       v.discount_value, v.max_discount_amount
+                FROM user_vouchers uv JOIN vouchers v ON uv.voucher_id = v.id
+                WHERE uv.id = %s
+            """, (applied_uv_id,))
+            best_voucher = cur.fetchone()
+            
+            if best_voucher:
+                discount = float(best_voucher["discount_value"])
+                if best_voucher["discount_type"] == 'PERCENTAGE':
+                    discount = (discount / 100) * original_amount
+                    if best_voucher["max_discount_amount"] and discount > float(best_voucher["max_discount_amount"]):
+                        discount = float(best_voucher["max_discount_amount"])
                 max_discount = discount
-                best_voucher = v
                 
         final_amount = original_amount - max_discount
         if final_amount < 10000: final_amount = 10000 
@@ -1053,37 +1075,33 @@ def create_appointment_payment(appointment_id: str, request: Request, current_us
         original_amount = float(appt.get("total_amount", 0))
         partner_id = appt.get("partner_id")
         
-        # 1. Nhả mã bị kẹt quá 10 phút trước
-        cur.execute("UPDATE user_vouchers SET status = 'UNUSED', locked_until = NULL WHERE status = 'LOCKED' AND locked_until < NOW()")
-        
-        # 2. Tìm mã tốt nhất trong ví
-        cur.execute("""
-            SELECT uv.id as user_voucher_id, v.id as voucher_id, v.issuer_type, v.discount_type, 
-                   v.discount_value, v.max_discount_amount
-            FROM user_vouchers uv JOIN vouchers v ON uv.voucher_id = v.id
-            WHERE uv.user_id = %s AND uv.status = 'UNUSED' AND v.valid_until > NOW()
-              AND v.min_order_value <= %s AND (v.issuer_type = 'ADMIN' OR (v.issuer_type = 'PARTNER' AND v.issuer_id = %s))
-        """, (current_user.id, original_amount, partner_id))
-        
+        # Sử dụng mã Voucher đã khóa
+        applied_uv_id = appt.get("applied_user_voucher_id")
         best_voucher = None
         max_discount = 0.0
         
-        for v in cur.fetchall():
-            discount = float(v["discount_value"])
-            if v["discount_type"] == 'PERCENTAGE':
-                discount = (discount / 100) * original_amount
-                if v["max_discount_amount"] and discount > float(v["max_discount_amount"]):
-                    discount = float(v["max_discount_amount"])
-            if discount > max_discount:
+        if applied_uv_id:
+            cur.execute("""
+                SELECT uv.id as user_voucher_id, v.id as voucher_id, v.issuer_type, v.discount_type, 
+                       v.discount_value, v.max_discount_amount
+                FROM user_vouchers uv JOIN vouchers v ON uv.voucher_id = v.id
+                WHERE uv.id = %s
+            """, (applied_uv_id,))
+            best_voucher = cur.fetchone()
+            
+            if best_voucher:
+                discount = float(best_voucher["discount_value"])
+                if best_voucher["discount_type"] == 'PERCENTAGE':
+                    discount = (discount / 100) * original_amount
+                    if best_voucher["max_discount_amount"] and discount > float(best_voucher["max_discount_amount"]):
+                        discount = float(best_voucher["max_discount_amount"])
                 max_discount = discount
-                best_voucher = v
                 
         final_amount = original_amount - max_discount
         if final_amount < 10000: final_amount = 10000 # Ràng buộc PayOS tối thiểu 10k
             
         order_code = int(time.time() * 1000) % 1000000000 + random.randint(100, 999)
         
-        # 3. Insert kèm 4 trường kế toán
         applied_v_id = best_voucher["voucher_id"] if best_voucher else None
         funded_by = best_voucher["issuer_type"] if best_voucher else None
         
@@ -1097,12 +1115,7 @@ def create_appointment_payment(appointment_id: str, request: Request, current_us
         booking_id = cur.fetchone()["id"]
         
         cur.execute("UPDATE appointments SET booking_id = %s WHERE id = %s", (booking_id, appointment_id))
-        
-        # 4. Khóa mã 10 phút
-        if best_voucher:
-            from datetime import timedelta
-            lock_time = datetime.now() + timedelta(minutes=10)
-            cur.execute("UPDATE user_vouchers SET status = 'LOCKED', locked_until = %s WHERE id = %s", (lock_time, best_voucher["user_voucher_id"]))
+        # Không cần khóa thêm 10 phút vì mã đã bị khóa vô thời hạn từ lúc gửi yêu cầu
             
         conn.commit()
 
@@ -1217,6 +1230,14 @@ def cancel_appointment(appointment_id: str, current_user = Depends(verify_user_t
         appt = cur.fetchone()
         if appt["user_id"] != current_user.id: raise HTTPException(status_code=403, detail="Cấm!")
         if appt["status"] not in ["WAITING_PARTNER", "PENDING_PAYMENT"]: raise HTTPException(status_code=400, detail="Không thể hủy!")
+
+        if appt.get("applied_user_voucher_id"):
+            if appt["status"] == "WAITING_PARTNER":
+                # Cơ sở chưa xác nhận -> Hoàn lại Voucher
+                cur.execute("UPDATE user_vouchers SET status = 'UNUSED', locked_until = NULL WHERE id = %s", (appt["applied_user_voucher_id"],))
+            elif appt["status"] == "PENDING_PAYMENT":
+                # Cơ sở đã xác nhận mà khách hủy -> Phạt mất Voucher
+                cur.execute("UPDATE user_vouchers SET status = 'USED' WHERE id = %s", (appt["applied_user_voucher_id"],))
 
         cur.execute("UPDATE appointments SET status = 'CANCELLED', rejection_reason = 'Người dùng tự hủy' WHERE id = %s", (appointment_id,))
         conn.commit()
