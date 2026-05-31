@@ -1270,8 +1270,9 @@ def get_public_vouchers(conn=Depends(get_db_connection)):
     """Hiển thị tất cả mã ưu đãi công khai (Cả ADMIN và PARTNER) đã được duyệt và còn hạn/số lượng"""
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
+        # Bổ sung u.username as partner_username để Frontend làm đường dẫn chuẩn
         cur.execute("""
-            SELECT v.*, u.full_name as partner_name 
+            SELECT v.*, u.full_name as partner_name, u.username as partner_username 
             FROM vouchers v
             LEFT JOIN users u ON v.issuer_id = u.id
             WHERE v.status = 'APPROVED' 
