@@ -16,6 +16,7 @@ from datetime import datetime
 from fastapi import UploadFile, File, Form
 from groq import Groq
 import boto3
+import uuid
 
 # --- CẤU HÌNH CỔNG THANH TOÁN PAYOS ---
 from payos import PayOS
