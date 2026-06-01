@@ -50,6 +50,50 @@ def verify_user_token(credentials: HTTPAuthorizationCredentials = Security(secur
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
+# --- VỊ TRÍ CHÈN ĐOẠN CODE UPLOAD MỚI ---
+# Đặt ở đây để giữ luồng code gọn gàng, tách biệt với các API nghiệp vụ chính
+
+@app.post("/upload/image")
+async def upload_image(file: UploadFile = File(...)):
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Chỉ chấp nhận file ảnh")
+    
+    file_content = await file.read()
+    file_key = f"uploads/images/{int(time.time())}_{uuid.uuid4().hex[:8]}.webp"
+    
+    try:
+        r2_client.put_object(
+            Bucket=os.environ.get("R2_BUCKET_NAME"),
+            Key=file_key,
+            Body=file_content,
+            ContentType="image/webp"
+        )
+        public_url = f"{os.environ.get('R2_PUBLIC_DOMAIN').rstrip('/')}/{file_key}"
+        return {"status": "success", "url": public_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/upload/video")
+async def upload_video(file: UploadFile = File(...)):
+    if not file.content_type.startswith("video/"):
+        raise HTTPException(status_code=400, detail="Chỉ chấp nhận file video")
+    
+    file_content = await file.read()
+    # Gợi ý: Tại đây bạn có thể gọi hàm compress_video nếu đã cài đặt FFmpeg
+    file_key = f"uploads/videos/{int(time.time())}_{uuid.uuid4().hex[:8]}.mp4"
+    
+    try:
+        r2_client.put_object(
+            Bucket=os.environ.get("R2_BUCKET_NAME"),
+            Key=file_key,
+            Body=file_content,
+            ContentType="video/mp4"
+        )
+        public_url = f"{os.environ.get('R2_PUBLIC_DOMAIN').rstrip('/')}/{file_key}"
+        return {"status": "success", "url": public_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/")
 def health_check(): return {"status": "success", "message": "Backend AI Health đang chạy mượt mà!"}
 
