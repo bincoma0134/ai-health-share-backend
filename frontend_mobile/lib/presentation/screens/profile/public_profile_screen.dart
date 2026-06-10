@@ -38,7 +38,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         if (result != null) {
           _isFollowing = result['is_followed'] ?? false;
           _followersCount = result['stats']?['followers_count'] ?? 0;
-          if (result['profile']['role'] != 'PARTNER' && result['profile']['role'] != 'PARTNER_ADMIN') {
+          final String fetchedRole = result['profile']['role'] ?? 'USER';
+          if (fetchedRole == 'SUPER_ADMIN' || fetchedRole == 'ADMIN') {
+            _activeTab = 'activities';
+          } else if (fetchedRole == 'MODERATOR') {
+            _activeTab = 'liked';
+          } else if (fetchedRole == 'PARTNER' || fetchedRole == 'PARTNER_ADMIN') {
+            _activeTab = 'services';
+          } else {
             _activeTab = 'videos';
           }
         }
@@ -180,6 +187,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               padding: const EdgeInsets.all(8.0),
               child: CircleAvatar(backgroundColor: Colors.black54, child: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => context.pop())),
             ),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: CircleAvatar(
+                  backgroundColor: Colors.black54, 
+                  child: IconButton(
+                    icon: const Icon(Icons.share_rounded, color: Colors.white, size: 20), 
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đang sao chép liên kết hồ sơ...')));
+                    }
+                  )
+                ),
+              )
+            ],
           ),
 
           SliverToBoxAdapter(
@@ -211,10 +232,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(profile['full_name'] ?? 'Vô danh', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
-                          const SizedBox(width: 8),
-                          if (role != 'USER') Icon(_getRoleIcon(role), color: primaryColor, size: 20),
+                          Flexible(
+                            child: Text(
+                              profile['full_name'] ?? 'Vô danh', 
+                              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis, // Tự động cắt chữ kèm dấu ... nếu quá dài
+                            ),
+                          ),
+                          if (role != 'USER') ...[
+                            const SizedBox(width: 8),
+                            Icon(_getRoleIcon(role), color: primaryColor, size: 20),
+                          ]
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -238,7 +269,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                           Container(width: 1, height: 30, color: Colors.white10),
                           _buildStatCol(_followersCount.toString(), 'Người theo dõi', primaryColor),
                           Container(width: 1, height: 30, color: Colors.white10),
-                          _buildStatCol(role == 'MODERATOR' ? 'Tích cực' : role == 'PARTNER' || role == 'PARTNER_ADMIN' ? '${profile['reputation_points'] ?? 92}' : '3099', role == 'MODERATOR' ? 'Đã duyệt' : role == 'PARTNER' || role == 'PARTNER_ADMIN' ? 'Uy tín' : 'Lượt thích', primaryColor, isHighlight: true),
+                          _buildStatCol(
+                            (role == 'SUPER_ADMIN' || role == 'ADMIN') ? '100%' : role == 'MODERATOR' ? 'Tích cực' : (role == 'PARTNER' || role == 'PARTNER_ADMIN') ? '${profile['reputation_points'] ?? 92}' : (profile['likes_count']?.toString() ?? '0'), 
+                            (role == 'SUPER_ADMIN' || role == 'ADMIN') ? 'Hệ thống' : role == 'MODERATOR' ? 'Đã duyệt' : (role == 'PARTNER' || role == 'PARTNER_ADMIN') ? 'Uy tín' : 'Lượt thích', 
+                            primaryColor, 
+                            isHighlight: true
+                          ),
                         ],
                       ),
                       const SizedBox(height: 24),
@@ -250,28 +286,28 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             ),
           ),
 
-          if (role == 'PARTNER' || role == 'PARTNER_ADMIN')
-            SliverToBoxAdapter(
-              child: Container(
-                margin: const EdgeInsets.only(top: 24),
-                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.1)))),
+          SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.only(top: 24),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.1)))),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildTabBtn('DỊCH VỤ CƠ SỞ', Icons.local_mall, 'services', primaryColor),
-                    _buildTabBtn('VIDEO NỔI BẬT', Icons.video_library, 'videos', primaryColor),
-                  ],
+                  children: _getTabsForRole(role, primaryColor),
                 ),
               ),
             ),
+          ),
 
           SliverPadding(
-            padding: const EdgeInsets.all(16).copyWith(top: role == 'PARTNER' || role == 'PARTNER_ADMIN' ? 24 : 32, bottom: 80),
+            padding: const EdgeInsets.all(16).copyWith(top: 24, bottom: 80),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                if (_activeTab == 'services' && (role == 'PARTNER' || role == 'PARTNER_ADMIN'))
+                // TAB 1: DỊCH VỤ
+                if (_activeTab == 'services')
                   if (services.isEmpty)
-                    const Center(child: Text('Cơ sở chưa có dịch vụ nào.', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold)))
+                    const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.local_mall_outlined, size: 48, color: Colors.white24), SizedBox(height: 16), Text('Chưa có dịch vụ nào.', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))])) )
                   else
                     ...services.map((svc) => Container(
                       margin: const EdgeInsets.only(bottom: 16),
@@ -302,11 +338,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                           )
                         ],
                       ),
-                    )),
-
-                if (_activeTab == 'videos' || (role != 'PARTNER' && role != 'PARTNER_ADMIN'))
+                    ))
+                // TAB 2: VIDEOS / LIKED / SAVED
+                else if (_activeTab == 'videos' || _activeTab == 'liked' || _activeTab == 'saved')
                   if (videos.isEmpty)
-                    const Center(child: Text('Chưa có video được đăng tải', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold)))
+                    Padding(padding: const EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(_activeTab == 'videos' ? Icons.video_library_outlined : _activeTab == 'liked' ? Icons.favorite_outline : Icons.bookmark_outline, size: 48, color: Colors.white24), const SizedBox(height: 16), Text(_activeTab == 'videos' ? 'Chưa có video được đăng tải' : 'Danh sách trống', style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))])) )
                   else
                     GridView.builder(
                       shrinkWrap: true,
@@ -327,6 +363,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                         );
                       },
                     )
+                // TAB 3: EMPTY STATES KHÁC (Đợi API tích hợp sau)
+                else if (_activeTab == 'community')
+                   const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.forum_outlined, size: 48, color: Colors.white24), SizedBox(height: 16), Text('Chưa có bài viết nào trên cộng đồng.', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))])) )
+                else if (_activeTab == 'reviews')
+                   const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.star_outline, size: 48, color: Colors.white24), SizedBox(height: 16), Text('Chưa có đánh giá nào.', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))])) )
+                else if (_activeTab == 'activities')
+                   const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.local_activity_outlined, size: 48, color: Colors.white24), SizedBox(height: 16), Text('Chưa có hoạt động nào.', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))])) )
               ]),
             ),
           )
@@ -336,12 +379,25 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   }
 
   Widget _buildStatCol(String val, String label, Color primaryColor, {bool isHighlight = false}) {
-    return Column(
-      children: [
-        Text(val, style: TextStyle(color: isHighlight ? primaryColor : Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 4),
-        Text(label.toUpperCase(), style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-      ],
+    return Expanded( // Ép các cột tự động chia đều 33.33% màn hình
+      child: Column(
+        children: [
+          Text(
+            val, 
+            style: TextStyle(color: isHighlight ? primaryColor : Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label.toUpperCase(), 
+            style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 
@@ -361,5 +417,43 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         ),
       ),
     );
+  }
+
+  // Thuật toán gán bộ Tab động dựa trên Phân Quyền chuẩn phiên bản Web
+  List<Widget> _getTabsForRole(String role, Color primaryColor) {
+    List<Widget> tabs = [];
+    if (role == 'SUPER_ADMIN' || role == 'ADMIN') {
+      tabs = [
+        _buildTabBtn('HOẠT ĐỘNG', Icons.local_activity_rounded, 'activities', primaryColor),
+        _buildTabBtn('VIDEO', Icons.video_library_rounded, 'videos', primaryColor),
+        _buildTabBtn('ĐÃ LƯU', Icons.bookmark_rounded, 'saved', primaryColor),
+      ];
+    } else if (role == 'MODERATOR') {
+      tabs = [
+        _buildTabBtn('ĐÃ THÍCH', Icons.favorite_rounded, 'liked', primaryColor),
+        _buildTabBtn('ĐÃ LƯU', Icons.bookmark_rounded, 'saved', primaryColor),
+      ];
+    } else if (role == 'CREATOR') {
+      tabs = [
+        _buildTabBtn('VIDEO', Icons.video_library_rounded, 'videos', primaryColor),
+        _buildTabBtn('CỘNG ĐỒNG', Icons.forum_rounded, 'community', primaryColor),
+      ];
+    } else if (role == 'PARTNER' || role == 'PARTNER_ADMIN') {
+      tabs = [
+        _buildTabBtn('DỊCH VỤ', Icons.local_mall_rounded, 'services', primaryColor),
+        _buildTabBtn('VIDEO', Icons.video_library_rounded, 'videos', primaryColor),
+        _buildTabBtn('CỘNG ĐỒNG', Icons.forum_rounded, 'community', primaryColor),
+        _buildTabBtn('ĐÁNH GIÁ', Icons.star_rounded, 'reviews', primaryColor),
+      ];
+    } else {
+      tabs = [
+        _buildTabBtn('VIDEO', Icons.video_library_rounded, 'videos', primaryColor),
+        _buildTabBtn('CỘNG ĐỒNG', Icons.forum_rounded, 'community', primaryColor),
+        _buildTabBtn('ĐÃ THÍCH', Icons.favorite_rounded, 'liked', primaryColor),
+      ];
+    }
+    
+    // Tự động chèn khoảng cách 24px giữa các Tab để vuốt mượt mà
+    return tabs.expand((widget) => [widget, const SizedBox(width: 24)]).toList()..removeLast();
   }
 }

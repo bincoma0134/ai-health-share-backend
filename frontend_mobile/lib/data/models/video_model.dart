@@ -27,6 +27,13 @@ class VideoModel {
     required this.author,
   });
 
+  // Giải pháp 1: Getter trích xuất nhãn phân loại động từ dữ liệu thực tế (title) để tránh hardcode trên UI
+  String get categoryTag {
+    if (title.isNotEmpty) return title;
+    // Fallback an toàn nếu chuỗi title từ database trống
+    return 'Xu hướng làm đẹp';
+  }
+
   factory VideoModel.fromJson(Map<String, dynamic> json) {
     return VideoModel(
       id: json['id'] ?? '',

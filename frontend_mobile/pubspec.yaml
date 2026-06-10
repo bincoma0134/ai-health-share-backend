@@ -25,11 +25,22 @@ dependencies:
   intl: ^0.20.2
   image_picker: ^1.2.2
   http_parser: ^4.1.2
+  share_plus: ^7.2.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  flutter_launcher_icons: ^0.13.1
   flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false # 🚀 TẠM THỜI TẮT IOS ĐỂ TRÁNH LỖI PHẦN CỨNG WINDOWS
+  remove_alpha_ios: true # Tự động dọn dẹp độ trong suốt lỗi file ảnh Apple
+  image_path: "assets/images/app_icon.png"
+  adaptive_icon_background: "#09090B"
+  adaptive_icon_foreground: "assets/images/app_icon.png"

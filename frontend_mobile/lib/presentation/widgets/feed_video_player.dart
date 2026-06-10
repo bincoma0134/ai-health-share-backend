@@ -1,29 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import 'package:flutter/services.dart';
+
 
 class FeedVideoPlayer extends StatefulWidget {
   final String videoUrl;
   final bool isActive; 
-  final VoidCallback? onDoubleTap; // 1. Thêm Callback đón lệnh Double Tap
+  final VoidCallback? onDoubleTap; 
+  final int videoIndex;   // MỚI: Vị trí của video này trong danh sách
+  final int currentIndex; // MỚI: Vị trí video người dùng đang thực sự xem
 
   const FeedVideoPlayer({
     super.key, 
     required this.videoUrl, 
     required this.isActive,
     this.onDoubleTap,
+    required this.videoIndex,
+    required this.currentIndex,
   });
 
   @override
   State<FeedVideoPlayer> createState() => _FeedVideoPlayerState();
 }
 
-class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingObserver {
+// Bổ sung AutomaticKeepAliveClientMixin để chống khai tử Video
+class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingObserver, TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  
+  // 🚀 THUẬT TOÁN BẢO LƯU RAM CHỐNG TRÀN BỘ NHỚ
+  // Chỉ giữ sống Video nếu khoảng cách giữa nó và video đang xem <= 1
+  @override
+  bool get wantKeepAlive => (widget.videoIndex - widget.currentIndex).abs() <= 1;
+
   late VideoPlayerController _controller;
   bool _isInitialized = false;
   bool _isUserPaused = false; 
   
-  bool _showHeart = false; // 2. Cờ hiệu điều khiển Animation Tim nổ
+  // MỚI: Biến theo dõi tiến độ video chạy động theo thời gian thực (0.0 -> 1.0)
+  double _progress = 0.0;
+  
+  // --- TIKTOK MULTI-HEART STATE ---
+  final List<Map<String, dynamic>> _hearts = [];
+  int _heartCounter = 0;
+  Offset _lastTapPosition = Offset.zero;
+
 
   @override
   void initState() {
@@ -35,11 +55,24 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
         if (mounted) {
           setState(() => _isInitialized = true);
           _controller.setLooping(true);
+          
+          // Đăng ký bộ lắng nghe tính toán tiến trình phát video real-time mượt mà
+          _controller.addListener(() {
+            if (mounted && _controller.value.duration.inMilliseconds > 0) {
+              final double currentPos = _controller.value.position.inMilliseconds.toDouble();
+              final double totalDuration = _controller.value.duration.inMilliseconds.toDouble();
+              setState(() {
+                _progress = (currentPos / totalDuration).clamp(0.0, 1.0);
+              });
+            }
+          });
+
           if (widget.isActive) _controller.play();
         }
       });
   }
 
+  // CHỈ GIỮ LẠI 1 HÀM didUpdateWidget DUY NHẤT Ở ĐÂY
   @override
   void didUpdateWidget(covariant FeedVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -83,21 +116,30 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
     });
   }
 
-  // 3. Logic xử lý Double Tap
   void _handleDoubleTap() {
+    // Kích hoạt phản hồi xúc giác nhẹ (Haptic Feedback) chuẩn trải nghiệm TikTok
+    HapticFeedback.lightImpact();
+
     if (widget.onDoubleTap != null) {
       widget.onDoubleTap!();
     }
     
-    // Bật hiệu ứng tim nổ trong 500 mili-giây
-    setState(() => _showHeart = true);
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) setState(() => _showHeart = false);
+    final int id = ++_heartCounter;
+    setState(() {
+      _hearts.add({'id': id, 'position': _lastTapPosition});
+    });
+    
+    // Tự hủy tim khỏi bộ nhớ sau 1 giây (Tiết kiệm RAM)
+    Future.delayed(const Duration(milliseconds: 1000), () {
+      if (mounted) {
+        setState(() => _hearts.removeWhere((h) => h['id'] == id));
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // BẮT BUỘC phải gọi để kích hoạt thuật toán KeepAlive
     if (!_isInitialized) {
       return const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)));
     }
@@ -112,9 +154,10 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
         }
       },
       child: GestureDetector(
-        behavior: HitTestBehavior.opaque, // QUAN TRỌNG: Ép bắt toàn bộ vùng chạm trên màn hình
+        behavior: HitTestBehavior.opaque, 
+        onTapDown: (details) => _lastTapPosition = details.localPosition, // Bắt Tọa Độ
         onTap: _togglePlayPause,
-        onDoubleTap: _handleDoubleTap, // Đăng ký sự kiện Double Tap
+        onDoubleTap: _handleDoubleTap, 
         child: Stack(
           alignment: Alignment.center,
           children: [
@@ -130,28 +173,128 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
               ),
             ),
             
-            // Lớp Phủ Nút Play (Single Tap)
+            // Lớp Phủ Nút Play (Single Tap) đã được nâng cấp UI
             AnimatedOpacity(
               opacity: _isUserPaused ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 200),
               child: Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), shape: BoxShape.circle),
-                child: const Icon(Icons.play_arrow, color: Colors.white, size: 64),
+                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.3))),
+                child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 64),
+              ),
+            ),
+            
+            // Lớp báo hiệu Đang Đệm (Buffering Indicator) chống giật
+            if (_controller.value.isBuffering)
+               const CircularProgressIndicator(color: Color(0xFF80BF84), strokeWidth: 3),
+
+            // MỚI: Thanh tiến trình video (Progress Bar) chạy động real-time chuyển vị trí an toàn trên đỉnh Navigation Hub (96px)
+            Positioned(
+              bottom: 96,
+              left: 0,
+              right: 0,
+              child: Opacity(
+                opacity: 0.4,
+                child: Container(
+                  height: 2,
+                  width: double.infinity,
+                  color: Colors.white12,
+                  child: Stack(
+                    children: [
+                      FractionallySizedBox(
+                        widthFactor: _progress, // Ép rộng thanh màu trắng chạy động co dãn theo tiến độ phát thực tế
+                        child: Container(
+                          height: 2,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
 
-            // Lớp Phủ Tim Nổi (Double Tap)
-            AnimatedScale(
-              scale: _showHeart ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.elasticOut,
-              child: AnimatedOpacity(
-                opacity: _showHeart ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: const Icon(Icons.favorite, color: Colors.red, size: 100),
+            // Lớp Phủ Tim Nổi Đa Điểm TikTok (Multi-Tap Dynamic Position)
+
+            // MỚI: Lớp phủ Báo lỗi luồng phát mạng (Network / Stream Error Overlay)
+            if (_controller.value.hasError)
+              Container(
+                color: Colors.black87,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.wifi_off_rounded, color: Colors.white.withOpacity(0.6), size: 48),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Lỗi tải video. Vui lòng kiểm tra kết nối.',
+                        style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _isInitialized = false;
+                          });
+                          _controller.initialize().then((_) {
+                            if (mounted) {
+                              setState(() => _isInitialized = true);
+                              _controller.play();
+                            }
+                          });
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF80BF84),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        ),
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('Thử lại'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
+
+            // Lớp Phủ Tim Nổi Đa Điểm TikTok (Multi-Tap Dynamic Position)
+            ..._hearts.map((heart) {
+              return Positioned(
+                left: heart['position'].dx - 50, // Căn giữa ngón tay
+                top: heart['position'].dy - 50,
+                child: TweenAnimationBuilder<double>(
+                  key: ValueKey(heart['id']),
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  duration: const Duration(milliseconds: 900),
+                  curve: Curves.easeOutBack, // Hiệu ứng nảy Spring
+                  builder: (context, value, child) {
+                    // Logic mượt: Nảy lên -> Giữ nguyên -> Mờ đi
+                    final opacity = value < 0.1 ? (value * 10) : (value > 0.7 ? (1 - value) * 3.33 : 1.0);
+                    final scale = 0.5 + (value * 0.7); // Phóng to dần
+                    final dy = -(value * 120); // Bay bổng lên trên 120px
+
+                    return Opacity(
+                      opacity: opacity.clamp(0.0, 1.0),
+                      child: Transform.translate(
+                        offset: Offset(0, dy),
+                        child: Transform.scale(
+                          scale: scale,
+                          child: Transform.rotate(
+                            angle: (heart['id'] % 2 == 0 ? 0.2 : -0.2), // Xoay nghiêng trái/phải ngẫu nhiên
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Icon(Icons.favorite, color: Colors.pinkAccent.withOpacity(0.4), size: 110),
+                                const Icon(Icons.favorite, color: Colors.red, size: 90),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              );
+            }),
           ],
         ),
       ),

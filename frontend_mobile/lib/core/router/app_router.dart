@@ -13,13 +13,20 @@ import '../../presentation/screens/admin/moderator_dashboard_screen.dart';
 import '../../presentation/screens/profile/public_profile_screen.dart';
 import '../../presentation/screens/admin/partner_dashboard_screen.dart';
 import '../../presentation/screens/admin/creator_dashboard_screen.dart'; // IMPORT CREATOR DASHBOARD
+import '../../presentation/screens/splash_screen.dart'; // Đổi đường dẫn nếu bạn lưu ở thư mục khác
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final GoRouter appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
-  initialLocation: '/',
+  initialLocation: '/splash', // Đặt Splash làm trang chạy đầu tiên
   routes: [
+    // KHAI BÁO TUYẾN ĐƯỜNG SPLASH ĐỘC LẬP (Không dính Bottom Bar)
+    GoRoute(
+      path: '/splash',
+      builder: (context, state) => const SplashScreen(),
+    ),
+    
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) {
         return MainHubScreen(navigationShell: navigationShell);

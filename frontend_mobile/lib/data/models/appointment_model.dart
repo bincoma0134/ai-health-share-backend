@@ -15,6 +15,7 @@ class AppointmentModel {
   final String createdAt;
   final Map<String, dynamic> serviceInfo;
   final Map<String, dynamic> userInfo;
+  final Map<String, dynamic> voucherInfo; // 🚀 BẢO CHỨNG: Nhận diện đối tượng Voucher lồng từ Backend
 
   AppointmentModel({
     required this.id,
@@ -33,6 +34,7 @@ class AppointmentModel {
     required this.createdAt,
     required this.serviceInfo,
     required this.userInfo,
+    required this.voucherInfo,
   });
 
   factory AppointmentModel.fromJson(Map<String, dynamic> json) {
@@ -53,6 +55,30 @@ class AppointmentModel {
       createdAt: json['created_at'] ?? '',
       serviceInfo: json['services'] ?? {},
       userInfo: json['users'] ?? {},
+      // Bẫy lọc an toàn nếu trường vouchers từ Backend trả về null
+      voucherInfo: json['vouchers'] is Map<String, dynamic> ? json['vouchers'] : {},
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'user_id': userId,
+      'partner_id': partnerId,
+      'service_id': serviceId,
+      'total_amount': totalAmount,
+      'customer_name': customerName,
+      'customer_phone': customerPhone,
+      'note': note,
+      'status': status,
+      'start_time': startTime,
+      'end_time': endTime,
+      'check_in_code': checkInCode,
+      'rejection_reason': rejectionReason,
+      'created_at': createdAt,
+      'services': serviceInfo,
+      'users': userInfo,
+      'vouchers': voucherInfo,
+    };
   }
 }

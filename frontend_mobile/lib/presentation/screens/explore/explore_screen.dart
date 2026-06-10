@@ -1,10 +1,11 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../../data/models/service_model.dart';
-import '../../../data/services/explore_api_service.dart';
-import '../../widgets/auth_bottom_sheet.dart';
-import '../../widgets/service_booking_bottom_sheet.dart';
-import '../../widgets/mini_video_player.dart'; // Import Trình phát Video
+import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart'; // Đấu nối định tuyến nhanh Router 
+import '../../../data/models/partner_map_model.dart'; // Nạp mô hình đối tác sạch 
+import '../../../data/services/explore_api_service.dart'; // Nạp lớp dịch vụ 
+import '../../widgets/mini_video_player.dart'; // Nạp trình phát video thực tế hệ thống
+import '../../widgets/booking_bottom_sheet.dart'; // Nạp bảng cấu hình đặt lịch chuẩn 404-resolved
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -14,152 +15,726 @@ class ExploreScreen extends StatefulWidget {
 }
 
 class _ExploreScreenState extends State<ExploreScreen> {
-  List<ServiceModel> _services = [];
-  bool _isLoading = true;
-  String _searchQuery = '';
-  String _activeFilter = 'ALL';
-  final _storage = const FlutterSecureStorage();
+  List<PartnerMapModel> _partners = []; // Chuẩn hóa kiểu dữ liệu mảng đối tượng 
+  List<PartnerMapModel> _filteredPartners = []; // Bộ đệm lưu trữ dữ liệu sau khi lọc tìm kiếm
+  
+  // Các mảng trạng thái lưu trữ danh sách gói dịch vụ lẻ đồng bộ từ Web
+  List<dynamic> _services = [];
+  List<dynamic> _filteredServices = [];
+  
+  // Quản lý trạng thái Pop-up xem trước video lơ lửng công nghệ cao
+  String? _activePreviewVideoUrl;
+  dynamic _activeSelectedService; // Lưu trữ object dịch vụ cụ thể phục vụ luồng Booking liên thông
+  
+  bool _isLoading = true; // 
+
+  // Khai báo bộ điều khiển nhập liệu cho thanh tìm kiếm
+  final TextEditingController _searchController = TextEditingController();
+
+  // Trạng thái lưu trữ bộ lọc nâng cao đồng bộ theo logic hệ thống
+  String _selectedTypeFilter = 'ALL'; // Các giá trị: 'ALL' | 'RELAXATION' | 'TREATMENT'
+
+  // Trạng thái lưu trữ Bộ lọc nhanh dịch vụ chính: 'NONE' | 'ONLINE' | 'CLINIC'
+  String _selectedQuickService = 'NONE';
+
+  // Trạng thái lưu trữ bộ lọc danh mục y tế khác: 'ALL' hoặc tên danh mục cụ thể
+  String _selectedCategoryFilter = 'ALL';
+
+  // Khai báo bộ điều khiển cuộn trang để xử lý Userflow của Banner
+  final ScrollController _scrollController = ScrollController();
+
+  final _currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ'); // 
 
   @override
   void initState() {
     super.initState();
-    _loadServices();
+    _fetchExploreData();
   }
 
-  Future<void> _loadServices() async {
-    final services = await ExploreApiService.fetchServices();
-    setState(() {
-      _services = services;
-      _isLoading = false;
-    });
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
-  List<ServiceModel> get _filteredServices {
-    return _services.where((s) {
-      final matchesSearch = s.serviceName.toLowerCase().contains(_searchQuery.toLowerCase()) || 
-                            s.description.toLowerCase().contains(_searchQuery.toLowerCase());
-      final matchesFilter = _activeFilter == 'ALL' || s.serviceTypeEnum == _activeFilter;
-      return matchesSearch && matchesFilter;
-    }).toList();
-  }
-
-  Future<void> _handleBookingClick(ServiceModel service) async {
-    final token = await _storage.read(key: 'ai-health-token');
-    if (token == null || token.isEmpty) {
+  // --- ĐỒNG BỘ ĐƯỜNG ỐNG NẠP DỮ LIỆU SẠCH ---
+  Future<void> _fetchExploreData() async {
+    try {
+      // Nạp song song cả danh sách đối tác bản đồ và mảng gói dịch vụ lẻ chuẩn Web
+      final partnerData = await ExploreApiService.fetchExplorePartners(); // 
+      final serviceData = await ExploreApiService.fetchAllServices();
+      
       if (mounted) {
-        showModalBottomSheet(
-          context: context,
-          useRootNavigator: true, // <--- ÉP HIỂN THỊ ĐÈ LÊN NAVIGATION BAR
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (context) => AuthBottomSheet(onSuccess: () {}),
-        );
+        setState(() {
+          _partners = partnerData; // 
+          _filteredPartners = partnerData; // Khởi tạo dữ liệu bộ đệm ban đầu trùng với dữ liệu gốc
+          
+          _services = serviceData;
+          _filteredServices = serviceData;
+          
+          _isLoading = false; // 
+        });
+        _applyFilters(); // Kích hoạt bộ lọc tổng hợp đồng bộ cả 2 kho dữ liệu
       }
-    } else {
-      if (mounted) {
-        showModalBottomSheet(
-          context: context,
-          useRootNavigator: true, // <--- ÉP HIỂN THỊ ĐÈ LÊN NAVIGATION BAR
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (context) => ServiceBookingBottomSheet(service: service),
-        );
-      }
+    } catch (e) {
+      debugPrint("Lỗi nạp dữ liệu Explore UI: $e"); // 
+      if (mounted) setState(() => _isLoading = false); // 
     }
   }
 
-  void _showServiceDetails(ServiceModel service) {
-    showModalBottomSheet(
-      context: context,
-      useRootNavigator: true, // <--- ÉP HIỂN THỊ ĐÈ LÊN NAVIGATION BAR
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.85,
-        decoration: const BoxDecoration(color: Color(0xFF121214), borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Thumbnail Chi tiết
-            Container(
-              height: 200,
-              width: double.infinity,
-              decoration: const BoxDecoration(borderRadius: BorderRadius.vertical(top: Radius.circular(32)), color: Colors.black),
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-                child: service.imageUrl != null 
-                    ? Image.network(service.imageUrl!, fit: BoxFit.cover)
-                    : service.videoUrl != null
-                        ? MiniVideoPlayer(videoUrl: service.videoUrl!) // Hiển thị Video nếu không có ảnh
-                        : const Center(child: Icon(Icons.spa, size: 60, color: Colors.white24)),
-              ),
+  // --- LOGIC ÁP DỤNG BỘ LỌC TỔNG HỢP (TỪ KHÓA & LOẠI HÌNH) ---
+  void _applyFilters() {
+    final String query = _searchController.text.toLowerCase();
+    
+    setState(() {
+      _filteredPartners = _partners.where((partner) {
+        // 1. Kiểm tra điều kiện từ khóa tìm kiếm
+        bool matchesSearch = true;
+        if (query.isNotEmpty) {
+          final String partnerName = partner.fullName?.toLowerCase() ?? '';
+          final String partnerUsername = partner.username?.toLowerCase() ?? '';
+          final bool matchesName = partnerName.contains(query) || partnerUsername.contains(query);
+          final bool matchesTags = partner.tags?.any((tag) => tag.toLowerCase().contains(query)) ?? false;
+          matchesSearch = matchesName || matchesTags;
+        }
+
+        // 2. Kiểm tra điều kiện loại hình dịch vụ nâng cao (RELAXATION / TREATMENT)
+        bool matchesType = true;
+        if (_selectedTypeFilter != 'ALL') {
+          matchesType = partner.services?.any((s) => 
+            (s['service_type'] ?? s['service_type_enum'] ?? '').toString().toUpperCase() == _selectedTypeFilter
+          ) ?? false;
+        }
+
+        // 3. Kiểm tra điều kiện Bộ lọc nhanh (Khám Online / Đặt lịch cơ sở)
+        bool matchesQuickService = true;
+        if (_selectedQuickService == 'ONLINE') {
+          matchesQuickService = partner.services?.any((s) {
+            final String serviceName = (s['service_name'] ?? '').toString().toLowerCase();
+            return serviceName.contains('online') || serviceName.contains('video') || serviceName.contains('từ xa');
+          }) ?? false;
+        } else if (_selectedQuickService == 'CLINIC') {
+          matchesQuickService = partner.services?.any((s) {
+            final String serviceName = (s['service_name'] ?? '').toString().toLowerCase();
+            return !serviceName.contains('online') && !serviceName.contains('video');
+          }) ?? false;
+        }
+
+        // 4. Kiểm tra điều kiện Bộ lọc theo danh mục y tế khác
+        bool matchesCategory = true;
+        if (_selectedCategoryFilter != 'ALL') {
+          final String targetCat = _selectedCategoryFilter.toLowerCase();
+          final bool hasMatchingTag = partner.tags?.any((tag) => tag.toLowerCase().contains(targetCat)) ?? false;
+          final bool hasMatchingServiceName = partner.services?.any((s) => 
+            (s['service_name'] ?? '').toString().toLowerCase().contains(targetCat)
+          ) ?? false;
+          matchesCategory = hasMatchingTag || hasMatchingServiceName;
+        }
+
+        return matchesSearch && matchesType && matchesQuickService && matchesCategory;
+      }).toList();
+
+      // ĐỒNG BỘ LOGIC LỌC MẢNG DỊCH VỤ LẺ THEO CHUẨN WEBSITE (page.tsx)
+      _filteredServices = _services.where((service) {
+        final String sName = (service['service_name'] ?? '').toString().toLowerCase();
+        final String sDesc = (service['description'] ?? '').toString().toLowerCase();
+        final String sType = (service['service_type_enum'] ?? service['service_type'] ?? '').toString().toUpperCase();
+
+        // 1. Đối chiếu từ khóa tìm kiếm
+        bool matchesSearch = true;
+        if (query.isNotEmpty) {
+          matchesSearch = sName.contains(query) || sDesc.contains(query);
+        }
+
+        // 2. Đối chiếu bộ lọc nâng cao (ALL | RELAXATION | TREATMENT)
+        bool matchesType = true;
+        if (_selectedTypeFilter != 'ALL') {
+          matchesType = (sType == _selectedTypeFilter);
+        }
+
+        // 3. Đối chiếu bộ lọc danh mục y tế khác
+        bool matchesCategory = true;
+        if (_selectedCategoryFilter != 'ALL') {
+          final String targetCat = _selectedCategoryFilter.toLowerCase();
+          matchesCategory = sName.contains(targetCat) || sDesc.contains(targetCat);
+        }
+
+        return matchesSearch && matchesType && matchesCategory;
+      }).toList();
+    });
+  }
+
+  void _onSearchChanged(String query) {
+    _applyFilters();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F9FA), // Nền xám nhạt làm bật các khối Card trắng 
+      body: Stack(
+        children: [
+          CustomScrollView(
+        controller: _scrollController,
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()), // 
+        slivers: [
+          // 1. THANH TÌM KIẾM LƠ LỬNG (Floating Search Bar) 
+          SliverAppBar(
+            floating: true,
+            snap: true,
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            surfaceTintColor: Colors.transparent, // 
+            title: _buildFloatingSearchBar(),
+            bottom: const PreferredSize(
+              preferredSize: Size.fromHeight(10),
+              child: SizedBox(), // 
             ),
-            
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: const Color(0xFF80BF84).withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-                      child: Text(service.serviceTypeEnum == 'TREATMENT' ? 'TRỊ LIỆU' : 'THƯ GIÃN', style: const TextStyle(color: Color(0xFF80BF84), fontSize: 10, fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(service.serviceName, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 16),
-                    
-                    Row(
-                      children: [
-                        CircleAvatar(backgroundImage: NetworkImage(service.user['avatar_url'] ?? 'https://via.placeholder.com/150')),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(service.user['full_name'] ?? 'Đối tác', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                              Text(service.user['physical_address'] ?? 'Cơ sở xác thực', style: const TextStyle(color: Colors.white54, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    Text(service.description, style: const TextStyle(color: Colors.white70, fontSize: 15, height: 1.5)),
-                  ],
-                ),
-              ),
-            ),
-            
-            // Thanh Bottom Giá & Nút đặt
-            Container(
-              padding: EdgeInsets.only(left: 20, right: 20, top: 20, bottom: MediaQuery.of(context).padding.bottom > 0 ? MediaQuery.of(context).padding.bottom + 10 : 20),
-              decoration: const BoxDecoration(color: Colors.black, border: Border(top: BorderSide(color: Colors.white10))),
+          ),
+
+          // 2. BANNER QUẢNG CÁO / SỰ KIỆN CO-BRANDING 
+          SliverToBoxAdapter(
+            child: _buildBannerCarousel(), // 
+          ),
+
+          // 3. KHỐI DỊCH VỤ CHÍNH (Tương đương Đặt xe / Đặt đồ ăn) 
+          SliverToBoxAdapter(
+            child: _buildPrimaryServices(), // 
+          ),
+
+          // 4. DANH SÁCH GỢI Ý ĐỐI TÁC (Tích hợp dữ liệu thật từ R2 & DB) 
+          SliverToBoxAdapter(
+            child: _buildHorizontalList(title: "✨ Gần bạn có dịch vụ tốt, thử luôn không?"), // 
+          ),
+
+          // 5. LƯỚI DANH MỤC CHUYÊN KHOA 
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 16, top: 24, bottom: 12), // 
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('GIÁ DỊCH VỤ', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
-                      Text('${service.price} VND', style: const TextStyle(color: Color(0xFF80BF84), fontSize: 20, fontWeight: FontWeight.bold)),
-                    ],
+                  const Text(
+              "Dịch vụ y tế khác",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.black87), // 
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _selectedCategoryFilter = 'ALL';
+                });
+                _applyFilters();
+              }, // 
+              child: Text(
+                "Xem tất cả", 
+                style: TextStyle(
+                  color: _selectedCategoryFilter == 'ALL' ? const Color(0xFF80BF84) : Colors.grey, 
+                  fontWeight: FontWeight.bold
+                )
+              ), // 
+            ),
+                ],
+              ),
+            ),
+          ),
+          _buildCategoryGrid(), // 
+
+          // --- BỔ SUNG KHU VỰC LƯỚI GÓI DỊCH VỤ Y TẾ LẺ ĐỒNG BỘ LOGIC WEB ---
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 16, top: 32, bottom: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "🔥 Gói dịch vụ y tế thịnh hành", 
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black87)
                   ),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF80BF84), foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
-                    onPressed: () {
-                      // 1. Đóng bảng chi tiết dịch vụ trước (Giống setExpandedService(null) trên Web)
-                      Navigator.of(context, rootNavigator: true).pop(); 
-                      
-                      // 2. Chờ hiệu ứng đóng hoàn tất rồi mới mở Form Đặt Lịch
-                      Future.delayed(const Duration(milliseconds: 200), () {
-                        if (mounted) _handleBookingClick(service);
-                      });
-                    },
-                    child: const Text('ĐẶT LỊCH NGAY', style: TextStyle(fontWeight: FontWeight.bold)),
-                  )
+                  const SizedBox(height: 4),
+                  Text(
+                    "Hiển thị ${_filteredServices.length} gói khám xác thực", 
+                    style: const TextStyle(fontSize: 12, color: Colors.black38, fontWeight: FontWeight.bold)
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          _buildServiceGrid(), // Khởi chạy lưới ô dịch vụ co giãn
+
+          // Spacer an toàn chống lẹm tiêu chuẩn vào thanh Nav Bar lơ lửng 
+          const SliverToBoxAdapter(
+            child: SizedBox(height: 140), // 
+          ),
+        ],
+      ),
+      
+      // --- POP-UP XEM TRƯỚC VIDEO (PREVIEW OVERLAY DIALOG LƠ LỬNG TRÊN STACK) ---
+      if (_activePreviewVideoUrl != null) _buildVideoPreviewPopup(),
+    ],
+   ),
+  );
+}
+
+  // --- WIDGET DIALOG POP-UP XEM TRƯỚC VIDEO AN TOÀN ---
+  Widget _buildVideoPreviewPopup() {
+    final String serviceName = (_activeSelectedService?['service_name'] ?? 'Gói dịch vụ y tế').toString();
+    final double price = (_activeSelectedService?['price'] ?? 0).toDouble();
+
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          // Lớp nền mờ tối bảo mật góc nhìn
+          GestureDetector(
+            onTap: () => setState(() {
+              _activePreviewVideoUrl = null;
+              _activeSelectedService = null;
+            }),
+            child: Container(
+              color: Colors.black.withOpacity(0.75),
+            ),
+          ),
+          // Khối hộp khung hình Mini-Player thông minh
+          Center(
+            child: Container(
+              width: MediaQuery.of(context).size.width * 0.88,
+              height: MediaQuery.of(context).size.width * 1.35,
+              decoration: BoxDecoration(
+                color: const Color(0xFF131316), 
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.5)
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                children: [
+                  // 1. EMBED TRÌNH PHÁT VIDEO THỰC TẾ (Zero-latency video streaming)
+                  Positioned.fill(
+                    bottom: 95, // Nhường không gian phía đáy cho khay thông tin thanh toán đặt lịch
+                    child: MiniVideoPlayer(videoUrl: _activePreviewVideoUrl!),
+                  ),
+
+                  // 2. NÚT ĐÓNG POP-UP NHANH GÓC TRÊN KHUNG HÌNH
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: GestureDetector(
+                      onTap: () => setState(() {
+                        _activePreviewVideoUrl = null;
+                        _activeSelectedService = null;
+                      }),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), shape: BoxShape.circle),
+                        child: const Icon(Icons.close_rounded, color: Colors.white, size: 18),
+                      ),
+                    ),
+                  ),
+
+                  // 3. KHAY THÔNG TIN DỊCH VỤ VÀ SHORTCUT ĐẶT LỊCH KÍNH MỜ CAO CẤP
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: 95,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF131316).withOpacity(0.92),
+                        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.08))),
+                      ),
+                      child: Row(
+                        children: [
+                          // Khối chữ tiêu đề và giá gói khám lẻ
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  serviceName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _currencyFormat.format(price),
+                                  style: const TextStyle(color: Color(0xFF80BF84), fontSize: 16, fontWeight: FontWeight.w900),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          // NÚT BẤM "ĐẶT LỊCH NGAY" ĐỒNG BỘ LOGIC HỆ THỐNG WEB - MOBILE
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF80BF84),
+                              foregroundColor: Colors.black87,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                              elevation: 0,
+                            ),
+                            onPressed: () {
+                              final dynamic currentService = _activeSelectedService;
+                              
+                              // SỬA LỖI NGHIÊM TRỌNG LUỒNG ĐẶT LỊCH: Gán adapter Map payload để tương thích hoàn toàn với getters của BookingBottomSheet
+                              if (currentService != null) {
+                                currentService['id'] = currentService['id'] ?? '';
+                                currentService['price'] = currentService['price'] ?? 0;
+                                currentService['authorId'] = currentService['partner_id']; // Đồng bộ mã hóa trường partner_id sang authorId
+                              }
+
+                              // Tắt Pop-up xem video trước khi mở BottomSheet đặt lịch để tránh xung đột overlay
+                              setState(() {
+                                _activePreviewVideoUrl = null;
+                                _activeSelectedService = null;
+                              });
+                              
+                              // Kích hoạt vuốt mở bảng đơn đặt lịch chuẩn hệ thống, không còn bị vấp lỗi Null/AuthorID nữa
+                              showModalBottomSheet(
+                                context: context,
+                                isScrollControlled: true,
+                                backgroundColor: Colors.transparent,
+                                builder: (context) => BookingBottomSheet(video: currentService),
+                              );
+                            },
+                            child: const Row(
+                              children: [
+                                Icon(Icons.calendar_month_rounded, size: 16),
+                                SizedBox(width: 6),
+                                Text('ĐẶT LỊCH', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.5)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- WIDGET LƯỚI DỊCH VỤ LẺ ĐỒNG BỘ THEO MẪU GIAO DIỆN WEB ---
+  // --- WIDGET LƯỚI DỊCH VỤ LẺ ĐỒNG BỘ THEO MẪU GIAO DIỆN WEB ---
+  Widget _buildServiceGrid() {
+    if (_isLoading) {
+      return const SliverToBoxAdapter(
+        child: Center(child: Padding(padding: EdgeInsets.all(32.0), child: CircularProgressIndicator(color: Color(0xFF80BF84)))),
+      );
+    }
+    
+    if (_filteredServices.isEmpty) {
+      return const SliverToBoxAdapter(
+        child: Center(child: Padding(padding: EdgeInsets.all(40.0), child: Text("Không tìm thấy gói dịch vụ phù hợp.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)))),
+      );
+    }
+
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 14,
+          crossAxisSpacing: 12,
+          childAspectRatio: 0.72,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final service = _filteredServices[index];
+            final String serviceName = (service['service_name'] ?? 'Gói dịch vụ y tế').toString();
+            final double price = (service['price'] ?? 0).toDouble();
+            final String? imageUrl = service['image_url'];
+            final String? videoUrl = service['video_url'];
+            
+            final Map<String, dynamic> userData = service['users'] ?? {};
+            final String partnerName = (userData['full_name'] ?? 'Cơ sở chuyên khoa').toString();
+
+            // RE-DESIGN LUỒNG 2: Bọc toàn bộ ô cửa sổ dịch vụ (Card) thành nút bấm tương tác mở Pop-up
+            return GestureDetector(
+              onTap: () {
+                if (videoUrl != null && videoUrl.isNotEmpty) {
+                  setState(() {
+                    _activePreviewVideoUrl = videoUrl;
+                    _activeSelectedService = service;
+                  });
+                }
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // RE-DESIGN LUỒNG 1: Phát video luôn dưới dạng Preview tự động mà không cần chờ người dùng nhấn nút play
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                        child: Container(
+                          width: double.infinity,
+                          color: Colors.grey.shade100,
+                          child: videoUrl != null && videoUrl.isNotEmpty
+                              ? MiniVideoPlayer(videoUrl: videoUrl) // Chạy video preview mượt mà ngay lập tức
+                              : (imageUrl != null && imageUrl.isNotEmpty
+                                  ? Image.network(imageUrl, fit: BoxFit.cover)
+                                  : const Center(child: Icon(Icons.medical_services_outlined, color: Colors.black26, size: 32))),
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            partnerName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF80BF84)),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            serviceName,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.black87, height: 1.2),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                _currencyFormat.format(price),
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.blue),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
+                                child: const Icon(Icons.calendar_today_rounded, size: 14, color: Colors.black87),
+                              )
+                            ],
+                          ),
+                        ],
+                      ),
+                    )
+                  ],
+                ),
+              ),
+            );
+          },
+          childCount: _filteredServices.length,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingSearchBar() {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.search_rounded, color: Colors.black54, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              onChanged: _onSearchChanged,
+              style: const TextStyle(color: Colors.black87, fontSize: 15, fontWeight: FontWeight.w500),
+              decoration: const InputDecoration(
+                hintText: 'Bạn muốn tìm chuyên khoa nào?',
+                hintStyle: TextStyle(color: Colors.black38, fontSize: 15, fontWeight: FontWeight.w500),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(vertical: 10),
+              ),
+            ),
+          ),
+          if (_searchController.text.isNotEmpty)
+            GestureDetector(
+              onTap: () {
+                _searchController.clear();
+                _onSearchChanged('');
+              },
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Icon(Icons.clear_rounded, color: Colors.black38, size: 20),
+              ),
+            ),
+          GestureDetector(
+            onTap: () => _showFilterBottomSheet(context),
+            child: Icon(
+              Icons.tune_rounded, 
+              color: _selectedTypeFilter != 'ALL' ? const Color(0xFF80BF84) : Colors.black54, 
+              size: 22
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFilterBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (BuildContext bc) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Bộ lọc nâng cao',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black87),
+                        ),
+                        GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: const Icon(Icons.close_rounded, color: Colors.black45),
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Loại hình dịch vụ',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black54),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 10,
+                      children: [
+                        _buildFilterChip(context, setModalState, 'Tất cả dịch vụ', 'ALL'),
+                        _buildFilterChip(context, setModalState, 'Thư giãn & Phục hồi', 'RELAXATION'),
+                        _buildFilterChip(context, setModalState, 'Trị liệu chuyên sâu', 'TREATMENT'),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFilterChip(BuildContext context, StateSetter setModalState, String label, String value) {
+    final bool isSelected = _selectedTypeFilter == value;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : Colors.black87,
+        fontWeight: FontWeight.bold,
+        fontSize: 13,
+      ),
+      selectedColor: const Color(0xFF80BF84),
+      backgroundColor: Colors.grey.shade100,
+      checkmarkColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(100),
+        side: BorderSide.none,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      onSelected: (bool selected) {
+        if (selected) {
+          setModalState(() {
+            _selectedTypeFilter = value;
+          });
+          setState(() {
+            _selectedTypeFilter = value;
+          });
+          _applyFilters();
+        }
+      },
+    );
+  }
+
+  Widget _buildBannerCarousel() {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedTypeFilter = 'TREATMENT';
+        });
+        _applyFilters();
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            320,
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeInOutCubic,
+          );
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        height: 160,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF80BF84), Color(0xFF5B9E5F)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5)),
+          ],
+        ),
+        child: Stack(
+          children: [
+            const Positioned(
+              left: 20,
+              top: 30,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("VÒNG XANH\nSỨC KHỎE", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 1.2)),
+                  SizedBox(height: 8),
+                  Text("Trải nghiệm y tế chuẩn 5 sao", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
+                ],
+              ),
+            ),
+            Positioned(
+              bottom: 12,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(width: 16, height: 4, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(width: 4),
+                  Container(width: 4, height: 4, decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle)),
+                  const SizedBox(width: 4),
+                  Container(width: 4, height: 4, decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle)),
                 ],
               ),
             )
@@ -169,144 +744,274 @@ class _ExploreScreenState extends State<ExploreScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF09090b),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Row(
-          children: [
-            Text('Khám phá ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 24)),
-            Icon(Icons.auto_awesome, color: Color(0xFF80BF84), size: 24),
-          ],
-        ),
-      ),
-      body: Column(
+  Widget _buildPrimaryServices() {
+    final bool isOnlineSelected = _selectedQuickService == 'ONLINE';
+    final bool isClinicSelected = _selectedQuickService == 'CLINIC';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      child: Row(
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            child: TextField(
-              onChanged: (val) => setState(() => _searchQuery = val),
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Bạn đang tìm dịch vụ gì hôm nay?...',
-                hintStyle: const TextStyle(color: Colors.white54),
-                prefixIcon: const Icon(Icons.search, color: Colors.white54),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.05),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
-                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _selectedQuickService = isOnlineSelected ? 'NONE' : 'ONLINE';
+                });
+                _applyFilters();
+              },
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 90),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isOnlineSelected ? const Color(0xFFE3F2FD) : Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: isOnlineSelected ? Border.all(color: Colors.blue.withOpacity(0.5), width: 1.5) : null,
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.video_camera_front_rounded, color: isOnlineSelected ? Colors.blue.shade700 : Colors.blue, size: 26),
+                    const SizedBox(height: 6),
+                    Text(
+                      "Khám Online", 
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold, 
+                        fontSize: 13, 
+                        color: isOnlineSelected ? Colors.blue.shade900 : Colors.black87
+                      )
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-          
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            child: Row(
-              children: [
-                _buildFilterChip('ALL', 'Tất cả dịch vụ'),
-                const SizedBox(width: 12),
-                _buildFilterChip('RELAXATION', 'Thư giãn & Phục hồi'),
-                const SizedBox(width: 12),
-                _buildFilterChip('TREATMENT', 'Trị liệu chuyên sâu'),
-              ],
-            ),
-          ),
-          
+          const SizedBox(width: 12),
           Expanded(
-            child: _isLoading 
-              ? const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)))
-              : _filteredServices.isEmpty
-                  ? const Center(child: Text('Không có dịch vụ nào', style: TextStyle(color: Colors.white54)))
-                  : ListView.builder(
-                      padding: const EdgeInsets.only(left: 20, right: 20, bottom: 150, top: 10), // Tăng bottom padding để tránh đè Nav
-                      itemCount: _filteredServices.length,
-                      itemBuilder: (context, index) {
-                        final service = _filteredServices[index];
-                        return GestureDetector(
-                          onTap: () => _showServiceDetails(service),
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 20),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF121214),
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(color: Colors.white.withOpacity(0.05)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Thumbnail ngoài thẻ
-                                Container(
-                                  height: 180,
-                                  width: double.infinity,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.black,
-                                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                                    child: service.imageUrl != null 
-                                        ? Image.network(service.imageUrl!, fit: BoxFit.cover)
-                                        : service.videoUrl != null
-                                            ? MiniVideoPlayer(videoUrl: service.videoUrl!) // Tự phát Video Preview
-                                            : const Center(child: Icon(Icons.spa, color: Colors.white24, size: 50)),
-                                  ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.all(20),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(service.serviceName, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
-                                      const SizedBox(height: 8),
-                                      Text(service.description, style: const TextStyle(color: Colors.white54, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
-                                      const SizedBox(height: 16),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text('${service.price} VND', style: const TextStyle(color: Color(0xFF80BF84), fontSize: 16, fontWeight: FontWeight.bold)),
-                                          ElevatedButton(
-                                            style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: const CircleBorder(), padding: const EdgeInsets.all(12)),
-                                            onPressed: () => _handleBookingClick(service),
-                                            child: const Icon(Icons.calendar_month, size: 20),
-                                          )
-                                        ],
-                                      )
-                                    ],
-                                  ),
-                                )
-                              ],
-                            ),
-                          ),
-                        );
-                      },
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _selectedQuickService = isClinicSelected ? 'NONE' : 'CLINIC';
+                });
+                _applyFilters();
+              },
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 90),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isClinicSelected ? const Color(0xFFE8F5E9) : Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: isClinicSelected ? Border.all(color: const Color(0xFF80BF84).withOpacity(0.5), width: 1.5) : null,
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.storefront_rounded, color: isClinicSelected ? const Color(0xFF4CAF50) : const Color(0xFF80BF84), size: 26),
+                    const SizedBox(height: 6),
+                    Text(
+                      "Đặt lịch cơ sở", 
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold, 
+                        fontSize: 13, 
+                        color: isClinicSelected ? const Color(0xFF2E7D32) : Colors.black87
+                      )
                     ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFilterChip(String filterValue, String label) {
-    final isActive = _activeFilter == filterValue;
-    return GestureDetector(
-      onTap: () => setState(() => _activeFilter = filterValue),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-        decoration: BoxDecoration(
-          color: isActive ? Colors.white : Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(30),
+  Widget _buildHorizontalList({required String title}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 16, bottom: 12, top: 8),
+          child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black87)),
         ),
-        child: Text(
-          label, 
-          style: TextStyle(
-            color: isActive ? Colors.black : Colors.white70,
-            fontWeight: FontWeight.bold,
-            fontSize: 13
-          )
+        SizedBox(
+          height: 230,
+          child: _isLoading 
+            ? const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)))
+            : _filteredPartners.isEmpty
+              ? const Center(child: Text("Không tìm thấy kết quả phù hợp.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)))
+              : ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  itemCount: _filteredPartners.length,
+                  itemBuilder: (context, index) {
+                    final partner = _filteredPartners[index];
+                    final List<String> tags = partner.tags;
+                    final String primaryTag = tags.isNotEmpty ? tags[0] : "Chăm sóc sức khỏe";
+                    
+                    final List<dynamic> services = partner.services;
+                    double minPrice = 0;
+                    if (services.isNotEmpty) {
+                      minPrice = (services[0]['price'] ?? 0).toDouble();
+                      for (var s in services) {
+                         if ((s['price'] ?? 0) < minPrice) minPrice = (s['price'] ?? 0).toDouble();
+                      }
+                    }
+
+                    return GestureDetector(
+                      onTap: () {
+                        context.push('/public-profile/${partner.username}');
+                      },
+                      child: Container(
+                        width: 160,
+                        margin: const EdgeInsets.symmetric(horizontal: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 4))],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              height: 110,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade200,
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                                image: DecorationImage(
+                                  image: NetworkImage(
+                                    partner.avatarUrl.isNotEmpty 
+                                        ? partner.avatarUrl 
+                                        : "https://ui-avatars.com/api/?name=${partner.username}&background=80BF84&color=fff"
+                                  ), 
+                                  fit: BoxFit.cover
+                                )
+                              ),
+                              child: Stack(
+                                children: [
+                                  Positioned(
+                                    top: 8, left: 8,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(color: const Color(0xFF80BF84), borderRadius: BorderRadius.circular(8)),
+                                      child: Text(primaryTag, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                                    ),
+                                  )
+                                ],
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    partner.fullName.isNotEmpty ? partner.fullName : partner.username,
+                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.black87),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
+                                      const Text(" 4.9 ", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                      Text("• ${partner.distance.toStringAsFixed(1)} km", style: const TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w500)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  if (minPrice > 0)
+                                    Text("Từ ${_currencyFormat.format(minPrice)}", style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w800)),
+                                ],
+                              ),
+                            )
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCategoryGrid() {
+    final categories = [
+      {"icon": Icons.spa_rounded, "name": "Spa & Clinic", "color": Colors.pink},
+      {"icon": Icons.medical_services_rounded, "name": "Khám tổng quát", "color": Colors.blue},
+      {"icon": Icons.science_rounded, "name": "Xét nghiệm", "color": Colors.purple},
+      {"icon": Icons.wheelchair_pickup_rounded, "name": "Trị liệu", "color": Colors.orange},
+      {"icon": Icons.health_and_safety_rounded, "name": "Nha khoa", "color": Colors.teal},
+      {"icon": Icons.psychology_rounded, "name": "Tâm lý", "color": Colors.indigo},
+      {"icon": Icons.monitor_weight_rounded, "name": "Dinh dưỡng", "color": Colors.green},
+      {"icon": Icons.vaccines_rounded, "name": "Nhà thuốc", "color": Colors.redAccent},
+    ];
+
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      sliver: SliverGrid(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 4,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 12,
+          childAspectRatio: 0.85,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final cat = categories[index];
+            final String catName = cat['name'] as String;
+            final bool isSelected = _selectedCategoryFilter == catName;
+
+            return GestureDetector(
+              onTap: () {
+                setState(() {
+                  _selectedCategoryFilter = isSelected ? 'ALL' : catName;
+                });
+                _applyFilters();
+              },
+              child: Column(
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: isSelected ? (cat['color'] as Color) : (cat['color'] as Color).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: isSelected ? Border.all(color: Colors.white, width: 2) : null,
+                      boxShadow: isSelected ? [BoxShadow(color: (cat['color'] as Color).withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))] : null,
+                    ),
+                    child: Icon(
+                      cat['icon'] as IconData, 
+                      color: isSelected ? Colors.white : cat['color'] as Color, 
+                      size: 26
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    catName,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11, 
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600, 
+                      color: isSelected ? (cat['color'] as Color) : Colors.black87
+                    ),
+                    maxLines: 2,
+                  )
+                ],
+              ),
+            );
+          },
+          childCount: categories.length,
         ),
       ),
     );

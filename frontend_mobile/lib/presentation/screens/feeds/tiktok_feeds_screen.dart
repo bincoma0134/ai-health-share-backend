@@ -1,12 +1,21 @@
+import 'dart:ui'; // Bổ sung thư viện này để dùng ImageFilter
+import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../../../data/models/video_model.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:intl/intl.dart'; // Bổ sung phục vụ format giá tiền tệ VNĐ động
+import 'package:go_router/go_router.dart'; // Bổ sung GoRouter
+import '../../../data/models/video_model.dart'; 
 import '../../../data/services/feed_api_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../widgets/feed_video_player.dart';
 import '../../widgets/auth_bottom_sheet.dart';
 import '../../widgets/booking_bottom_sheet.dart';
 import '../../widgets/comment_bottom_sheet.dart';
+import '../../widgets/app_toast.dart'; // Tích hợp thông báo đặc sắc của hệ thống
+
 
 class TikTokFeedsScreen extends StatefulWidget {
   const TikTokFeedsScreen({super.key});
@@ -15,11 +24,24 @@ class TikTokFeedsScreen extends StatefulWidget {
   State<TikTokFeedsScreen> createState() => _TikTokFeedsScreenState();
 }
 
+
 class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
   List<VideoModel> _videos = [];
   bool _isLoading = true;
+  
+  // Quản lý thời gian xem video thực tế phục vụ nhiệm vụ SValue
+  final math.Random _random = math.Random();
+  DateTime? _videoStartTime;
   int _currentIndex = 0;
   final _storage = const FlutterSecureStorage();
+  
+  // Lưu trữ danh sách ID các đối tác đã nhấn theo dõi thành công trong phiên làm việc
+  final Set<String> _followedCreatorIds = {};
+
+  // MỚI: Quản lý trạng thái và dữ liệu cho tính năng Tìm kiếm nhanh (Search Overlay)
+  bool _isSearchOpen = false;
+  String _searchQuery = '';
+  final PageController _pageController = PageController();
 
   @override
   void initState() {
@@ -28,11 +50,45 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
   }
 
   Future<void> _loadFeeds() async {
-    final feeds = await FeedApiService.fetchFeeds();
-    setState(() {
-      _videos = feeds;
-      _isLoading = false;
-    });
+    try {
+      // 1. Đọc Token và giải mã JWT để lấy user_id (Bắt buộc để BE trả về trạng thái is_liked)
+      final token = await _storage.read(key: 'ai-health-token');
+      String? userId;
+      
+      if (token != null && token.isNotEmpty) {
+        final parts = token.split('.');
+        if (parts.length == 3) {
+          final payload = json.decode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+          userId = payload['sub'];
+        }
+      }
+
+      // 2. Gọi API truyền kèm user_id để Backend mapping với bảng likes/saves
+      final response = await ApiClient.instance.get(
+        '/tiktok/feeds',
+        queryParameters: userId != null ? {'user_id': userId, 'limit': 50} : {'limit': 50},
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = response.data['data'] ?? response.data;
+        var fetchedVideos = data.map((json) => VideoModel.fromJson(json)).toList();
+        
+        // Thuật toán Random: Xáo trộn danh sách để mỗi lần mở app là một luồng Feed mới lạ
+        fetchedVideos.shuffle(); 
+        
+        setState(() {
+          _videos = fetchedVideos;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      // Fallback an toàn
+      final feeds = await FeedApiService.fetchFeeds();
+      setState(() {
+        _videos = feeds;
+        _isLoading = false;
+      });
+    }
   }
 
   // Bẫy Logic Khách
@@ -92,16 +148,17 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useRootNavigator: true, // Hiển thị đè hoàn toàn lên Bottom Navigation Bar
       backgroundColor: Colors.transparent,
       builder: (context) => BookingBottomSheet(video: video),
     );
   }
 
   void _showCommentBottomSheet(int index) {
-    // Không bọc bằng _handleAuthGuard để khách vãng lai vẫn được ĐỌC bình luận
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useRootNavigator: true, // Hiển thị đè hoàn toàn lên Bottom Navigation Bar
       backgroundColor: Colors.transparent,
       builder: (context) => CommentBottomSheet(
         videoId: _videos[index].id,
@@ -117,22 +174,45 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Colors.green)));
+    if (_isLoading) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Color(0xFF80BF84))));
     if (_videos.isEmpty) return const Scaffold(backgroundColor: Colors.black, body: Center(child: Text('Không có video nào', style: TextStyle(color: Colors.white))));
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: PageView.builder(
+        controller: _pageController, // Gán bộ điều khiển để hỗ trợ dịch chuyển index video khi chọn kết quả tìm kiếm
         scrollDirection: Axis.vertical,
+        // Hiệu ứng lướt mượt, có độ nảy (Bounce) ở 2 đầu chuẩn UI/UX của iOS và TikTok
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()), 
+        // 🚀 THUẬT TOÁN PRELOAD: Tự động khởi tạo ngầm 1 video trước và 1 video sau vào RAM
+        allowImplicitScrolling: true, 
         itemCount: _videos.length,
-        onPageChanged: (index) => setState(() => _currentIndex = index),
+        onPageChanged: (index) async {
+          // Tính toán thời gian xem tích lũy của video vừa xem trước khi chuyển trang
+          if (_videoStartTime != null) {
+            final int secondsWatched = DateTime.now().difference(_videoStartTime!).inSeconds;
+            if (secondsWatched > 0) {
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                final int currentTotal = prefs.getInt('tiktok_watch_seconds_tally') ?? 0;
+                await prefs.setInt('tiktok_watch_seconds_tally', currentTotal + secondsWatched);
+                debugPrint('⏱️ Đã tích lũy thêm: $secondsWatched giây xem video (Tổng: ${currentTotal + secondsWatched}/180s)');
+              } catch (_) {}
+            }
+          }
+          // Reset mốc thời gian bắt đầu cho video mới
+          _videoStartTime = DateTime.now();
+          setState(() => _currentIndex = index);
+        },
         itemBuilder: (context, index) {
           final video = _videos[index];
           return Stack(
             children: [
               FeedVideoPlayer(
-                videoUrl: video.videoUrl, 
+                videoUrl: video.videoUrl,
                 isActive: index == _currentIndex,
+                videoIndex: index,            // Truyền vị trí để tính toán khoảng cách
+                currentIndex: _currentIndex,  // Truyền vị trí đang xem để so sánh
                 onDoubleTap: () {
                   // Chuẩn TikTok: Double Tap chỉ để thả tim (Like), nếu đã tim rồi thì không thu hồi (Unlike)
                   if (!video.isLiked) {
@@ -141,6 +221,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
                 },
               ),
               
+             
               // BỌC IGNORE POINTER ĐỂ LỚP ĐỔ BÓNG KHÔNG CHẶN SỰ KIỆN CHẠM
               IgnorePointer(
                 child: Container(
@@ -154,65 +235,410 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
                 ),
               ),
 
-              // Đẩy cao lên 110px để tránh hoàn toàn cụm Navigation nổi
+              // TOP NAVIGATION BAR: Gồm nút Quay lại và nút Đăng tải nội dung chuẩn mẫu UI
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      GestureDetector(
+                        onTap: () => context.pop(),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: Colors.black26,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+                        ),
+                      ),
+                      
+                      GestureDetector(
+                        onTap: () => setState(() => _isSearchOpen = true), // Bật lớp phủ Tìm kiếm nhanh chuyên biệt
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: Colors.black26,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.search_rounded, color: Colors.white, size: 20), // Thay thành nút Tìm kiếm chuẩn UI mới
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
               Positioned(
-                bottom: 110, left: 16, right: 80,
+                bottom: 110, left: 16, right: 80, // Định vị trên đỉnh thanh Navigation Hub (90px + 20px Spacing) để tránh đè lấp
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('@${video.author['username'] ?? 'user'}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 8),
-                    Text(video.content, style: const TextStyle(color: Colors.white, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 12),
-                    if (video.price > 0)
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF80BF84), foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                        onPressed: () => _handleAuthGuard(() => _showBookingBottomSheet(video)),
-                        child: const Text('ĐẶT LỊCH NGAY', style: TextStyle(fontWeight: FontWeight.w900)),
-                      )
+                    // LABEL DANH MỤC PHÂN LOẠI ĐỘNG (Áp dụng giải pháp 1 - Map từ Model)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.25),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        video.categoryTag,
+                        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.3),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // Tên hiển thị có thể Click để truy cập Profile
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        // Sửa lỗi 404: Truyền 'username' thay vì 'id' để khớp với GoRouter
+                        final String targetUsername = video.author['username'].toString(); 
+                        context.push('/public-profile/$targetUsername');
+                      },
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              video.author['full_name'] ?? video.author['username'] ?? 'Người dùng', 
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 17, shadows: [Shadow(color: Colors.black45, blurRadius: 4, offset: Offset(1, 1))]),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis, // Tự động cắt thành "..." nếu Tên quá dài
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 2),
+                              child: Text(
+                                '@${video.author['username'] ?? 'user'}', 
+                                style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w500, fontSize: 13, shadows: [Shadow(color: Colors.black45, blurRadius: 2, offset: Offset(1, 1))]),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis, // Bảo vệ cả Username không bị tràn
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // THẺ ĐẶT LỊCH THƯƠNG MẠI MỚI: Thuôn gọn, hiển thị ngay trên dòng Caption nếu video.price > 0
+                    if (video.price > 0) ...[
+                      const SizedBox(height: 8),
+                      GestureDetector(
+                        onTap: () => _handleAuthGuard(() => _showBookingBottomSheet(video)),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF80BF84).withOpacity(0.3), // Tone xanh mờ kết hợp thương hiệu
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.5), width: 1),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.calendar_month_rounded, color: Color(0xFF80BF84), size: 14),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '${NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(video.price)} • ĐẶT LỊCH NGAY', // Ánh xạ giá tiền thật từ API nguồn
+                                    style: TextStyle(color: Colors.white.withOpacity(0.95), fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.3),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    // Caption thông minh: Tự động tính toán số dòng và hiển thị nút "Xem thêm"
+                    ExpandableCaption(text: video.content),
                   ],
                 ),
               ),
 
-              // Đồng bộ trục Y với cụm Đặt lịch
+              
+              // ================= CỤM TƯƠNG TÁC BÊN PHẢI PIXEL-PERFECT (TIKTOK ALGORITHM) =================
               Positioned(
-                bottom: 110, right: 12,
+                bottom: 110, // Đồng bộ trục Y để không bị che khuất bởi thanh điều hướng nổi của MainHub
+                right: 12,   // Khoảng cách an toàn tuyệt đối từ biên màn hình vào tâm icon
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    CircleAvatar(radius: 24, backgroundImage: NetworkImage(video.author['avatar_url'] ?? 'https://via.placeholder.com/150')),
-                    const SizedBox(height: 20),
+                    // 0. Nút Tùy chọn mở rộng (...) chuẩn mẫu UI
+                    GestureDetector(
+                      onTap: () => _showCommentBottomSheet(index),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 6),
+                        child: Icon(Icons.more_horiz_rounded, color: Colors.white, size: 30),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // 1. Cụm Avatar Tác Giả Pixel-Perfect (Tách luồng sự kiện Avatar vs Nút Follow)
+                    SizedBox(
+                      width: 50,
+                      height: 60,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.topCenter,
+                        children: [
+                          // Vùng bấm 1: Chạm vào Avatar điều hướng sang trang Public Profile cá nhân
+                          GestureDetector(
+                            onTap: () {
+                              final String targetUsername = video.author['username'].toString();
+                              context.push('/public-profile/$targetUsername');
+                            },
+                            child: Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 1.5),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.4),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: CircleAvatar(
+                                backgroundColor: const Color(0xFF161616),
+                                backgroundImage: NetworkImage(video.author['avatar_url'] ?? 'https://via.placeholder.com/150'),
+                              ),
+                            ),
+                          ),
+                          // Vùng bấm 2: Chạm chính xác vào nút dấu "+" với Quản lý trạng thái và Hoạt họa mượt mà
+                          if (!_followedCreatorIds.contains(video.authorId))
+                            Positioned(
+                              bottom: -2,
+                              child: GestureDetector(
+                                onTap: () async {
+                                  await _handleAuthGuard(() async {
+                                    final targetId = video.authorId;
+                                    final String creatorName = video.author['full_name'] ?? video.author['username'] ?? 'Đối tác';
+                                    
+                                    // 1. Cập nhật Optimistic UI: Đưa vào danh sách đã theo dõi để đổi trạng thái tức thì
+                                    setState(() {
+                                      _followedCreatorIds.add(targetId);
+                                    });
+
+                                    // 2. Kích hoạt thông báo AppToast kính mờ đặc sắc từ trên đỉnh màn hình
+                                    AppToast.show(
+                                      context: context,
+                                      message: 'Đã theo dõi thành công chuyên gia $creatorName',
+                                      isSuccess: true,
+                                    );
+
+                                    try {
+                                      // 3. Chạy ngầm lệnh gọi API đồng bộ lên cơ sở dữ liệu hệ thống
+                                      await ApiClient.instance.post('/user/follow/$targetId');
+                                    } catch (e) {
+                                      // Hoàn tác (Rollback) thầm lặng nếu API xảy ra lỗi kết nối
+                                      setState(() {
+                                        _followedCreatorIds.remove(targetId);
+                                      });
+                                      AppToast.show(
+                                        context: context,
+                                        message: 'Kết nối máy chủ thất bại. Vui lòng thử lại!',
+                                        isSuccess: false,
+                                      );
+                                    }
+                                  });
+                                },
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOutBack,
+                                  width: 21,
+                                  height: 21,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF80BF84),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 1.5),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.25),
+                                        blurRadius: 3,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.add, 
+                                      color: Colors.white, 
+                                      size: 13,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14), // Spacing nén chặt lại theo chuẩn UI hiện đại
                     
-                    // Nút Like
+                    // 2. Nút Thả Tim (Màu đỏ mọng đặc trưng / Đổ bóng tầng kép chống chìm màu)
                     _buildInteractButton(
-                      video.isLiked ? Icons.favorite : Icons.favorite_border, 
+                      Icons.favorite_rounded, 
                       video.likesCount.toString(), 
                       () => _toggleInteraction(index, 'like'),
-                      color: video.isLiked ? Colors.red : Colors.white
+                      color: video.isLiked ? const Color(0xFFFE2C55) : Colors.white,
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 14),
                     
-                    // Nút Comment
+                    // 3. Nút Bình Luận (Icon chat với độ bo cong mềm mại tinh tế)
                     _buildInteractButton(
-                      Icons.comment, 
+                      Icons.mode_comment_rounded, 
                       video.commentsCount.toString(), 
                       () => _showCommentBottomSheet(index),
+                      color: Colors.white,
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 14),
                     
-                    // Nút Save
+                    // 4. Nút Lưu Trữ (Bookmark vuông vức thuôn gọn chuẩn chỉ)
                     _buildInteractButton(
-                      video.isSaved ? Icons.bookmark : Icons.bookmark_border, 
+                      Icons.bookmark_rounded, 
                       video.savesCount.toString(), 
                       () => _toggleInteraction(index, 'save'),
-                      color: video.isSaved ? Colors.orangeAccent : Colors.white
+                      color: video.isSaved ? const Color(0xFFFAC612) : Colors.white,
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 14),
                     
-                    _buildInteractButton(Icons.share, 'Chia sẻ', () {}),
+                    
+                    // 5. Nút Chia Sẻ (Kích hoạt Share Sheet Mặc định của Hệ điều hành iOS/Android)
+                    _buildInteractButton(
+                      Icons.share_rounded, 
+                      'Chia sẻ', 
+                      () {
+                        Share.share(
+                          'Xem nội dung video bổ ích này từ AI Health Share: ${video.videoUrl}\nTiêu đề: ${video.title}',
+                          subject: 'Chia sẻ video chăm sóc sức khỏe',
+                        );
+                      },
+                      color: Colors.white,
+                    ),
+                    const SizedBox(height: 14),
+                    // 6. Đĩa nhạc quay (Music Disc) chuẩn mẫu giao diện ở đáy góc phải
+                    const _MusicDiscAnimated(),
                   ],
                 ),
               ),
+
+              // MỚI: LỚP PHỦ TÌM KIẾM NHANH (SEARCH OVERLAY WIDGET) TÁCH BIỆT KHÔNG LIÊN QUAN ĐẾN TAB EXPLORE
+              if (_isSearchOpen)
+                Positioned.fill(
+                  child: ClipRRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16), // Tạo nền kính mờ xuyên thấu siêu sang trọng
+                      child: Container(
+                        color: Colors.black.withOpacity(0.6),
+                        padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 12, left: 16, right: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Hàng đầu tiên: Thanh Input và nút Hủy đóng
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(22),
+                                      border: Border.all(color: Colors.white24, width: 1),
+                                    ),
+                                    child: TextField(
+                                      autofocus: true, // Tự động bung bàn phím hệ thống ngay khi chạm mở nút FIND
+                                      style: const TextStyle(color: Colors.white, fontSize: 15),
+                                      decoration: const InputDecoration(
+                                        hintText: 'Tìm tiêu đề video hoặc tên chuyên gia...',
+                                        hintStyle: TextStyle(color: Colors.white38, fontSize: 14),
+                                        prefixIcon: Icon(Icons.search_rounded, color: Colors.white54, size: 20),
+                                        border: InputBorder.none,
+                                        contentPadding: EdgeInsets.symmetric(vertical: 11),
+                                      ),
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _searchQuery = value.trim().toLowerCase();
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _isSearchOpen = false;
+                                      _searchQuery = '';
+                                    });
+                                  },
+                                  child: const Text('Hủy', style: TextStyle(color: Color(0xFF80BF84), fontSize: 15, fontWeight: FontWeight.w600)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            // Thống kê số lượng bản ghi tìm thấy dựa trên Client Lọc (Giải pháp 1)
+                            if (_searchQuery.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4, bottom: 12),
+                                child: Text(
+                                  'Kết quả phù hợp (${_videos.where((v) => v.title.toLowerCase().contains(_searchQuery) || (v.author['full_name']?.toString() ?? '').toLowerCase().contains(_searchQuery)).length})',
+                                  style: const TextStyle(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                            // Danh sách cuộn kết quả tìm kiếm nhanh mượt mà
+                            Expanded(
+                              child: _searchQuery.isEmpty
+                                  ? const Center(child: Text('Nhập từ khóa để tìm kiếm nội dung nhanh...', style: TextStyle(color: Colors.white30, fontSize: 14)))
+                                  : ListView(
+                                      physics: const BouncingScrollPhysics(),
+                                      children: _videos.asMap().entries.where((entry) {
+                                        final video = entry.value;
+                                        final name = (video.author['full_name']?.toString() ?? '').toLowerCase();
+                                        return video.title.toLowerCase().contains(_searchQuery) || name.contains(_searchQuery);
+                                      }).map((entry) {
+                                        final index = entry.key;
+                                        final video = entry.value;
+                                        return Container(
+                                          margin: const EdgeInsets.only(bottom: 10),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(0.06),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: ListTile(
+                                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                            leading: CircleAvatar(
+                                              backgroundImage: NetworkImage(video.author['avatar_url'] ?? 'https://via.placeholder.com/150'),
+                                            ),
+                                            title: Text(video.title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                            subtitle: Text('@${video.author['username'] ?? 'user'} • ${video.categoryTag}', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                                            trailing: const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white24, size: 14),
+                                            onTap: () {
+                                              setState(() {
+                                                _isSearchOpen = false;
+                                                _searchQuery = '';
+                                              });
+                                              // Nhảy mượt tới video được tìm thấy trong luồng feeds chính
+                                              _pageController.jumpToPage(index);
+                                            },
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           );
         },
@@ -222,13 +648,141 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
 
   Widget _buildInteractButton(IconData icon, String text, VoidCallback onTap, {Color color = Colors.white}) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque, // Khắc phục lỗi khó bấm icon
       onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Column(
+          children: [
+            // Icon đứng tự do hoàn toàn với hiệu ứng bóng đổ mịn đa tầng (Layered Drop Shadow Algorithm)
+            Icon(
+              icon, 
+              color: color, 
+              size: 36, // Ép size thuôn gọn, tinh tế hơn, không bị bành trướng thô cứng
+              shadows: [
+                Shadow(color: Colors.black.withOpacity(0.4), blurRadius: 6, offset: const Offset(0, 2)),
+                Shadow(color: Colors.black.withOpacity(0.25), blurRadius: 12, offset: const Offset(0, 4)),
+              ],
+            ),
+            const SizedBox(height: 3),
+            // Định dạng font chữ số lượng thanh thoát, nét căng
+            Text(
+              text, 
+              style: const TextStyle(
+                color: Colors.white, 
+                fontWeight: FontWeight.w700, 
+                fontSize: 12, 
+                letterSpacing: -0.2,
+                shadows: [
+                  Shadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 1.5))
+                ]
+              )
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ================= WIDGET XỬ LÝ NÚT "XEM THÊM" CHO MÔ TẢ DÀI =================
+class ExpandableCaption extends StatefulWidget {
+  final String text;
+  const ExpandableCaption({super.key, required this.text});
+
+  @override
+  State<ExpandableCaption> createState() => _ExpandableCaptionState();
+}
+
+class _ExpandableCaptionState extends State<ExpandableCaption> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => setState(() => _isExpanded = !_isExpanded), // Nhấn vào chữ để bung rộng/thu gọn
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 36),
-          const SizedBox(height: 4),
-          Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          Text(
+            widget.text,
+            maxLines: _isExpanded ? null : 2, // Mặc định khóa 2 dòng
+            overflow: _isExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white, 
+              fontSize: 14, 
+              fontWeight: FontWeight.w400, 
+              height: 1.4, 
+              letterSpacing: 0.2, 
+              shadows: [Shadow(color: Colors.black54, blurRadius: 3, offset: Offset(0, 1))]
+            ),
+          ),
+          // Nếu chưa mở rộng VÀ độ dài ký tự lớn hơn 60 (tương đương 2 dòng), hiện nút "Xem thêm"
+          if (!_isExpanded && widget.text.length > 60)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text(
+                'Xem thêm', 
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14, shadows: [Shadow(color: Colors.black54, blurRadius: 3, offset: Offset(0, 1))])
+              ),
+            ),
         ],
+      ),
+    );
+
+  }
+}
+
+// Widget đĩa nhạc tự quay mượt mà chuẩn phong cách UI TikTok mẫu
+class _MusicDiscAnimated extends StatefulWidget {
+  const _MusicDiscAnimated();
+
+  @override
+  State<_MusicDiscAnimated> createState() => _MusicDiscAnimatedState();
+}
+
+class _MusicDiscAnimatedState extends State<_MusicDiscAnimated> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RotationTransition(
+      turns: _controller,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const SweepGradient(
+            colors: [Colors.black87, Colors.black54, Colors.black87],
+          ),
+          border: Border.all(color: Colors.white30, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Center(
+          child: Icon(Icons.music_note_rounded, color: Colors.white, size: 18),
+        ),
       ),
     );
   }

@@ -10,8 +10,15 @@ class CalendarApiService {
   static Future<List<AppointmentModel>> fetchAppointments() async {
     try {
       final res = await _dio.get('/appointments/me');
-      if (res.statusCode == 200 && res.data['status'] == 'success') {
-        final List<dynamic> data = res.data['data'];
+      // 🚀 ĐÃ SỬA: Bọc lót bóc tách mảng động linh hoạt cho cả Map và List để triệt tiêu lỗi lệch cấu trúc dữ liệu
+      if (res.statusCode == 200) {
+        List<dynamic> data = [];
+        if (res.data is Map && res.data['data'] != null) {
+          data = res.data['data'];
+        } else if (res.data is List) {
+          data = res.data;
+        }
+        // Trả về danh sách Map thô để giao diện tự do tính toán giá gạch ngang linh hoạt
         return data.map((e) => AppointmentModel.fromJson(e)).toList();
       }
       return [];

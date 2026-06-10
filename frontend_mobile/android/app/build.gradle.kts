@@ -1,12 +1,14 @@
 plugins {
     id("com.android.application")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-android {
+// Cấu hình theo chuẩn AGP mới để loại bỏ cảnh báo Deprecated
+configure<com.android.build.api.dsl.ApplicationExtension> {
     namespace = "com.gsx.health.frontend_mobile"
-    compileSdk = 36
+    
+    // Đồng bộ compileSdk lên 36 (Android 16) theo yêu cầu bắt buộc của các thư viện androidx mới
+    compileSdk = 36 
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -15,20 +17,15 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.gsx.health.frontend_mobile"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = 36
+        targetSdk = 35 // Giữ targetSdk 35 để bảo toàn hành vi runtime ổn định của ứng dụng
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
