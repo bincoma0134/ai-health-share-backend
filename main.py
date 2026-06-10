@@ -217,10 +217,43 @@ def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify
 # ==========================================
 # 3. HỒ SƠ NGƯỜI DÙNG & CÔNG KHAI
 # ==========================================
+@app.post("/user/svalue/task", tags=["User"])
+def complete_svalue_task(payload: dict, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """API lưu log lịch sử và cộng điểm SValue vật lý vào database"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        action_type = payload.get("action_type")
+        points = int(payload.get("points_changed", 0))
+        ref_id = payload.get("reference_id")
+        
+        # 1. Ghi log kiểm toán dòng tiền điểm thưởng vào bảng svalue_transaction_logs
+        cur.execute(
+            "INSERT INTO svalue_transaction_logs (user_id, action_type, points_changed, reference_id) VALUES (%s, %s, %s, %s)",
+            (current_user.id, action_type, points, ref_id)
+        )
+        
+        # 2. Cập nhật số dư tổng thể tại ví user_svalue_wallet hoặc bảng users trực tiếp
+        cur.execute("SELECT svalue_balance FROM users WHERE id = %s", (current_user.id,))
+        current_balance = cur.fetchone().get("svalue_balance") or 0
+        new_balance = current_balance + points
+        
+        cur.execute("UPDATE users SET svalue_balance = %s WHERE id = %s", (new_balance, current_user.id))
+        conn.commit()
+        return {"status": "success", "new_balance": new_balance}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+
 @app.get("/user/profile", tags=["User"])
 def get_user_profile(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
+        # Tự động đồng bộ cấu trúc cột nếu hệ thống chưa đồng bộ
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS svalue_balance INT DEFAULT 0")
+        conn.commit()
+        
         cur.execute("SELECT * FROM users WHERE id = %s", (current_user.id,))
         user_info = cur.fetchone()
         cur.execute("SELECT count(*) as pending FROM services WHERE partner_id = %s AND status = 'PENDING'", (current_user.id,))

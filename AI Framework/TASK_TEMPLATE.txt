@@ -1,0 +1,20 @@
+﻿TASK
+Mục tiêu:
+<Mô tả vấn đề>
+Yêu cầu:
+* Chỉ tập trung vào TASK này.
+* Không sửa các chức năng khác.
+* Không tự refactor ngoài phạm vi TASK.
+Tài liệu tham chiếu:
+* PROJECT_STRUCTURE.txt
+* Swagger:
+openapi.json
+Hãy thực hiện theo quy trình:
+Bước 1:
+Xác định:
+   * File bắt buộc
+   * File nên có
+   * File có thể cần
+Bước 2:
+Chờ tôi cung cấp file.
+Không viết code cho đến khi đã đọc đủ file liên quan.

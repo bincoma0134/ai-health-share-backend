@@ -1,0 +1,210 @@
+﻿/
+├── .git/ [SYSTEM FOLDER]
+├── .venv/ [SYSTEM FOLDER]
+├── .vscode/ [SYSTEM FOLDER]
+├── __pycache__/ [SYSTEM FOLDER]
+├── frontend/
+│   ├── .git/ [SYSTEM FOLDER]
+│   ├── .next/ [SYSTEM FOLDER]
+│   ├── android/ [SYSTEM FOLDER]
+│   ├── app/
+│   │   ├── [username]/
+│   │   │   ├── page.tsx
+│   │   │   └── UserProfileClient.tsx
+│   │   ├── admin/
+│   │   │   ├── dashboard/
+│   │   │   │   └── page.tsx
+│   │   │   └── profile/
+│   │   │       └── page.tsx
+│   │   ├── affiliate/
+│   │   │   └── dashboard/
+│   │   │       └── page.tsx
+│   │   ├── creator/
+│   │   │   ├── dashboard/
+│   │   │   │   └── page.tsx
+│   │   │   └── profile/
+│   │   │       └── page.tsx
+│   │   ├── features/
+│   │   │   ├── AI/
+│   │   │   │   └── page.tsx
+│   │   │   ├── calendar/
+│   │   │   │   └── page.tsx
+│   │   │   ├── community/
+│   │   │   │   └── page.tsx
+│   │   │   ├── explore/
+│   │   │   │   └── page.tsx
+│   │   │   ├── favorite/
+│   │   │   │   └── page.tsx
+│   │   │   ├── map/
+│   │   │   │   └── page.tsx
+│   │   │   └── voucher/
+│   │   │       └── page.tsx
+│   │   ├── moderator/
+│   │   │   ├── dashboard/
+│   │   │   │   └── page.tsx
+│   │   │   └── profile/
+│   │   │       └── page.tsx
+│   │   ├── partner/
+│   │   │   ├── dashboard/
+│   │   │   │   └── page.tsx
+│   │   │   └── profile/
+│   │   │       └── page.tsx
+│   │   ├── user/
+│   │   │   └── profile/
+│   │   │       └── page.tsx
+│   │   ├── favicon.ico
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   ├── loading.tsx
+│   │   └── page.tsx
+│   ├── components/
+│   │   ├── profile/
+│   │   │   ├── AdminView.tsx
+│   │   │   ├── CreatorView.tsx
+│   │   │   ├── DashboardButton.tsx
+│   │   │   ├── GuestProfileView.tsx
+│   │   │   ├── ModeratorView.tsx
+│   │   │   ├── PartnerView.tsx
+│   │   │   └── RegularUserView.tsx
+│   │   ├── voucher/
+│   │   │   └── VoucherManager.tsx
+│   │   ├── AuthModal.tsx
+│   │   ├── BookingModal.tsx
+│   │   ├── BottomNavigation.tsx
+│   │   ├── CommentModal.tsx
+│   │   ├── FeedVideoPlayer.tsx
+│   │   ├── ImageUploader.tsx
+│   │   ├── MapClient.tsx
+│   │   ├── MiniMapPicker.tsx
+│   │   ├── NotificationModal.tsx
+│   │   ├── PostItem.tsx
+│   │   ├── ProfessorXPanel.tsx
+│   │   ├── Sidebar.tsx
+│   │   └── VideoUploader.tsx
+│   ├── context/
+│   │   ├── AuthContext.tsx
+│   │   └── UIContext.tsx
+│   ├── node_modules/ [SYSTEM FOLDER]
+│   ├── out/ [SYSTEM FOLDER]
+│   ├── public/ [SYSTEM FOLDER]
+│   ├── store/
+│   │   └── useVoucherStore.ts
+│   ├── utils/
+│   │   └── formatTime.ts
+│   ├── .env.local
+│   ├── .gitignore
+│   ├── AGENTS.md
+│   ├── capacitor.config.ts
+│   ├── CLAUDE.md
+│   ├── eslint.config.mjs
+│   ├── next-env.d.ts
+│   ├── next.config.ts
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.mjs
+│   ├── README.md
+│   └── tsconfig.json
+├── frontend_mobile/
+│   ├── .dart_tool/ [SYSTEM FOLDER]
+│   ├── .idea/ [SYSTEM FOLDER]
+│   ├── android/ [SYSTEM FOLDER]
+│   ├── assets/
+│   │   └── images/
+│   │       └── app_icon.png
+│   ├── build/ [SYSTEM FOLDER]
+│   ├── lib/
+│   │   ├── core/
+│   │   │   ├── network/
+│   │   │   │   ├── api_client.dart
+│   │   │   │   └── auth_interceptor.dart
+│   │   │   ├── router/
+│   │   │   │   └── app_router.dart
+│   │   │   └── theme/
+│   │   │       └── app_theme.dart
+│   │   ├── data/
+│   │   │   ├── models/
+│   │   │   │   ├── appointment_model.dart
+│   │   │   │   ├── auth_model.dart
+│   │   │   │   ├── chat_message_model.dart
+│   │   │   │   ├── comment_model.dart
+│   │   │   │   ├── partner_map_model.dart
+│   │   │   │   ├── service_model.dart
+│   │   │   │   ├── video_model.dart
+│   │   │   │   ├── wallet_model.dart
+│   │   │   │   └── withdrawal_request_model.dart
+│   │   │   └── services/
+│   │   │       ├── admin_api_service.dart
+│   │   │       ├── appointment_api_service.dart
+│   │   │       ├── calendar_api_service.dart
+│   │   │       ├── creator_api_service.dart
+│   │   │       ├── explore_api_service.dart
+│   │   │       ├── feed_api_service.dart
+│   │   │       ├── map_api_service.dart
+│   │   │       ├── partner_api_service.dart
+│   │   │       ├── secure_storage_service.dart
+│   │   │       ├── user_api_service.dart
+│   │   │       └── wallet_api_service.dart
+│   │   ├── presentation/
+│   │   │   ├── screens/
+│   │   │   │   ├── admin/
+│   │   │   │   │   ├── admin_dashboard_screen.dart
+│   │   │   │   │   ├── creator_dashboard_screen.dart
+│   │   │   │   │   ├── moderator_dashboard_screen.dart
+│   │   │   │   │   ├── partner_dashboard_screen.dart
+│   │   │   │   │   └── Untitled.
+│   │   │   │   ├── ai/
+│   │   │   │   │   └── ai_chat_screen.dart
+│   │   │   │   ├── calendar/
+│   │   │   │   │   └── calendar_screen.dart
+│   │   │   │   ├── explore/
+│   │   │   │   │   └── explore_screen.dart
+│   │   │   │   ├── feeds/
+│   │   │   │   │   └── tiktok_feeds_screen.dart
+│   │   │   │   ├── map/
+│   │   │   │   │   └── map_screen.dart
+│   │   │   │   ├── profile/
+│   │   │   │   │   ├── creator_profile_screen.dart
+│   │   │   │   │   ├── moderator_profile_screen.dart
+│   │   │   │   │   ├── partner_profile_screen.dart
+│   │   │   │   │   ├── private_profile_screen.dart
+│   │   │   │   │   ├── public_profile_screen.dart
+│   │   │   │   │   └── super_admin_profile_screen.dart
+│   │   │   │   ├── promo/
+│   │   │   │   │   └── promo_screen.dart
+│   │   │   │   ├── login_screen.dart
+│   │   │   │   ├── main_hub_screen.dart
+│   │   │   │   ├── splash_screen.dart
+│   │   │   │   └── wallet_screen.dart
+│   │   │   └── widgets/
+│   │   │       ├── app_toast.dart
+│   │   │       ├── auth_bottom_sheet.dart
+│   │   │       ├── booking_bottom_sheet.dart
+│   │   │       ├── comment_bottom_sheet.dart
+│   │   │       ├── feed_video_player.dart
+│   │   │       ├── guest_profile_view.dart
+│   │   │       ├── mini_video_player.dart
+│   │   │       └── service_booking_bottom_sheet.dart
+│   │   └── main.dart
+│   ├── test/
+│   ├── .flutter-plugins-dependencies
+│   ├── .gitignore
+│   ├── .metadata
+│   ├── analysis_options.yaml
+│   ├── frontend_mobile.iml
+│   ├── pubspec.lock
+│   ├── pubspec.yaml
+│   └── README.md
+├── node_modules/ [SYSTEM FOLDER]
+├── .env
+├── .gitignore
+├── AI_STATE.md
+├── AI_STATE_Temp.txt
+├── database.py
+├── Feedback_01.docx
+├── main.py
+├── note.txt
+├── package-lock.json
+├── package.json
+├── requirements.txt
+├── schemas.py
+└── utils.py

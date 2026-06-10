@@ -1,0 +1,33 @@
+cd /d "E:\AI Project\AI Project_AI Health Share\frontend_mobile"
+
+E:\src\flutter\bin\flutter analyze
+
+taskkill /F /IM java.exe
+
+
+----------------
+E:\src\flutter\bin\flutter clean
+
+E:\src\flutter\bin\flutter pub get
+
+%LOCALAPPDATA%\Android\Sdk\platform-tools\adb reverse tcp:8000 tcp:8000
+
+E:\src\flutter\bin\flutter devices
+
+E:\src\flutter\bin\flutter run -d R58N30APMHD
+
+E:\src\flutter\bin\flutter run --release -d R58N30APMHD
+----------------
+
+%LOCALAPPDATA%\Android\Sdk\platform-tools\adb reverse tcp:8000 tcp:8000
+
+E:\src\flutter\bin\flutter attach -d R58N30APMHD
+
+E:\src\flutter\bin\
+
+./.venv/scripts/activate
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+
+
+--------------
+ Hãy rà soát thật kỹ từng file. Hãy thể hiện sự ưu việt của mình và chủ động thay đổi chỉnh sửa (lưu ý rằng chúng ta đổi màu sắc nhận diện giao diện). Tuân thủ tuyệt đối nguyên tắc Ctrl + H (gửi các cụm Find, Replace thật chuẩn xác để tôi Ctrl + H với môi trường của Cursor, 1 lần là xong), đặc biệt không được để làm đứt gãy các luồng logic, phải thông suốt, đúng như bản website.
