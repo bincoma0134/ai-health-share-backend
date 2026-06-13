@@ -50,7 +50,9 @@ payos_client = PayOS(client_id=PAYOS_CLIENT_ID, api_key=PAYOS_API_KEY, checksum_
 app = FastAPI(title="AI Health Share API", version="5.2.1")
 security = HTTPBearer()
 
-SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "fallback_secret_key")
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("Thiếu cấu hình JWT_SECRET_KEY trong môi trường Runtime của main.py!")
 ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
 
 class CurrentUser:
