@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'auth_bottom_sheet.dart';
 
 class GuestProfileView extends StatelessWidget {
@@ -73,8 +74,8 @@ class GuestProfileView extends StatelessWidget {
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                onPressed: () => _showAuth(context),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)) ),
+                onPressed: () => context.go('/login'),
                 child: const Text('Đăng nhập / Đăng ký ngay', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
             )

@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:async'; // Bổ sung thư viện quản lý luồng Timer tự động chuyển slide banner
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart'; // Đấu nối định tuyến nhanh Router 
@@ -6,6 +7,8 @@ import '../../../data/models/partner_map_model.dart'; // Nạp mô hình đối 
 import '../../../data/services/explore_api_service.dart'; // Nạp lớp dịch vụ 
 import '../../widgets/mini_video_player.dart'; // Nạp trình phát video thực tế hệ thống
 import '../../widgets/booking_bottom_sheet.dart'; // Nạp bảng cấu hình đặt lịch chuẩn 404-resolved
+import '../../widgets/app_toast.dart'; // Bổ sung import AppToast để xử lý lỗi biên dịch
+import '../../widgets/app_toast.dart'; // Bổ sung import AppToast để xử lý lỗi biên dịch
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -43,16 +46,75 @@ class _ExploreScreenState extends State<ExploreScreen> {
   // Khai báo bộ điều khiển cuộn trang để xử lý Userflow của Banner
   final ScrollController _scrollController = ScrollController();
 
+  // --- CẤU HÌNH BANNER CAROUSEL TỰ ĐỘNG DỊCH CHUYỂN MƯỢT MÀ ---
+  late final PageController _bannerPageController = PageController(viewportFraction: 0.92);
+  Timer? _bannerAutoSliderTimer;
+  int _currentBannerIndex = 0;
+
+  // Khởi tạo bộ dữ liệu 5 lời chúc/slogan cao cấp xoay vòng phối màu Gradient đa tầng
+  final List<Map<String, dynamic>> _bannerQuotes = [
+    {
+      "title": "VÒNG XANH\nSỨC KHỎE",
+      "slogan": "Trải nghiệm y tế chuẩn 5 sao",
+      "wish": "✨ Chúc bạn một ngày mới ngập tràn năng lượng và thân tâm an lạc!",
+      "colors": [Color(0xFF80BF84), Color(0xFF5B9E5F)]
+    },
+    {
+      "title": "AN NHIÊN\nMỖI NGÀY",
+      "slogan": "Chăm sóc chủ động, an tâm vững bước",
+      "wish": "🌿 Sức khỏe là vàng, chúc bạn luôn giữ vững tinh thần lạc quan và rạng rỡ!",
+      "colors": [Color(0xFF3B82F6), Color(0xFF1D4ED8)]
+    },
+    {
+      "title": "SỐNG KHỎE\nSỐNG ĐẸP",
+      "slogan": "Cân bằng thân - tâm - trí toàn diện",
+      "wish": "🌸 Chúc bạn luôn rạng ngời, biết yêu thương bản thân và tràn đầy hạnh phúc!",
+      "colors": [Color(0xFFEC4899), Color(0xFFBE185D)]
+    },
+    {
+      "title": "TĨNH TÂM\nPHỤC HỒI",
+      "slogan": "Liệu pháp chuyên sâu từ chuyên gia",
+      "wish": "☀️ Mong mọi điều bình an và nhẹ nhàng nhất sẽ đến với hành trình của bạn ngày hôm nay!",
+      "colors": [Color(0xFFF59E0B), Color(0xFFD97706)]
+    },
+    {
+      "title": "NĂNG LƯỢNG\nBẤT TẬN",
+      "slogan": "Lắng nghe cơ thể bạn lên tiếng mỗi giây",
+      "wish": "💪 Khỏe mạnh từ bên trong! Chúc bạn vượt qua mọi mục tiêu với nguồn năng lượng đỉnh cao!",
+      "colors": [Color(0xFF14B8A6), Color(0xFF0F766E)]
+    },
+  ];
+
   final _currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ'); // 
 
   @override
   void initState() {
     super.initState();
     _fetchExploreData();
+    // Đợi khung hình Flutter render xong (PostFrameCallback) rồi mới kích hoạt luồng tự động trượt
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _bannerAutoSliderTimer = Timer.periodic(const Duration(milliseconds: 3500), (timer) {
+        if (_bannerPageController.hasClients && _bannerPageController.position.hasContentDimensions) {
+          // Tính toán vị trí trang kế tiếp, xoay vòng vô hạn
+          int nextPage = _bannerPageController.page!.round() + 1;
+          if (nextPage >= _bannerQuotes.length) {
+            nextPage = 0; // Trở về thẻ đầu tiên nếu chạm đỉnh danh sách
+          }
+          
+          _bannerPageController.animateToPage(
+            nextPage,
+            duration: const Duration(milliseconds: 800), // Tăng nhẹ thời gian chuyển trang giúp hiệu ứng Morph lộ rõ và mịn hơn
+            curve: Curves.easeInOutCubic,
+          );
+        }
+      });
+    });
   }
 
   @override
   void dispose() {
+    _bannerAutoSliderTimer?.cancel();
+    _bannerPageController.dispose();
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -436,13 +498,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
     }
 
     return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 32),
       sliver: SliverGrid(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          mainAxisSpacing: 14,
-          crossAxisSpacing: 12,
-          childAspectRatio: 0.72,
+          mainAxisSpacing: 16, // Tăng khoảng trống thở dọc chuẩn UX
+          crossAxisSpacing: 16, // Tăng khoảng trống thở ngang chuẩn UX
+          childAspectRatio: 0.65, // Tối ưu chiều cao hộp thẻ để không gian text rộng rãi, chống tràn
         ),
         delegate: SliverChildBuilderDelegate(
           (context, index) {
@@ -455,78 +517,112 @@ class _ExploreScreenState extends State<ExploreScreen> {
             final Map<String, dynamic> userData = service['users'] ?? {};
             final String partnerName = (userData['full_name'] ?? 'Cơ sở chuyên khoa').toString();
 
-            // RE-DESIGN LUỒNG 2: Bọc toàn bộ ô cửa sổ dịch vụ (Card) thành nút bấm tương tác mở Pop-up
-            return GestureDetector(
-              onTap: () {
-                if (videoUrl != null && videoUrl.isNotEmpty) {
-                  setState(() {
-                    _activePreviewVideoUrl = videoUrl;
-                    _activeSelectedService = service;
-                  });
-                }
-              },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // RE-DESIGN LUỒNG 1: Phát video luôn dưới dạng Preview tự động mà không cần chờ người dùng nhấn nút play
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20), // Tinh chỉnh bo góc mềm mại, cao cấp
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04), 
+                    blurRadius: 12, 
+                    offset: const Offset(0, 4)
+                  )
+                ],
+                border: Border.all(color: Colors.black.withOpacity(0.03), width: 1),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 1. Khung Media tỉ lệ vàng di động 4:3 thay vì tỉ lệ vuông bóp nghẹt diện tích
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(19)),
+                    child: AspectRatio(
+                      aspectRatio: 4 / 3,
+                      child: GestureDetector(
+                        onTap: () {
+                          if (videoUrl != null && videoUrl.isNotEmpty) {
+                            setState(() {
+                              _activePreviewVideoUrl = videoUrl;
+                              _activeSelectedService = service;
+                            });
+                          }
+                        },
                         child: Container(
                           width: double.infinity,
-                          color: Colors.grey.shade100,
+                          color: Colors.grey.shade50,
                           child: videoUrl != null && videoUrl.isNotEmpty
-                              ? MiniVideoPlayer(videoUrl: videoUrl) // Chạy video preview mượt mà ngay lập tức
+                              ? MiniVideoPlayer(videoUrl: videoUrl)
                               : (imageUrl != null && imageUrl.isNotEmpty
                                   ? Image.network(imageUrl, fit: BoxFit.cover)
-                                  : const Center(child: Icon(Icons.medical_services_outlined, color: Colors.black26, size: 32))),
+                                  : Center(child: Icon(Icons.medical_services_outlined, color: Colors.grey.shade400, size: 28))),
                         ),
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.all(12.0),
+                  ),
+                  
+                  // 2. Khu vực thông tin phân bổ khoa học, thông thoáng bằng Expanded Layout
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween, // Đã sửa lỗi: Sử dụng spaceBetween chuẩn Flutter
                         children: [
-                          Text(
-                            partnerName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF80BF84)),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                partnerName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF5B9E5F)),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                serviceName,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87, height: 1.3),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            serviceName,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.black87, height: 1.2),
-                          ),
-                          const SizedBox(height: 8),
+                          
+                          // Khối thông tin tài chính và nút shortcut đặt lịch công thái học dạng hàng ngang
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                _currencyFormat.format(price),
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.blue),
+                              Expanded(
+                                child: Text(
+                                  _currencyFormat.format(price),
+                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF3B82F6), letterSpacing: -0.3),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                              Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
-                                child: const Icon(Icons.calendar_today_rounded, size: 14, color: Colors.black87),
+                              GestureDetector(
+                                onTap: () {
+                                  showModalBottomSheet(
+                                    context: context,
+                                    isScrollControlled: true,
+                                    backgroundColor: Colors.transparent,
+                                    builder: (context) => BookingBottomSheet(video: service),
+                                  );
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF80BF84).withOpacity(0.12), 
+                                    shape: BoxShape.circle
+                                  ),
+                                  child: const Icon(Icons.calendar_month_rounded, size: 14, color: Color(0xFF5B9E5F)),
+                                ),
                               )
                             ],
                           ),
                         ],
                       ),
-                    )
-                  ],
-                ),
+                    ),
+                  )
+                ],
               ),
             );
           },
@@ -681,65 +777,122 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   Widget _buildBannerCarousel() {
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _selectedTypeFilter = 'TREATMENT';
-        });
-        _applyFilters();
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            320,
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOutCubic,
-          );
-        }
-      },
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        height: 160,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: const LinearGradient(
-            colors: [Color(0xFF80BF84), Color(0xFF5B9E5F)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          boxShadow: [
-            BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5)),
-          ],
-        ),
-        child: Stack(
-          children: [
-            const Positioned(
-              left: 20,
-              top: 30,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text("VÒNG XANH\nSỨC KHỎE", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 1.2)),
-                  SizedBox(height: 8),
-                  Text("Trải nghiệm y tế chuẩn 5 sao", style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w500)),
-                ],
+    return SizedBox(
+      height: 176,
+      child: PageView.builder(
+        controller: _bannerPageController,
+        itemCount: _bannerQuotes.length,
+        onPageChanged: (index) {
+          // Cập nhật trạng thái chỉ mục thực tế để hệ thống Dots Indicator sáng đúng vị trí
+          _currentBannerIndex = index;
+          setState(() {});
+        },
+        physics: const BouncingScrollPhysics(),
+        itemBuilder: (context, index) {
+          final banner = _bannerQuotes[index];
+          final List<Color> colors = banner['colors'] as List<Color>;
+          
+          // Tính toán hiệu ứng Morph co giãn nhẹ khoảng cách lề (Viewport Animation)
+          return AnimatedBuilder(
+            animation: _bannerPageController,
+            builder: (context, child) {
+              double value = 1.0;
+              if (_bannerPageController.position.hasContentDimensions) {
+                value = _bannerPageController.page! - index;
+                value = (1 - (value.abs() * 0.04)).clamp(0.0, 1.0);
+              }
+              return Center(
+                child: SizedBox(
+                  height: Curves.easeInOut.transform(value) * 160,
+                  width: double.infinity,
+                  child: child,
+                ),
+              );
+            },
+            child: GestureDetector(
+              onTap: () {
+                // Điều chỉnh cú pháp gọi AppToast chuẩn chỉ, đồng bộ theo thiết kế hệ thống
+                AppToast.show(
+                  context: context,
+                  message: banner['wish'].toString(),
+                  isSuccess: true,
+                );
+              },
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  gradient: LinearGradient(
+                    colors: colors,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: colors[0].withOpacity(0.35),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: 24,
+                      top: 28,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            banner['title'].toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              height: 1.2,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            banner['slogan'].toString(),
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Hệ thống thanh chỉ báo trang (Dots Indicator) nằm gọn gàng bên trong thẻ Card
+                    Positioned(
+                      bottom: 14,
+                      left: 0,
+                      right: 0,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(_bannerQuotes.length, (dotIndex) {
+                          final bool isActive = _currentBannerIndex == dotIndex;
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            margin: const EdgeInsets.symmetric(horizontal: 3),
+                            width: isActive ? 16 : 5,
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: isActive ? Colors.white : Colors.white.withOpacity(0.4),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          );
+                        }),
+                      ),
+                    )
+                  ],
+                ),
               ),
             ),
-            Positioned(
-              bottom: 12,
-              left: 0,
-              right: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(width: 16, height: 4, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(2))),
-                  const SizedBox(width: 4),
-                  Container(width: 4, height: 4, decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle)),
-                  const SizedBox(width: 4),
-                  Container(width: 4, height: 4, decoration: BoxDecoration(color: Colors.white.withOpacity(0.5), shape: BoxShape.circle)),
-                ],
-              ),
-            )
-          ],
-        ),
+          );
+        },
       ),
     );
   }

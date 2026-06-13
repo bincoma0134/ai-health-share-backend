@@ -13,9 +13,11 @@ class AppointmentModel {
   final String? checkInCode;
   final String? rejectionReason;
   final String createdAt;
+  final String? paymentDeadline;
   final Map<String, dynamic> serviceInfo;
   final Map<String, dynamic> userInfo;
-  final Map<String, dynamic> voucherInfo; // 🚀 BẢO CHỨNG: Nhận diện đối tượng Voucher lồng từ Backend
+  final Map<String, dynamic> voucherInfo; 
+  final Map<String, dynamic> partnerInfo; // 🗺️ Đã đồng bộ đối tượng cơ sở (Địa chỉ, Tên cơ sở)
 
   AppointmentModel({
     required this.id,
@@ -32,9 +34,11 @@ class AppointmentModel {
     this.checkInCode,
     this.rejectionReason,
     required this.createdAt,
+    this.paymentDeadline,
     required this.serviceInfo,
     required this.userInfo,
     required this.voucherInfo,
+    required this.partnerInfo,
   });
 
   factory AppointmentModel.fromJson(Map<String, dynamic> json) {
@@ -53,10 +57,11 @@ class AppointmentModel {
       checkInCode: json['check_in_code'],
       rejectionReason: json['rejection_reason'],
       createdAt: json['created_at'] ?? '',
+      paymentDeadline: json['payment_deadline'],
       serviceInfo: json['services'] ?? {},
       userInfo: json['users'] ?? {},
-      // Bẫy lọc an toàn nếu trường vouchers từ Backend trả về null
       voucherInfo: json['vouchers'] is Map<String, dynamic> ? json['vouchers'] : {},
+      partnerInfo: json['partner'] is Map<String, dynamic> ? json['partner'] : {},
     );
   }
 
@@ -76,9 +81,11 @@ class AppointmentModel {
       'check_in_code': checkInCode,
       'rejection_reason': rejectionReason,
       'created_at': createdAt,
+      'payment_deadline': paymentDeadline,
       'services': serviceInfo,
       'users': userInfo,
       'vouchers': voucherInfo,
+      'partner': partnerInfo,
     };
   }
 }

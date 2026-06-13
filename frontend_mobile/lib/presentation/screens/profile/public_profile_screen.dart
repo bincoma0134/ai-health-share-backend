@@ -3,6 +3,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../data/services/user_api_service.dart';
 import '../../widgets/mini_video_player.dart';
+import '../../widgets/app_toast.dart';
+import '../../../core/network/api_client.dart';
+import '../../widgets/booking_bottom_sheet.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String username;
@@ -30,15 +33,29 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     _loadData();
   }
 
+  List<dynamic> _fetchedVideos = [];
+  List<dynamic> _fetchedServices = [];
+
   Future<void> _loadData() async {
-    final result = await UserApiService.fetchPublicProfile(widget.username);
-    if (mounted) {
-      setState(() {
-        _data = result;
-        if (result != null) {
-          _isFollowing = result['is_followed'] ?? false;
-          _followersCount = result['stats']?['followers_count'] ?? 0;
-          final String fetchedRole = result['profile']['role'] ?? 'USER';
+    final profileResult = await UserApiService.fetchPublicProfile(widget.username);
+    if (profileResult != null && profileResult['profile'] != null) {
+      final String userId = profileResult['profile']['id'] ?? '';
+      
+      // Kích hoạt song song các luồng dữ liệu độc lập theo API chuẩn hóa từ Web
+      final dataFutures = await Future.wait([
+        UserApiService.fetchUserServices(userId),
+        UserApiService.fetchUserFeeds(userId),
+      ]);
+
+      if (mounted) {
+        setState(() {
+          _data = profileResult;
+          _fetchedServices = dataFutures[0];
+          _fetchedVideos = dataFutures[1];
+          _isFollowing = profileResult['is_followed'] ?? false;
+          _followersCount = profileResult['stats']?['followers_count'] ?? 0;
+          
+          final String fetchedRole = profileResult['profile']['role'] ?? 'USER';
           if (fetchedRole == 'SUPER_ADMIN' || fetchedRole == 'ADMIN') {
             _activeTab = 'activities';
           } else if (fetchedRole == 'MODERATOR') {
@@ -48,9 +65,16 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           } else {
             _activeTab = 'videos';
           }
-        }
-        _isLoading = false;
-      });
+          _isLoading = false;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _data = null;
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -62,83 +86,26 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     });
 
     final success = await UserApiService.toggleFollow(_data!['profile']['id']);
-    if (!success && mounted) {
+    if (success && mounted) {
+      AppToast.show(
+        context: context,
+        message: _isFollowing ? 'Đã thêm vào danh sách quan tâm thành công!' : 'Đã hủy quan tâm người dùng.',
+        isSuccess: true,
+      );
+    } else if (!success && mounted) {
       setState(() {
         _isFollowing = !_isFollowing;
         _followersCount += _isFollowing ? 1 : -1;
       });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng đăng nhập để thực hiện!')));
+      AppToast.show(
+        context: context,
+        message: 'Vui lòng đăng nhập để thực hiện tính năng này!',
+        isSuccess: false,
+      );
     }
   }
 
-  void _showBookingModal(Map<String, dynamic> service) {
-    final nameCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
-    final noteCtrl = TextEditingController();
-    bool isSubmitting = false;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.85,
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
-            decoration: const BoxDecoration(color: Color(0xFF121214), borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Đặt Lịch Dịch Vụ', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 8),
-                Text(service['service_name'] ?? service['title'] ?? '', style: const TextStyle(color: Colors.blue, fontSize: 16, fontWeight: FontWeight.bold)),
-                Text('${NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(service['price'] ?? 0)}', style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 24),
-                
-                TextField(controller: nameCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: 'Họ và tên', filled: true, fillColor: Colors.white.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))),
-                const SizedBox(height: 12),
-                TextField(controller: phoneCtrl, keyboardType: TextInputType.phone, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: 'Số điện thoại', filled: true, fillColor: Colors.white.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))),
-                const SizedBox(height: 12),
-                TextField(controller: noteCtrl, maxLines: 2, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: 'Lời nhắn nhủ (Tùy chọn)', filled: true, fillColor: Colors.white.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))),
-                const SizedBox(height: 16),
-                
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blue.withOpacity(0.3))),
-                  child: const Row(children: [Icon(Icons.shield, color: Colors.blue, size: 16), SizedBox(width: 8), Expanded(child: Text('Bạn chưa cần thanh toán lúc này. Hệ thống sẽ giữ tiền an toàn sau khi cơ sở xác nhận lịch trống.', style: TextStyle(color: Colors.blue, fontSize: 11)))]),
-                ),
-                
-                const Spacer(),
-                SizedBox(
-                  width: double.infinity, height: 50,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                    onPressed: isSubmitting ? null : () async {
-                      if (nameCtrl.text.isEmpty || phoneCtrl.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng nhập Tên và SĐT!'))); return;
-                      }
-                      setModalState(() => isSubmitting = true);
-                      
-                      // GIẢ LẬP GỌI API ĐẶT LỊCH (Đã được định nghĩa ở Backend)
-                      await Future.delayed(const Duration(seconds: 1));
-                      setModalState(() => isSubmitting = false);
-                      
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Yêu cầu đã được gửi! Theo dõi tại tab Lịch hẹn.'), backgroundColor: Colors.green));
-                    },
-                    child: isSubmitting ? const CircularProgressIndicator(color: Colors.white) : const Text('GỬI YÊU CẦU ĐẶT LỊCH', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
-          );
-        }
-      )
-    );
-  }
+  // Luồng đặt lịch cũ đã được thay thế hoàn toàn bằng BookingBottomSheet hệ thống
 
   String _formatCurrency(dynamic amount) {
     return NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(amount ?? 0);
@@ -160,24 +127,29 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(backgroundColor: Color(0xFF09090b), body: Center(child: CircularProgressIndicator(color: Color(0xFF80BF84))));
-    if (_data == null) return const Scaffold(backgroundColor: Color(0xFF09090b), body: Center(child: Text('NGƯỜI DÙNG KHÔNG TỒN TẠI', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900))));
+    if (_isLoading) return const Scaffold(backgroundColor: Color(0xFFFAFAFA), body: Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6))));
+    if (_data == null) return const Scaffold(backgroundColor: Color(0xFFFAFAFA), body: Center(child: Text('NGƯỜI DÙNG KHÔNG TỒN TẠI', style: TextStyle(color: Color(0xFF18181B), fontSize: 18, fontWeight: FontWeight.w900))));
 
     final profile = _data!['profile'];
     final role = profile['role'] ?? 'USER';
     final primaryColor = _getRoleColor(role);
-    final videos = _data!['videos'] as List<dynamic>? ?? [];
-    final services = _data!['services'] as List<dynamic>? ?? [];
+    final videos = _fetchedVideos;
+    final services = _fetchedServices;
 
-    final String? rawCover = profile['cover_url'];
-    final bool hasCover = rawCover != null && rawCover.trim().isNotEmpty;
+    // Tích hợp tham số nén ảnh trực tiếp trên CDN để tăng tốc độ tải
+    final String? rawCover = profile['cover_url'] != null && profile['cover_url'].toString().trim().isNotEmpty 
+        ? '${profile['cover_url']}?w=800&q=70' 
+        : null;
+    final bool hasCover = rawCover != null;
 
-    final String? rawAvatar = profile['avatar_url'];
-    final bool hasAvatar = rawAvatar != null && rawAvatar.trim().isNotEmpty;
+    final String? rawAvatar = profile['avatar_url'] != null && profile['avatar_url'].toString().trim().isNotEmpty
+        ? '${profile['avatar_url']}?w=200&q=75'
+        : null;
+    final bool hasAvatar = rawAvatar != null;
     final String fallbackAvatar = 'https://ui-avatars.com/api/?name=${profile['full_name']}&background=${primaryColor.value.toRadixString(16).substring(2)}&color=fff';
 
     return Scaffold(
-      backgroundColor: const Color(0xFF09090b),
+      backgroundColor: const Color(0xFFFAFAFA),
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
@@ -185,17 +157,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             elevation: 0,
             leading: Padding(
               padding: const EdgeInsets.all(8.0),
-              child: CircleAvatar(backgroundColor: Colors.black54, child: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => context.pop())),
+              child: CircleAvatar(backgroundColor: Colors.white70, child: IconButton(icon: const Icon(Icons.arrow_back, color: Color(0xFF18181B)), onPressed: () => context.pop())),
             ),
             actions: [
               Padding(
                 padding: const EdgeInsets.all(8.0),
                 child: CircleAvatar(
-                  backgroundColor: Colors.black54, 
+                  backgroundColor: Colors.white70, 
                   child: IconButton(
-                    icon: const Icon(Icons.share_rounded, color: Colors.white, size: 20), 
+                    icon: const Icon(Icons.share_rounded, color: Color(0xFF18181B), size: 20), 
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đang sao chép liên kết hồ sơ...')));
+                      AppToast.show(
+                        context: context,
+                        message: 'Đã sao chép liên kết hồ sơ vào bộ nhớ tạm!',
+                        isSuccess: true,
+                      );
                     }
                   )
                 ),
@@ -212,14 +188,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   children: [
                     Container(
                       height: 180, width: double.infinity,
-                      decoration: BoxDecoration(color: primaryColor.withOpacity(0.2), image: hasCover ? DecorationImage(image: NetworkImage(rawCover), fit: BoxFit.cover) : null),
-                      child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, const Color(0xFF09090b).withOpacity(0.9)]))),
+                      decoration: BoxDecoration(color: primaryColor.withOpacity(0.15), image: hasCover ? DecorationImage(image: NetworkImage(rawCover), fit: BoxFit.cover) : null),
+                      child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, const Color(0xFFFAFAFA).withOpacity(0.8)]))),
                     ),
                     Positioned(
                       bottom: -50,
                       child: Container(
                         width: 110, height: 110,
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF09090b), border: Border.all(color: primaryColor, width: 3), image: DecorationImage(image: NetworkImage(hasAvatar ? rawAvatar : fallbackAvatar), fit: BoxFit.cover)),
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFFFAFAFA), border: Border.all(color: primaryColor, width: 3), image: DecorationImage(image: NetworkImage(hasAvatar ? rawAvatar : fallbackAvatar), fit: BoxFit.cover)),
                       ),
                     )
                   ],
@@ -237,9 +213,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                           Flexible(
                             child: Text(
                               profile['full_name'] ?? 'Vô danh', 
-                              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900),
+                              style: const TextStyle(color: Color(0xFF18181B), fontSize: 24, fontWeight: FontWeight.w900),
                               maxLines: 1,
-                              overflow: TextOverflow.ellipsis, // Tự động cắt chữ kèm dấu ... nếu quá dài
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           if (role != 'USER') ...[
@@ -249,13 +225,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('@${profile['username']}', style: const TextStyle(color: Colors.white54)),
+                      Text('@${profile['username']}', style: const TextStyle(color: Color(0xFF71717A))),
                       const SizedBox(height: 20),
                       
                       SizedBox(
                         width: 180, height: 44,
                         child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: _isFollowing ? Colors.white10 : primaryColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                          style: ElevatedButton.styleFrom(backgroundColor: _isFollowing ? const Color(0xFFD4D4D8) : primaryColor, foregroundColor: _isFollowing ? const Color(0xFF18181B) : Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
                           onPressed: _handleToggleFollow,
                           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(_isFollowing ? Icons.check : Icons.person_add, size: 18), const SizedBox(width: 8), Text(_isFollowing ? 'ĐÃ QUAN TÂM' : 'QUAN TÂM', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.5))]),
                         ),
@@ -266,9 +242,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           _buildStatCol(profile['following_count']?.toString() ?? '0', 'Đang theo dõi', primaryColor),
-                          Container(width: 1, height: 30, color: Colors.white10),
+                          Container(width: 1, height: 30, color: const Color(0xFFD4D4D8)),
                           _buildStatCol(_followersCount.toString(), 'Người theo dõi', primaryColor),
-                          Container(width: 1, height: 30, color: Colors.white10),
+                          Container(width: 1, height: 30, color: const Color(0xFFD4D4D8)),
                           _buildStatCol(
                             (role == 'SUPER_ADMIN' || role == 'ADMIN') ? '100%' : role == 'MODERATOR' ? 'Tích cực' : (role == 'PARTNER' || role == 'PARTNER_ADMIN') ? '${profile['reputation_points'] ?? 92}' : (profile['likes_count']?.toString() ?? '0'), 
                             (role == 'SUPER_ADMIN' || role == 'ADMIN') ? 'Hệ thống' : role == 'MODERATOR' ? 'Đã duyệt' : (role == 'PARTNER' || role == 'PARTNER_ADMIN') ? 'Uy tín' : 'Lượt thích', 
@@ -278,7 +254,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                         ],
                       ),
                       const SizedBox(height: 24),
-                      Text(profile['bio'] ?? "Người dùng này chưa cập nhật tiểu sử.", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
+                      Text(profile['bio'] ?? "Người dùng này chưa cập nhật tiểu sử.", textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF27272A), fontSize: 13, height: 1.5)),
                     ],
                   ),
                 ),
@@ -289,10 +265,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           SliverToBoxAdapter(
             child: Container(
               margin: const EdgeInsets.only(top: 24),
-              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.1)))),
+              padding: const EdgeInsets.symmetric(vertical: 4),
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
                   children: _getTabsForRole(role, primaryColor),
                 ),
@@ -307,21 +283,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                 // TAB 1: DỊCH VỤ
                 if (_activeTab == 'services')
                   if (services.isEmpty)
-                    const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.local_mall_outlined, size: 48, color: Colors.white24), SizedBox(height: 16), Text('Chưa có dịch vụ nào.', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))])) )
+                    const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.local_mall_outlined, size: 48, color: Color(0xFFA1A1AA)), SizedBox(height: 16), Text('Chưa có dịch vụ nào.', style: TextStyle(color: Color(0xFF71717A), fontWeight: FontWeight.bold))])) )
                   else
                     ...services.map((svc) => Container(
                       margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(20)),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFD4D4D8))),
                       child: Row(
                         children: [
-                          Container(width: 100, height: 100, decoration: BoxDecoration(borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)), image: svc['image_url'] != null ? DecorationImage(image: NetworkImage(svc['image_url']), fit: BoxFit.cover) : null, color: Colors.black26)),
+                          Container(width: 100, height: 100, decoration: BoxDecoration(borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)), image: svc['image_url'] != null ? DecorationImage(image: NetworkImage(svc['image_url']), fit: BoxFit.cover) : null, color: const Color(0xFFD4D4D8))),
                           Expanded(
                             child: Padding(
                               padding: const EdgeInsets.all(12),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(svc['service_name'] ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  Text(svc['service_name'] ?? '', style: const TextStyle(color: Color(0xFF18181B), fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
                                   const SizedBox(height: 4),
                                   Text(_formatCurrency(svc['price']), style: TextStyle(color: primaryColor, fontWeight: FontWeight.w900)),
                                 ],
@@ -331,8 +307,26 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                           Padding(
                             padding: const EdgeInsets.only(right: 12),
                             child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(backgroundColor: primaryColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                              onPressed: () => _showBookingModal(svc),
+                              style: ElevatedButton.styleFrom(backgroundColor: primaryColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
+                              onPressed: () {
+                                // Ánh xạ dữ liệu dịch vụ sang cấu trúc tương thích với BookingBottomSheet
+                                final targetUserId = profile['id'] ?? '';
+                                final Map<String, dynamic> adaptedVideoContext = {
+                                  'id': svc['id'] ?? svc['service_id'] ?? '',
+                                  'price': svc['price'] ?? 0.0,
+                                  'authorId': targetUserId,
+                                  'title': svc['service_name'] ?? '',
+                                  'service_name': svc['service_name'] ?? '',
+                                  'image_url': svc['image_url'],
+                                };
+                                
+                                showModalBottomSheet(
+                                  context: context,
+                                  isScrollControlled: true,
+                                  backgroundColor: Colors.transparent,
+                                  builder: (context) => BookingBottomSheet(video: adaptedVideoContext),
+                                );
+                              },
                               child: const Text('ĐẶT LỊCH', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10)),
                             ),
                           )
@@ -342,7 +336,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                 // TAB 2: VIDEOS / LIKED / SAVED
                 else if (_activeTab == 'videos' || _activeTab == 'liked' || _activeTab == 'saved')
                   if (videos.isEmpty)
-                    Padding(padding: const EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(_activeTab == 'videos' ? Icons.video_library_outlined : _activeTab == 'liked' ? Icons.favorite_outline : Icons.bookmark_outline, size: 48, color: Colors.white24), const SizedBox(height: 16), Text(_activeTab == 'videos' ? 'Chưa có video được đăng tải' : 'Danh sách trống', style: const TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))])) )
+                    Padding(padding: const EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(_activeTab == 'videos' ? Icons.video_library_outlined : _activeTab == 'liked' ? Icons.favorite_outline : Icons.bookmark_outline, size: 48, color: Color(0xFFA1A1AA)), const SizedBox(height: 16), Text(_activeTab == 'videos' ? 'Chưa có video được đăng tải' : 'Danh sách trống', style: const TextStyle(color: Color(0xFF71717A), fontWeight: FontWeight.bold))])) )
                   else
                     GridView.builder(
                       shrinkWrap: true,
@@ -365,11 +359,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     )
                 // TAB 3: EMPTY STATES KHÁC (Đợi API tích hợp sau)
                 else if (_activeTab == 'community')
-                   const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.forum_outlined, size: 48, color: Colors.white24), SizedBox(height: 16), Text('Chưa có bài viết nào trên cộng đồng.', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))])) )
+                   const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.forum_outlined, size: 48, color: Color(0xFFA1A1AA)), SizedBox(height: 16), Text('Chưa có bài viết nào trên cộng đồng.', style: TextStyle(color: Color(0xFF71717A), fontWeight: FontWeight.bold))])) )
                 else if (_activeTab == 'reviews')
-                   const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.star_outline, size: 48, color: Colors.white24), SizedBox(height: 16), Text('Chưa có đánh giá nào.', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))])) )
+                   const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.star_outline, size: 48, color: Color(0xFFA1A1AA)), SizedBox(height: 16), Text('Chưa có đánh giá nào.', style: TextStyle(color: Color(0xFF71717A), fontWeight: FontWeight.bold))])) )
                 else if (_activeTab == 'activities')
-                   const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.local_activity_outlined, size: 48, color: Colors.white24), SizedBox(height: 16), Text('Chưa có hoạt động nào.', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))])) )
+                   const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.local_activity_outlined, size: 48, color: Color(0xFFA1A1AA)), SizedBox(height: 16), Text('Chưa có hoạt động nào.', style: TextStyle(color: Color(0xFF71717A), fontWeight: FontWeight.bold))])) )
               ]),
             ),
           )
@@ -379,19 +373,19 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   }
 
   Widget _buildStatCol(String val, String label, Color primaryColor, {bool isHighlight = false}) {
-    return Expanded( // Ép các cột tự động chia đều 33.33% màn hình
+    return Expanded(
       child: Column(
         children: [
           Text(
             val, 
-            style: TextStyle(color: isHighlight ? primaryColor : Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
+            style: TextStyle(color: isHighlight ? primaryColor : const Color(0xFF18181B), fontSize: 20, fontWeight: FontWeight.w900),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
           Text(
             label.toUpperCase(), 
-            style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+            style: const TextStyle(color: Color(0xFF71717A), fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
@@ -405,14 +399,32 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final isActive = _activeTab == tabKey;
     return GestureDetector(
       onTap: () => setState(() => _activeTab = tabKey),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: isActive ? primaryColor : Colors.transparent, width: 3))),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.fastOutSlowIn,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isActive ? primaryColor.withOpacity(0.12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(24),
+        ),
         child: Row(
           children: [
-            Icon(icon, size: 16, color: isActive ? primaryColor : Colors.white54),
+            Icon(
+              icon, 
+              size: 16, 
+              color: isActive ? primaryColor : const Color(0xFF71717A),
+            ),
             const SizedBox(width: 8),
-            Text(label.toUpperCase(), style: TextStyle(color: isActive ? primaryColor : Colors.white54, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+            Text(
+              label.toUpperCase(), 
+              style: TextStyle(
+                color: isActive ? primaryColor : const Color(0xFF71717A), 
+                fontSize: 11, 
+                fontWeight: isActive ? FontWeight.w900 : FontWeight.bold, 
+                letterSpacing: 0.3,
+              ),
+            ),
           ],
         ),
       ),

@@ -14,6 +14,9 @@ class UserRegister(BaseModel):
     full_name: str
     role: str = "USER"
 
+class FirebaseLogin(BaseModel):
+    id_token: str
+
 # --- 1. CẤU TRÚC NGƯỜI DÙNG ---
 class UserCreate(BaseModel):
     email: EmailStr

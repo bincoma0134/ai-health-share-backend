@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VN Share</string>
+
+    <string name="facebook_app_id">2025312052197868</string>
+
+    <string name="facebook_client_token">cc9a9141c8801183c47fef568e73ed76</string>
+
+    <string name="fb_login_protocol_scheme">fb2025312052197868</string>
+</resources>

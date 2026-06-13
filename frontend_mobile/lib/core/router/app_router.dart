@@ -14,6 +14,8 @@ import '../../presentation/screens/profile/public_profile_screen.dart';
 import '../../presentation/screens/admin/partner_dashboard_screen.dart';
 import '../../presentation/screens/admin/creator_dashboard_screen.dart'; // IMPORT CREATOR DASHBOARD
 import '../../presentation/screens/splash_screen.dart'; // Đổi đường dẫn nếu bạn lưu ở thư mục khác
+import '../../presentation/screens/auth/onboarding_screen.dart';
+import '../../presentation/screens/login_screen.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -25,6 +27,16 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/splash',
       builder: (context, state) => const SplashScreen(),
+    ),
+    GoRoute(
+      path: '/login',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) => const LoginScreen(),
+    ),
+    GoRoute(
+      path: '/onboarding',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) => const OnboardingScreen(),
     ),
     
     StatefulShellRoute.indexedStack(

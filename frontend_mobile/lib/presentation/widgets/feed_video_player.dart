@@ -188,24 +188,24 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
             if (_controller.value.isBuffering)
                const CircularProgressIndicator(color: Color(0xFF80BF84), strokeWidth: 3),
 
-            // MỚI: Thanh tiến trình video (Progress Bar) chạy động real-time chuyển vị trí an toàn trên đỉnh Navigation Hub (96px)
+            // MỚI: Thanh tiến trình video (Progress Bar) - Chuyển sang Tone màu sáng (Nền tối nhẹ, chạy màu thương hiệu xanh đậm)
             Positioned(
               bottom: 96,
               left: 0,
               right: 0,
               child: Opacity(
-                opacity: 0.4,
+                opacity: 0.8,
                 child: Container(
                   height: 2,
                   width: double.infinity,
-                  color: Colors.white12,
+                  color: Colors.black12, // Máng chạy màu tối nhạt tương phản nền sáng
                   child: Stack(
                     children: [
                       FractionallySizedBox(
-                        widthFactor: _progress, // Ép rộng thanh màu trắng chạy động co dãn theo tiến độ phát thực tế
+                        widthFactor: _progress,
                         child: Container(
                           height: 2,
-                          color: Colors.white,
+                          color: const Color(0xFF5e9662), // Màu xanh đậm thương hiệu nổi bật trên Light Mode
                         ),
                       ),
                     ],
@@ -216,19 +216,19 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
 
             // Lớp Phủ Tim Nổi Đa Điểm TikTok (Multi-Tap Dynamic Position)
 
-            // MỚI: Lớp phủ Báo lỗi luồng phát mạng (Network / Stream Error Overlay)
+            // MỚI: Lớp phủ Báo lỗi luồng phát mạng (Network / Stream Error Overlay) - Chuyển sang Tone màu Sáng toàn diện
             if (_controller.value.hasError)
               Container(
-                color: Colors.black87,
+                color: const Color(0xFFFAFAFA), // Nền xám trắng Light Mode sạch sẽ
                 child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.wifi_off_rounded, color: Colors.white.withOpacity(0.6), size: 48),
+                      Icon(Icons.wifi_off_rounded, color: Colors.black38, size: 48),
                       const SizedBox(height: 12),
-                      Text(
+                      const Text(
                         'Lỗi tải video. Vui lòng kiểm tra kết nối.',
-                        style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
+                        style: TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 16),
                       ElevatedButton.icon(
@@ -245,10 +245,10 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF80BF84),
-                          foregroundColor: Colors.white,
+                          foregroundColor: Colors.black87, // Đổi text nút sang đậm màu
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                         ),
-                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        icon: const Icon(Icons.refresh_rounded, size: 18, color: Colors.black87),
                         label: const Text('Thử lại'),
                       ),
                     ],

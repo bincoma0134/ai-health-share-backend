@@ -1,3 +1,14 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Bắt buộc: Đăng ký plugin Google Services để Gradle có thể dịch file google-services.json
+        classpath("com.google.gms:google-services:4.4.1")
+    }
+}
+
 allprojects {
     repositories {
         google()
@@ -18,37 +29,58 @@ subprojects {
 
 subprojects {
     project.evaluationDependsOn(":app")
+
+    val configureJvm = {
+        // In log ra màn hình Console để theo dõi trực tiếp dòng chảy của Gradle
+        println("=> [AI LOG] Ép đồng bộ JVM 17 cho plugin/module: ${project.name}")
+        
+        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+            compilerOptions {
+                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            }
+        }
+
+        tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
+            sourceCompatibility = JavaVersion.VERSION_17.toString()
+            targetCompatibility = JavaVersion.VERSION_17.toString()
+        }
+    }
+
+    // Chiến lược kiểm tra an toàn: Nếu chạy rồi thì thực thi ngay, nếu chưa thì mới treo hook
+    if (project.state.executed) {
+        configureJvm()
+    } else {
+        project.afterEvaluate { configureJvm() }
+    }
 }
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }
 
-// Block xử lý ép compileSdk = 36 cho tất cả các plugins để tránh lỗi không tương thích
+// Block xử lý ép compileSdk = 36 cho tất cả các plugins để tránh lỗi không tương thích AndroidX
 subprojects {
     val configureAndroid = {
         if (plugins.hasPlugin("com.android.application") || plugins.hasPlugin("com.android.library")) {
             val androidExtension = extensions.findByName("android")
             if (androidExtension != null) {
                 try {
-                    (androidExtension as? com.android.build.gradle.BaseExtension)?.compileSdkVersion(36)
-                } catch (e: Exception) {
-                    try {
-                        val method = androidExtension::class.java.methods.firstOrNull { it.name == "setCompileSdk" || it.name == "compileSdk" }
-                        method?.invoke(androidExtension, 36)
-                    } catch (ex: Exception) {
-                        // Bỏ qua nếu không can thiệp được cấu hình động
+                    // Sửa lỗi logic: Chỉ bắt chính xác hàm Setter (setCompileSdk), có đúng 1 tham số
+                    val setMethod = androidExtension.javaClass.methods.firstOrNull { 
+                        it.name == "setCompileSdk" && it.parameterCount == 1 
                     }
+                    setMethod?.invoke(androidExtension, 36)
+                    println("=> [AI LOG] Đã nâng cấp compileSdk=36 thành công cho: ${project.name}")
+                } catch (ex: Exception) {
+                    println("=> [AI LOG] Bỏ qua ép compileSdk cho ${project.name} (Không tìm thấy setter API)")
                 }
             }
         }
     }
 
-    // Nếu dự án đã được đánh giá (due to evaluationDependsOn), thực thi cấu hình ngay lập tức
     if (project.state.executed) {
         configureAndroid()
     } else {
-        // Nếu chưa, đợi vòng đời sau khi đánh giá kết thúc một cách an toàn
         project.afterEvaluate { configureAndroid() }
     }
 }

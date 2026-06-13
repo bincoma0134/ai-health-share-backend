@@ -32,9 +32,9 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
 
-  // SỬA CÚ PHÁP: Truy cập các trường dữ liệu của Map bằng cặp ngoặc vuông chuẩn xác chống crash luồng
-  double get _basePrice => (widget.video['price'] ?? 0).toDouble();
-  String get _partnerId => (widget.video['authorId'] ?? (widget.video['author'] != null ? widget.video['author']['id'] : '') ?? '').toString();
+  // ĐÃ KHẮC PHỤC DỨT ĐIỂM: Đổi sang cú pháp chấm gọi thuộc tính đối tượng Class VideoModel chuẩn xác để tránh lấy giá trị rỗng gây lỗi 404
+  double get _basePrice => (widget.video.price).toDouble();
+  String get _partnerId => (widget.video.authorId).toString();
   
   double get _finalPrice {
     double total = _basePrice - _discountAmount;
@@ -120,7 +120,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     try {
       final payload = {
         'partner_id': _partnerId,
-        'service_id': widget.video['id'] ?? '', // SỬA CÚ PHÁP: Dịch chuyển từ .id sang ['id']
+        'service_id': widget.video.id, // Đã sửa dứt điểm: Gọi thuộc tính trực tiếp từ Class Object VideoModel gửi chính xác ID lên server
         'appointment_date': DateTime.now().add(const Duration(days: 1)).toIso8601String().split('T')[0], 
         'start_time': '09:00:00', 
         'notes': 'Tên: ${_nameCtrl.text} | SĐT: ${_phoneCtrl.text} | Ghi chú: ${_noteCtrl.text}',
@@ -156,15 +156,19 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   Widget _buildSoftInput(TextEditingController controller, String hint, IconData icon, {bool isPhone = false}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.black.withOpacity(0.02)),
+      ),
       child: TextField(
         controller: controller,
         keyboardType: isPhone ? TextInputType.phone : TextInputType.text,
-        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+        style: const TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.w600),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-          prefixIcon: Icon(icon, color: Colors.white.withOpacity(0.5), size: 20),
+          hintStyle: const TextStyle(color: Colors.black38, fontSize: 14, fontWeight: FontWeight.w400),
+          prefixIcon: Icon(icon, color: Colors.black45, size: 20),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
@@ -187,14 +191,14 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
               height: MediaQuery.of(context).size.height * 0.75, 
               padding: const EdgeInsets.only(top: 16, left: 24, right: 24),
               decoration: BoxDecoration(
-                color: const Color(0xFF131316).withOpacity(0.95),
+                color: Colors.white.withOpacity(0.9), // Đồng bộ sang nền sáng kính mờ
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-                border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1))),
+                border: Border(top: BorderSide(color: Colors.black.withOpacity(0.08))),
               ),
               child: Column(
                 children: [
-                  Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10))),
-                  const Text('Ví Voucher của bạn', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+                  Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black.withOpacity(0.12), borderRadius: BorderRadius.circular(10))),
+                  const Text('Ví Voucher của bạn', style: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 24),
                   
                   Expanded(
@@ -203,9 +207,9 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.wallet_giftcard_rounded, size: 48, color: Colors.white.withOpacity(0.2)),
+                                Icon(Icons.wallet_giftcard_rounded, size: 48, color: Colors.black.withOpacity(0.25)), // Đã sửa lỗi: Dùng cấu trúc opacity chuẩn cho màu đen
                                 const SizedBox(height: 16),
-                                Text('Ví đang trống hoặc đang tải...', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 14)),
+                                const Text('Ví đang trống hoặc đang tải...', style: TextStyle(color: Colors.black45, fontSize: 14, fontWeight: FontWeight.w500)),
                               ],
                             ),
                           )
@@ -237,7 +241,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                               }
                               
                               final bool isPriceValid = _basePrice >= minOrder;
-                              // 🚀 Khớp điều kiện: Nếu mã đối tác thì cột issuer_id của voucher bắt buộc phải trùng khít với partnerId (author_id) của video này
+                              // 🚀 Khớp điều kiện: So khớp chuẩn xác với mã partnerId (authorId) thực tế trích xuất từ mô hình video
                               final bool isPartnerValid = isAdmin || rawIssuerId == _partnerId;
                               final bool isSelectable = isPriceValid && isPartnerValid;
 
@@ -249,17 +253,16 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                 margin: const EdgeInsets.only(bottom: 12),
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: isSelectable ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.3),
+                                  color: isSelectable ? Colors.black.withOpacity(0.03) : Colors.black.withOpacity(0.08),
                                   borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: isSelectable ? (isAdmin ? Colors.amber.withOpacity(0.3) : const Color(0xFF80BF84).withOpacity(0.3)) : Colors.white10),
+                                  border: Border.all(color: isSelectable ? (isAdmin ? Colors.amber : const Color(0xFF80BF84).withOpacity(0.4)) : Colors.transparent),
                                 ),
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.local_activity_rounded, color: isSelectable ? (isAdmin ? Colors.amber : const Color(0xFF80BF84)) : Colors.white24, size: 32),
+                                    Icon(Icons.local_activity_rounded, color: isSelectable ? (isAdmin ? Colors.amber.shade800 : const Color(0xFF5B9E5F)) : Colors.black26, size: 32),
                                     const SizedBox(width: 16),
                                     
-                                    // 🚀 ĐÃ SỬA LỖI 1: Bọc Expanded cho khối Text ở giữa để triệt tiêu lỗi RenderFlex overflowed 46px
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -270,29 +273,27 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                 margin: const EdgeInsets.only(right: 8),
                                                 decoration: BoxDecoration(
-                                                  color: isAdmin ? Colors.amber.withOpacity(0.2) : const Color(0xFF80BF84).withOpacity(0.2),
+                                                  color: isAdmin ? Colors.amber.withOpacity(0.15) : const Color(0xFF80BF84).withOpacity(0.15),
                                                   borderRadius: BorderRadius.circular(6),
-                                                  border: Border.all(color: isAdmin ? Colors.amber.withOpacity(0.5) : const Color(0xFF80BF84).withOpacity(0.5)),
+                                                  border: Border.all(color: isAdmin ? Colors.amber : const Color(0xFF80BF84)),
                                                 ),
-                                                child: Text(isAdmin ? 'TOÀN SÀN' : 'CƠ SỞ', style: TextStyle(color: isAdmin ? Colors.amber : const Color(0xFF80BF84), fontSize: 9, fontWeight: FontWeight.w900)),
+                                                child: Text(isAdmin ? 'TOÀN SÀN' : 'CƠ SỞ', style: TextStyle(color: isAdmin ? Colors.amber.shade900 : const Color(0xFF5B9E5F), fontSize: 9, fontWeight: FontWeight.w900)),
                                               ),
-                                              // 🚀 Chống tràn chữ cho Code nếu quá dài
                                               Expanded(
-                                                child: Text(code, style: TextStyle(color: isSelectable ? Colors.white : Colors.white30, fontWeight: FontWeight.w900, fontSize: 16), overflow: TextOverflow.ellipsis),
+                                                child: Text(code, style: TextStyle(color: isSelectable ? Colors.black87 : Colors.black38, fontWeight: FontWeight.w900, fontSize: 16), overflow: TextOverflow.ellipsis),
                                               ),
                                             ],
                                           ),
                                           const SizedBox(height: 6),
-                                          Text(title, style: TextStyle(color: isSelectable ? Colors.white70 : Colors.white24, fontSize: 13, fontWeight: FontWeight.w500)),
+                                          Text(title, style: TextStyle(color: isSelectable ? Colors.black54 : Colors.black26, fontSize: 13, fontWeight: FontWeight.w600)),
                                           const SizedBox(height: 4),
-                                          // 🚀 ĐÃ SỬA: Thay thế Row bằng Wrap để tự động bẻ dòng mượt mà nếu HSD quá dài, triệt tiêu lỗi overflowed 5.3px
                                           Wrap(
                                             crossAxisAlignment: WrapCrossAlignment.center,
                                             spacing: 6,
                                             runSpacing: 2,
                                             children: [
-                                              Text(discountDisplay, style: TextStyle(color: isSelectable ? (isAdmin ? Colors.amber.shade300 : const Color(0xFF80BF84)) : Colors.white24, fontSize: 12, fontWeight: FontWeight.w900)),
-                                              Text('• $expiryDate', style: TextStyle(color: isSelectable ? Colors.white54 : Colors.white24, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                              Text(discountDisplay, style: TextStyle(color: isSelectable ? (isAdmin ? Colors.amber.shade900 : const Color(0xFF5B9E5F)) : Colors.black26, fontSize: 12, fontWeight: FontWeight.w900)),
+                                              Text('• $expiryDate', style: TextStyle(color: isSelectable ? Colors.black45 : Colors.black26, fontSize: 11, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
                                             ],
                                           ),
                                           if (!isSelectable)
@@ -335,37 +336,71 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25), 
-        child: Container(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom + 24, left: 24, right: 24, top: 16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF131316).withOpacity(0.88), 
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-            border: Border(top: BorderSide(color: Colors.white.withOpacity(0.08), width: 1.5)),
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10)))),
+    return Theme(
+      // Ép cục bộ cửa sổ đặt lịch chuyển sang chế độ Light Theme để lấy lại cấu hình chữ đen hệ thống
+      data: ThemeData.light().copyWith(
+        primaryColor: const Color(0xFF80BF84),
+        hintColor: Colors.black38,
+      ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            constraints: BoxConstraints(
+              // Giới hạn tỷ lệ vàng: Chiều cao tối thiểu co theo nội dung, tối đa bằng 85% màn hình khi bật bàn phím
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+            ),
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20, 
+              left: 24, 
+              right: 24, 
+              top: 16
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.88), // Đạt tỷ lệ tương phản chuẩn mực trên nền sáng Glassmorphism
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.6),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15), 
+                  blurRadius: 30, 
+                  offset: const Offset(0, -10)
+                ),
+                BoxShadow(
+                  color: const Color(0xFF80BF84).withOpacity(0.08), 
+                  blurRadius: 15, 
+                  offset: const Offset(0, -2)
+                ),
+              ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black.withOpacity(0.12), borderRadius: BorderRadius.circular(10)))),
                 
                 Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(color: const Color(0xFF80BF84).withOpacity(0.15), shape: BoxShape.circle),
-                      child: const Icon(Icons.eco_rounded, color: Color(0xFF80BF84), size: 22),
+                      decoration: BoxDecoration(color: const Color(0xFF80BF84).withOpacity(0.2), shape: BoxShape.circle),
+                      child: const Icon(Icons.eco_rounded, color: Color(0xFF5B9E5F), size: 22),
                     ),
                     const SizedBox(width: 12),
-                    const Text('Đặt lịch tư vấn', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                    const Text('Đặt lịch tư vấn', style: TextStyle(color: Colors.black87, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text('Thông tin của bạn sẽ được bảo mật an toàn tuyệt đối.', style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13)),
+                const Text('Thông tin của bạn sẽ được bảo mật an toàn tuyệt đối.', style: TextStyle(color: Colors.black54, fontSize: 13, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 24),
                 
                 _buildSoftInput(_nameCtrl, 'Họ và tên của bạn', Icons.person_rounded),
@@ -373,13 +408,13 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                 _buildSoftInput(_noteCtrl, 'Bạn cần lưu ý thêm điều gì không?', Icons.edit_note_rounded),
                 _buildSoftInput(_affiliateCtrl, 'Mã giới thiệu (Affiliate) nếu có', Icons.handshake_rounded),
 
-                // BAR CHỌN VOUCHER TỪ VÍ
+                // BAR CHỌN VOUCHER TỪ VÍ (Gia diện sáng)
                 Container(
                   margin: const EdgeInsets.only(top: 8, bottom: 24),
                   decoration: BoxDecoration(
-                    color: _isVoucherSuccess ? const Color(0xFF80BF84).withOpacity(0.08) : Colors.white.withOpacity(0.03),
+                    color: _isVoucherSuccess ? const Color(0xFF80BF84).withOpacity(0.12) : Colors.black.withOpacity(0.02),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: _isVoucherSuccess ? const Color(0xFF80BF84).withOpacity(0.5) : Colors.white.withOpacity(0.08)),
+                    border: Border.all(color: _isVoucherSuccess ? const Color(0xFF80BF84) : Colors.black.withOpacity(0.06)),
                   ),
                   child: Material(
                     color: Colors.transparent,
@@ -390,15 +425,15 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                         padding: const EdgeInsets.all(16),
                         child: Row(
                           children: [
-                            Icon(Icons.local_activity_rounded, color: _isVoucherSuccess ? const Color(0xFF80BF84) : Colors.amber.shade300, size: 24),
+                            Icon(Icons.local_activity_rounded, color: _isVoucherSuccess ? const Color(0xFF5B9E5F) : Colors.amber.shade700, size: 24),
                             const SizedBox(width: 16),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(_isVoucherSuccess ? 'Mã ưu đãi đã được áp dụng' : 'Ưu đãi & Voucher', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+                                  Text(_isVoucherSuccess ? 'Mã ưu đãi đã được áp dụng' : 'Ưu đãi & Voucher', style: const TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.bold)),
                                   const SizedBox(height: 4),
-                                  Text(_isVoucherSuccess ? _appliedVoucherTitle : 'Bấm để chọn từ ví của bạn', style: TextStyle(color: _isVoucherSuccess ? const Color(0xFF80BF84) : Colors.white.withOpacity(0.5), fontSize: 13, fontWeight: _isVoucherSuccess ? FontWeight.w900 : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  Text(_isVoucherSuccess ? _appliedVoucherTitle : 'Bấm để chọn từ ví của bạn', style: TextStyle(color: _isVoucherSuccess ? const Color(0xFF5B9E5F) : Colors.black45, fontSize: 13, fontWeight: _isVoucherSuccess ? FontWeight.w900 : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
                                 ],
                               ),
                             ),
@@ -406,11 +441,11 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                               const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Color(0xFF80BF84), strokeWidth: 2))
                             else if (_isVoucherSuccess)
                               IconButton(
-                                icon: const Icon(Icons.close_rounded, color: Colors.white54),
+                                icon: const Icon(Icons.close_rounded, color: Colors.black54),
                                 onPressed: () => setState(() { _isVoucherSuccess = false; _appliedVoucherCode = null; _appliedVoucherTitle = ''; _discountAmount = 0; }),
                               )
                             else
-                              const Icon(Icons.chevron_right_rounded, color: Colors.white54),
+                              const Icon(Icons.chevron_right_rounded, color: Colors.black45),
                           ],
                         ),
                       ),
@@ -418,18 +453,22 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                   ),
                 ),
 
-                // KHỐI TẠM TÍNH HÓA ĐƠN NÂNG CẤP
+                // KHỐI TẠM TÍNH HÓA ĐƠN NÂNG CẤP (Giao diện sáng nổi khối)
                 Container(
                   padding: const EdgeInsets.all(20),
                   margin: const EdgeInsets.only(bottom: 24),
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.02), borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white.withOpacity(0.05))),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.4), 
+                    borderRadius: BorderRadius.circular(24), 
+                    border: Border.all(color: Colors.black.withOpacity(0.04)),
+                  ),
                   child: Column(
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Giá dịch vụ', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14)),
-                          Text(_currencyFormat.format(_basePrice), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                          Text('Giá dịch vụ', style: TextStyle(color: Colors.black54, fontSize: 14, fontWeight: FontWeight.w500)),
+                          Text(_currencyFormat.format(_basePrice), style: const TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.w700)),
                         ],
                       ),
                       if (_discountAmount > 0) ...[
@@ -438,31 +477,31 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(child: Text('Voucher: $_appliedVoucherCode', style: const TextStyle(color: Color(0xFF80BF84), fontSize: 13, fontWeight: FontWeight.w600))),
-                            Text('- ${_currencyFormat.format(_discountAmount)}', style: const TextStyle(color: Color(0xFF80BF84), fontSize: 14, fontWeight: FontWeight.w900)),
+                            Expanded(child: Text('Voucher: $_appliedVoucherCode', style: const TextStyle(color: Color(0xFF5B9E5F), fontSize: 13, fontWeight: FontWeight.w700))),
+                            Text('- ${_currencyFormat.format(_discountAmount)}', style: const TextStyle(color: Color(0xFF5B9E5F), fontSize: 14, fontWeight: FontWeight.w900)),
                           ],
                         ),
                       ],
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Divider(color: Colors.white.withOpacity(0.08), height: 1),
+                        child: Divider(color: Colors.black.withOpacity(0.06), height: 1),
                       ),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Text('Tổng thanh toán', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                          const Text('Tổng thanh toán', style: TextStyle(color: Colors.black87, fontSize: 15, fontWeight: FontWeight.bold)),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               if (_discountAmount > 0)
                                 Text(
                                   _currencyFormat.format(_basePrice), 
-                                  style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13, decoration: TextDecoration.lineThrough, decorationColor: Colors.white54, fontWeight: FontWeight.w500)
+                                  style: TextStyle(color: Colors.black38, fontSize: 13, decoration: TextDecoration.lineThrough, fontWeight: FontWeight.w500)
                                 ),
                               Text(
                                 _currencyFormat.format(_finalPrice), 
-                                style: TextStyle(color: _discountAmount > 0 ? const Color(0xFF80BF84) : Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)
+                                style: TextStyle(color: _discountAmount > 0 ? const Color(0xFF80BF84) : Colors.black87, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)
                               ),
                             ],
                           )
@@ -472,22 +511,20 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                   ),
                 ),
 
-                SafeArea(
-                  top: false,
-                  child: SizedBox(
-                    width: double.infinity, height: 56,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF80BF84), 
-                        foregroundColor: Colors.black87,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        elevation: 0,
-                      ),
-                      onPressed: _isLoading ? null : _submitBooking,
-                      child: _isLoading 
-                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.black87, strokeWidth: 2)) 
-                          : const Text('GỬI YÊU CẦU ĐẶT LỊCH', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5, fontSize: 14)),
+                SizedBox(
+                  width: double.infinity, 
+                  height: 54,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF80BF84), 
+                      foregroundColor: Colors.black87,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 0,
                     ),
+                    onPressed: _isLoading ? null : _submitBooking,
+                    child: _isLoading 
+                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.black87, strokeWidth: 2)) 
+                        : const Text('GỬI YÊU CẦU ĐẶT LỊCH', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5, fontSize: 14)),
                   ),
                 ),
               ],
@@ -495,6 +532,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
           ),
         ),
       ),
-    );
-  }
+    ),
+   ),
+  );
+ }
 }

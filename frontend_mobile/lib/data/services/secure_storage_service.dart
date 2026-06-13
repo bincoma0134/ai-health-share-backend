@@ -6,6 +6,7 @@ class SecureStorageService {
   // Các key này khớp với tư duy lưu trữ của bản Web cũ
   static const String _tokenKey = 'ai_health_token';
   static const String _roleKey = 'ai_health_role';
+  static const String _nameKey = 'ai_health_name';
 
   // --- TOKEN ---
   static Future<void> saveToken(String token) async => await _storage.write(key: _tokenKey, value: token);
@@ -14,6 +15,10 @@ class SecureStorageService {
   // --- ROLE (USER / PARTNER) ---
   static Future<void> saveRole(String role) async => await _storage.write(key: _roleKey, value: role);
   static Future<String?> getRole() async => await _storage.read(key: _roleKey);
+
+  // --- TÊN HIỂN THỊ (FULL NAME) ---
+  static Future<void> saveName(String name) async => await _storage.write(key: _nameKey, value: name);
+  static Future<String?> getName() async => await _storage.read(key: _nameKey);
 
   // --- XÓA PHIÊN KHI LOGOUT / 401 ---
   static Future<void> clearSession() async => await _storage.deleteAll();

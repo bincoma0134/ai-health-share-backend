@@ -1,6 +1,9 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../data/services/secure_storage_service.dart';
+import '../../data/services/user_api_service.dart';
+import '../widgets/app_toast.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -10,213 +13,190 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMixin {
-  late AnimationController _rotationController;
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+  late AnimationController _breathingController;
+  late Animation<double> _breathingAnimation;
+  late AnimationController _rippleController;
 
   @override
   void initState() {
     super.initState();
 
-    // 1. Controller xoay các vòng 3D nhẹ nhàng (12 giây/vòng chậm rãi, thư giãn)
-    _rotationController = AnimationController(
+    // 1. Bộ điều khiển nhịp thở sinh học (Breathing effect) chậm rãi, thư giãn
+    _breathingController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 12),
-    )..repeat();
-
-    // 2. Controller nhịp thở mềm mại (Breathing effect) cho lõi trung tâm
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: const Duration(milliseconds: 2500),
     )..repeat(reverse: true);
 
-    _pulseAnimation = Tween<double>(begin: 0.88, end: 1.12).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOutSine),
+    _breathingAnimation = Tween<double>(begin: 0.94, end: 1.06).animate(
+      CurvedAnimation(parent: _breathingController, curve: Curves.easeInOutSine),
     );
 
-    // 3. Giữ màn hình chờ 4 giây để pre-load dữ liệu ngầm cho Feeds
+    // 2. Bộ điều khiển gợn sóng lan tỏa (Bio-ripples) chạy lặp mềm mại dưới nền
+    _rippleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 4000),
+    )..repeat();
+
+    // 3. Kích hoạt luồng chờ tải dữ liệu ngầm hệ thống trước khi chuyển trang
     _initializeApp();
   }
 
   Future<void> _initializeApp() async {
-    await Future.delayed(const Duration(milliseconds: 4000));
-    if (mounted) {
-      context.go('/');
+    // 1. Giảm thời gian chờ cứng xuống 1.5s để nhường thời gian cho việc gọi API xác thực
+    await Future.delayed(const Duration(milliseconds: 1500));
+    if (!mounted) return;
+    
+    final token = await SecureStorageService.getToken();
+    
+    if (token != null && token.isNotEmpty) {
+      // 2. BẮT BUỘC: Gọi API để xác minh phiên làm việc thực tế trên Server
+      final userProfileResponse = await UserApiService.fetchPrivateProfile();
+      
+      // Chú ý: Backend trả về {"profile": {...}, "stats": {...}} nên phải trích xuất đúng nhánh 'profile'
+      if (userProfileResponse != null && userProfileResponse['profile'] != null) {
+        final profileData = userProfileResponse['profile'];
+        
+        // Phiên hợp lệ -> Lấy thông tin cập nhật nhất từ Server
+        final fullName = profileData['full_name'] ?? await SecureStorageService.getName() ?? 'bạn';
+        final role = profileData['role'] ?? await SecureStorageService.getRole() ?? 'USER';
+        
+        // Đồng bộ lại Storage lỡ có thay đổi từ nền tảng Website
+        await SecureStorageService.saveName(fullName);
+        await SecureStorageService.saveRole(role);
+        
+        if (mounted) {
+          AppToast.show(
+            context: context, 
+            message: 'Chào mừng $fullName trở lại hệ thống! Chúc bạn một ngày an lành và thư thái.', 
+            isSuccess: true,
+            duration: const Duration(seconds: 4)
+          );
+          
+          // Điều hướng đồng nhất về Trang chủ theo yêu cầu tinh chỉnh luồng
+        context.go('/');
+        }
+      } else {
+        // Phiên KHÔNG hợp lệ (Hết hạn JWT, tài khoản bị xóa/khóa, hoặc lỗi mạng) -> Xóa rác và đẩy ra cổng
+        await SecureStorageService.clearSession();
+        if (mounted) context.go('/login');
+      }
+    } else {
+      if (mounted) context.go('/login'); // Chưa đăng nhập -> Ra cổng
     }
   }
 
   @override
   void dispose() {
-    _rotationController.dispose();
-    _pulseController.dispose();
+    _breathingController.dispose();
+    _rippleController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    const primaryGreen = Color(0xFF4A8B6F); // Xanh lục thảo mộc Wellness
+    const backgroundLight = Color(0xFFF4F9F5); // Trắng ngọc trai thanh khiết dịu mát
+
     return Scaffold(
-      backgroundColor: const Color(0xFF09090B), // Đen tuyền chuẩn Premium
+      backgroundColor: backgroundLight,
       body: Stack(
         children: [
-          // LỚP 1: NỀN GRADIENT LAN TỎA (FILL TOÀN MÀN HÌNH)
+          // LỚP 1: GỢN SÓNG LAN TỎA SINH HỌC CHẠY NGẦM (BIO-RIPPLES)
           Positioned.fill(
             child: AnimatedBuilder(
-              animation: _pulseAnimation,
+              animation: _rippleController,
               builder: (context, child) {
-                return Container(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment.center, // Ép tâm tỏa sáng chính giữa màn hình
-                      colors: [
-                        const Color(0xFF80BF84).withOpacity(0.15 * _pulseAnimation.value),
-                        Colors.transparent,
-                      ],
-                      radius: 0.8,
-                    ),
-                  ),
+                return Stack(
+                  alignment: Alignment.center,
+                  children: List.generate(2, (index) {
+                    final progress = (_rippleController.value + (index * 0.5)) % 1.0;
+                    return Container(
+                      width: 140 + (progress * 280),
+                      height: 140 + (progress * 280),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: primaryGreen.withOpacity((1 - progress) * 0.15),
+                          width: 1.2,
+                        ),
+                      ),
+                    );
+                  }),
                 );
               },
             ),
           ),
 
-          // LỚP 2: CỤM HOLOGRAM 3D CĂN CHÍNH GIỮA TUYỆT ĐỐI & MỞ RỘNG (FILL)
-          Positioned.fill(
-            child: Center( // Ép toàn bộ khối trục tọa độ ra chính giữa màn hình
-              child: AnimatedBuilder(
-                animation: _rotationController,
-                builder: (context, child) {
-                  return SizedBox(
-                    width: 300, // Định cấu hình vùng chứa rộng rãi để fill các đường nét
-                    height: 300,
-                    child: Stack(
-                      alignment: Alignment.center, // Đồng tâm các lớp đè lên nhau
-                      children: [
-                        
-                        // QUỸ ĐẠO XOAY 1: Vòng ngoài lớn thanh thoát (Thinner Line)
-                        Transform(
-                          alignment: Alignment.center, // Bắt buộc xoay quanh tâm vật thể
-                          transform: Matrix4.identity()
-                            ..setEntry(3, 2, 0.0012) // Tạo perspective chiều sâu 3D mỏng
-                            ..rotateX(_rotationController.value * 2 * pi)
-                            ..rotateY(_rotationController.value * pi),
-                          child: Container(
-                            width: 260, // Mở rộng đường kính vòng ngoài
-                            height: 260,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: const Color(0xFF80BF84).withOpacity(0.12), 
-                                width: 1.0,
-                              ),
-                            ),
-                          ),
-                        ),
-                        
-                        // QUỸ ĐẠO XOAY 2: Vòng tầm trung xoay ngược chiều tạo hiệu ứng không gian 3D
-                        Transform(
-                          alignment: Alignment.center, // Đồng tâm trục xoay
-                          transform: Matrix4.identity()
-                            ..setEntry(3, 2, 0.0012)
-                            ..rotateZ(-_rotationController.value * 2 * pi)
-                            ..rotateX(-_rotationController.value * pi),
-                          child: Container(
-                            width: 200, // Mở rộng đường kính vòng trong
-                            height: 200,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: const Color(0xFF80BF84).withOpacity(0.22), 
-                                width: 1.5,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF80BF84).withOpacity(0.08), 
-                                  blurRadius: 40, 
-                                  spreadRadius: 8,
-                                )
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        // LÕI TRUNG TÂM: Biểu tượng chiếc lá rực sáng nhẹ nhàng theo nhịp thở
-                        ScaleTransition(
-                          scale: _pulseAnimation,
-                          child: Container(
-                            width: 86,
-                            height: 86,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: const Color(0xFF09090B), // Che nền tạo độ sâu khối đặc
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF80BF84).withOpacity(0.35), 
-                                  blurRadius: 45, 
-                                  spreadRadius: 12,
-                                )
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.eco_rounded, // Biểu tượng chiếc lá mềm mại, thư giãn
-                              color: Color(0xFF80BF84), 
-                              size: 44,
-                            ),
-                          ),
-                        ),
-                        
-                      ],
+          // LỚP 2: TÂM ĐIỂM - BIỂU TƯỢNG CHIẾC LÁ THIỀN ĐỊNH CO GIÃN THEO NHỊP THỞ
+          Center(
+            child: ScaleTransition(
+              scale: _breathingAnimation,
+              child: Container(
+                width: 130,
+                height: 130,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: primaryGreen.withOpacity(0.08),
+                      blurRadius: 40,
+                      spreadRadius: 8,
                     ),
-                  );
-                },
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.eco_rounded, // Biểu tượng chiếc lá nguyên bản, thanh khiết
+                    color: primaryGreen,
+                    size: 64,
+                  ),
+                ),
               ),
             ),
           ),
 
-          // LỚP 3: CHỮ & THANH CÔNG CỤ LOADING DƯỚI ĐÁY MÀN HÌNH
+          // LỚP 3: THÔNG TIN NHẬN DIỆN THƯƠNG HIỆU VN SHARE
           Positioned(
-            bottom: 64,
+            bottom: 80,
             left: 0,
             right: 0,
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const Text(
                   'VN Share',
                   style: TextStyle(
-                    color: Colors.white, 
-                    fontSize: 18, 
-                    fontWeight: FontWeight.w900, 
-                    letterSpacing: 4.5,
+                    color: primaryGreen,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 8.0, // Tạo khoảng trống thoáng đãng sang trọng
                   ),
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const SizedBox(
-                      width: 14, 
-                      height: 14, 
-                      child: CircularProgressIndicator(
-                        color: Color(0xFF80BF84), 
-                        strokeWidth: 1.8,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Text(
-                      'Chào mừng bạn đến với Hành chính Sống Khỏe...', 
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.4), 
-                        fontSize: 13, 
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ],
-                )
+                const SizedBox(height: 12),
+                Text(
+                  'Hành trình Sống Khỏe & Sẻ chia',
+                  style: TextStyle(
+                    color: primaryGreen.withOpacity(0.5),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 48),
+                // Thanh tiến trình siêu mảnh tinh tế đồng điệu không gian Spa
+                SizedBox(
+                  width: 40,
+                  height: 1.5,
+                  child: LinearProgressIndicator(
+                    backgroundColor: primaryGreen.withOpacity(0.08),
+                    color: primaryGreen.withOpacity(0.35),
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );

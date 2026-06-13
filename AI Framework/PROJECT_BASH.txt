@@ -4,7 +4,9 @@ E:\src\flutter\bin\flutter analyze
 
 taskkill /F /IM java.exe
 
+taskkill /F /IM dart.exe
 
+rmdir /s /q build
 ----------------
 E:\src\flutter\bin\flutter clean
 
@@ -18,12 +20,16 @@ E:\src\flutter\bin\flutter run -d R58N30APMHD
 
 E:\src\flutter\bin\flutter run --release -d R58N30APMHD
 ----------------
+%LOCALAPPDATA%\Android\Sdk\platform-tools\adb logcat -c
 
+%LOCALAPPDATA%\Android\Sdk\platform-tools\adb logcat AndroidRuntime:E ActivityManager:E flutter:V *:S
+
+---------
 %LOCALAPPDATA%\Android\Sdk\platform-tools\adb reverse tcp:8000 tcp:8000
 
 E:\src\flutter\bin\flutter attach -d R58N30APMHD
 
-E:\src\flutter\bin\
+E:\src\flutter\bin\flutter doctor -v
 
 ./.venv/scripts/activate
 uvicorn main:app --host 127.0.0.1 --port 8000 --reload

@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/network/api_client.dart'; // Trục kết nối mạng lõi
+import '../../widgets/booking_bottom_sheet.dart';
 import '../../../data/models/partner_map_model.dart';
 import '../../../data/services/map_api_service.dart';
 import '../../widgets/app_toast.dart';
@@ -118,12 +119,12 @@ class _MapScreenState extends State<MapScreen> {
       if (query.isEmpty) {
         _filteredPartners = _selectedCategory == 'Tất cả' 
             ? _partners 
-            : _partners.where((p) => p.tags.contains(_selectedCategory)).toList();
+            : _partners.where((p) => p.tags.any((t) => t.toLowerCase().contains(_selectedCategory.toLowerCase()))).toList();
       } else {
         _filteredPartners = _partners.where((p) {
           final matchesQuery = p.fullName.toLowerCase().contains(query.toLowerCase()) || 
                                p.username.toLowerCase().contains(query.toLowerCase());
-          final matchesCategory = _selectedCategory == 'Tất cả' || p.tags.contains(_selectedCategory);
+          final matchesCategory = _selectedCategory == 'Tất cả' || p.tags.any((t) => t.toLowerCase().contains(_selectedCategory.toLowerCase()));
           return matchesQuery && matchesCategory;
         }).toList();
       }
@@ -137,7 +138,7 @@ class _MapScreenState extends State<MapScreen> {
       _searchController.clear();
       _filteredPartners = catName == 'Tất cả' 
           ? _partners 
-          : _partners.where((p) => p.tags.contains(catName)).toList();
+          : _partners.where((p) => p.tags.any((t) => t.toLowerCase().contains(catName.toLowerCase()))).toList();
       _selectedPartner = null;
     });
   }
@@ -145,6 +146,7 @@ class _MapScreenState extends State<MapScreen> {
   void _selectPartnerFromMarker(PartnerMapModel partner) {
     setState(() {
       _selectedPartner = partner;
+      _filteredPartners = [partner]; // Cô lập danh sách trên Bottom Sheet hiển thị duy nhất đối tác được chọn
     });
     _mapController.move(LatLng(partner.latitude, partner.longitude), 14.5);
     
@@ -222,7 +224,9 @@ class _MapScreenState extends State<MapScreen> {
                                   width: isSelected ? 52 : 42,
                                   height: isSelected ? 52 : 42,
                                   child: GestureDetector(
-                                    onTap: () => _selectPartnerFromMarker(partner),
+                                    onTap: () {
+                                      _selectPartnerFromMarker(partner);
+                                    },
                                     onDoubleTap: () {
                                       // 🚀 ĐỘC QUYỀN LUXURY: Double Tap vào Ghim trên bản đồ để phi thẳng vào Hồ sơ công khai
                                       context.push('/public-profile/${partner.username}');
@@ -321,6 +325,115 @@ class _MapScreenState extends State<MapScreen> {
                                   padding: EdgeInsets.zero,
                                   children: [
                                     _buildHorizontalCategoryChips(),
+                                    
+                                    // 🟢 KHẮC PHỤC ĐIỂM NGHẼN: Hiển thị mảng dịch vụ thực tế và kết nối nút hành động Đặt lịch
+                                    if (_selectedPartner != null) ...[
+                                      Padding(
+                                        padding: const EdgeInsets.only(left: 16, right: 16, top: 16),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                'Dịch vụ khả dụng tại ${_selectedPartner!.fullName}',
+                                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.black87),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(Icons.cancel_outlined, size: 18, color: Colors.black45),
+                                              onPressed: () {
+                                                setState(() {
+                                                  _selectedPartner = null;
+                                                  _filteredPartners = _selectedCategory == 'Tất cả'
+                                                      ? _partners
+                                                      : _partners.where((p) => p.tags.any((t) => t.toLowerCase().contains(_selectedCategory.toLowerCase()))).toList();
+                                                });
+                                              },
+                                            )
+                                          ],
+                                        ),
+                                      ),
+                                      if (_selectedPartner!.services.isEmpty)
+                                        const Padding(
+                                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                          child: Text('Cơ sở chưa cập nhật danh sách dịch vụ y tế.', style: TextStyle(color: Colors.black38, fontSize: 12, fontStyle: FontStyle.italic)),
+                                        )
+                                      else
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                          child: Column(
+                                            children: _selectedPartner!.services.map<Widget>((service) {
+                                              final String name = service['service_name'] ?? service['name'] ?? 'Dịch vụ';
+                                              final double price = (service['price'] ?? 0.0).toDouble();
+                                              return Container(
+                                                margin: const EdgeInsets.only(bottom: 8),
+                                                padding: const EdgeInsets.all(12),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white,
+                                                  borderRadius: BorderRadius.circular(16),
+                                                  border: Border.all(color: Colors.black.withOpacity(0.03)),
+                                                ),
+                                                child: Row(
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    Expanded(
+                                                      child: Column(
+                                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                                        children: [
+                                                          Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.black87)),
+                                                          const SizedBox(height: 2),
+                                                          Text('${price.toStringAsFixed(0)} đ', style: const TextStyle(color: Color(0xFF4C8D50), fontWeight: FontWeight.bold, fontSize: 12)),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                    ElevatedButton(
+                                                      style: ElevatedButton.styleFrom(
+                                                        backgroundColor: const Color(0xFF4C8D50),
+                                                        foregroundColor: Colors.white,
+                                                        elevation: 0,
+                                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                                        minimumSize: Size.zero,
+                                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                                      ),
+                                                      onPressed: () {
+                                                        // Đóng gói dữ liệu Map dịch vụ thành cấu trúc tương thích ngược mà BookingBottomSheet yêu cầu
+                                                        final adaptedVideoPayload = {
+                                                          'id': service['id'] ?? service['service_id'] ?? '',
+                                                          'price': price,
+                                                          'title': name,
+                                                          'authorId': _selectedPartner!.id,
+                                                          'author': {
+                                                            'id': _selectedPartner!.id,
+                                                            'username': _selectedPartner!.username,
+                                                            'full_name': _selectedPartner!.fullName,
+                                                          }
+                                                        };
+
+                                                        // Khởi tạo luồng hiển thị Bottom Sheet Đặt lịch chuẩn chỉ của hệ thống
+                                                        showModalBottomSheet(
+                                                          context: context,
+                                                          isScrollControlled: true,
+                                                          backgroundColor: Colors.transparent,
+                                                          builder: (context) => BookingBottomSheet(video: adaptedVideoPayload),
+                                                        );
+                                                      },
+                                                      child: const Text('ĐẶT LỊCH', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            }).toList(),
+                                          ),
+                                        ),
+                                      const Padding(
+                                        padding: EdgeInsets.symmetric(horizontal: 16),
+                                        child: Divider(height: 24, thickness: 0.5),
+                                      ),
+                                    ],
+
                                     _buildSectionTitle("✨ Curations for you", "Nội dung y tế gần bạn"),
                                     _buildHorizontalCurationsList(),
                                     _buildSectionTitle("🩺 Curators for you", "Chuyên gia lân cận"),
@@ -458,7 +571,9 @@ class _MapScreenState extends State<MapScreen> {
 
           return GestureDetector(
             onTap: () {
-              setState(() => _selectedPartner = partner);
+              setState(() {
+                _selectedPartner = partner;
+              });
               _mapController.move(LatLng(partner.latitude, partner.longitude), 14.5);
               
               // 🚀 CẬP NHẬT ĐỒNG BỘ: Chạm nhẹ vào Thẻ nội dung tự động mở Public Profile của Partner
@@ -551,7 +666,8 @@ class _MapScreenState extends State<MapScreen> {
         itemBuilder: (context, index) {
           final partner = _filteredPartners[index];
           final isHighlighted = _selectedPartner?.id == partner.id;
-          final int mockReputation = 92 - (index * 12).clamp(0, 50);
+          // Loại bỏ việc mock số sao giảm dần theo index, tính toán đồng bộ dựa trên tags
+          final int mockReputation = partner.tags.isNotEmpty ? (90 + (partner.tags.length % 6)) : 95;
 
           return Column(
             children: [

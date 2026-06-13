@@ -1,15 +1,12 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart';
+import '../../data/services/secure_storage_service.dart';
 
 class AuthInterceptor extends Interceptor {
-  final _storage = const FlutterSecureStorage();
-  // Đồng bộ tên key với localStorage của bản Web
-  static const String tokenKey = 'ai-health-token'; 
-
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
-    final token = await _storage.read(key: tokenKey);
+    // Gọi hàm trung tâm để lấy đúng từ khóa 'ai_health_token' đã lưu lúc Đăng nhập
+    final token = await SecureStorageService.getToken();
     
     if (token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
@@ -20,11 +17,10 @@ class AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    // Tái hiện logic xóa token khi lỗi từ AuthContext.tsx
+    // Đồng bộ xử lý dọn dẹp phiên khi Backend trả về mã lỗi 401 Unauthorized
     if (err.response?.statusCode == 401) {
       debugPrint('Token hết hạn hoặc không hợp lệ. Đang xóa phiên...');
-      await _storage.delete(key: tokenKey);
-      // Hệ thống sẽ không tự động nhảy trang để tránh gắt luồng xem Video của Khách
+      await SecureStorageService.clearSession();
     }
     super.onError(err, handler);
   }

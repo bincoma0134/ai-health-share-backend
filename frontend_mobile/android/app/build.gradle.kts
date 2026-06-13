@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")
+    id("com.google.gms.google-services") // Đã mở khóa để Gradle đọc file JSON của Firebase
 }
 
 // Cấu hình theo chuẩn AGP mới để loại bỏ cảnh báo Deprecated
@@ -14,7 +15,7 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
+    }  
 
     defaultConfig {
         applicationId = "com.gsx.health.frontend_mobile"

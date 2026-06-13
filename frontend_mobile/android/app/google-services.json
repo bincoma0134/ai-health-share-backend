@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "118726230631",
+    "project_id": "vnshare-auth",
+    "storage_bucket": "vnshare-auth.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:118726230631:android:8cec592320877dec5c4ac2",
+        "android_client_info": {
+          "package_name": "com.gsx.health.frontend_mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "118726230631-v3hqcsjl5t9ns74bu3u7tfjciltm8lg5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.gsx.health.frontend_mobile",
+            "certificate_hash": "707617b67b1ed5314669dd0f16f81bace9c0a188"
+          }
+        },
+        {
+          "client_id": "118726230631-3d6m9lmogtsc93cd9o6kn93cfiv21l0t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDKx3wDweRS62c6eV5Cl0FmhXI8SRYsIxI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "118726230631-3d6m9lmogtsc93cd9o6kn93cfiv21l0t.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../data/services/user_api_service.dart';
+import '../../../data/services/secure_storage_service.dart';
 import '../../widgets/guest_profile_view.dart';
 import 'super_admin_profile_screen.dart'; 
 import 'moderator_profile_screen.dart';
@@ -18,7 +18,6 @@ class PrivateProfileScreen extends StatefulWidget {
 }
 
 class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
-  final _storage = const FlutterSecureStorage();
   final ImagePicker _picker = ImagePicker();
   
   bool _isLoading = true;
@@ -40,7 +39,9 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
 
   Future<void> _checkAuthAndLoad() async {
     setState(() => _isLoading = true);
-    final token = await _storage.read(key: 'ai-health-token');
+    
+    // Sử dụng hàm chuẩn hóa để quét đúng key 'ai_health_token'
+    final token = await SecureStorageService.getToken();
     
     if (token == null || token.isEmpty) {
       setState(() {
@@ -58,7 +59,9 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
   }
 
   Future<void> _handleLogout() async {
-    await _storage.delete(key: 'ai-health-token');
+    // Sử dụng hàm dọn dẹp tổng thể thay vì xóa tay từng key
+    await SecureStorageService.clearSession();
+    
     setState(() {
       _isAuthenticated = false;
       _profileData = null;

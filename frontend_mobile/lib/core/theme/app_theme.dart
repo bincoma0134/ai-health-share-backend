@@ -20,4 +20,16 @@ class AppTheme {
       ),
     );
   }
+
+  // MỚI: Khai báo lõi hệ màu sáng (Light Mode Core ThemeData) cho ứng dụng
+  static ThemeData get lightTheme {
+    return ThemeData.light().copyWith(
+      scaffoldBackgroundColor: zinc50,
+      cardColor: Colors.white,
+      colorScheme: const ColorScheme.light(
+        primary: blue500,
+        surface: Colors.white,
+      ),
+    );
+  }
 }

@@ -17,6 +17,17 @@ from fastapi import UploadFile, File, Form
 from groq import Groq
 import boto3
 import uuid
+import firebase_admin
+from firebase_admin import credentials, auth as firebase_auth
+
+# Khởi tạo Firebase Admin SDK
+if not firebase_admin._apps:
+    try:
+        # Bạn cần đặt file firebase_credentials.json tại thư mục gốc
+        cred = credentials.Certificate("firebase_credentials.json")
+        firebase_admin.initialize_app(cred)
+    except Exception as e:
+        print(f"Warning: Firebase Admin SDK chưa được khởi tạo. Lỗi: {e}")
 
 # --- CẤU HÌNH CỔNG THANH TOÁN PAYOS ---
 from payos import PayOS
@@ -136,6 +147,63 @@ def register(payload: schemas.UserRegister, conn=Depends(get_db_connection)):
         conn.commit()
         return {"status": "success", "message": "Đăng ký thành công", "user": new_user}
     finally: cur.close()
+
+from firebase_admin import auth as firebase_auth
+
+@app.post("/auth/firebase", tags=["Auth"], summary="Login with Google/Facebook via Firebase")
+def firebase_login(payload: schemas.FirebaseLogin, conn=Depends(get_db_connection)):
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # 1. Xác thực ID Token trực tiếp với server Firebase
+        try:
+            decoded_token = firebase_auth.verify_id_token(payload.id_token)
+            email = decoded_token.get("email")
+            full_name = decoded_token.get("name") or "Người dùng Khách"
+            avatar_url = decoded_token.get("picture")
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Token Firebase không hợp lệ hoặc đã hết hạn: {str(e)}")
+
+        if not email:
+            raise HTTPException(status_code=400, detail="Không lấy được địa chỉ email từ tài khoản mạng xã hội")
+
+        # 2. Xử lý đồng bộ hóa tài khoản
+        cur.execute("SELECT * FROM users WHERE email = %s", (email,))
+        user = cur.fetchone()
+        
+        is_new_user = False
+        if not user:
+            is_new_user = True
+            base_username = email.split("@")[0][:15] + str(random.randint(1000, 9999))
+            cur.execute("""
+                INSERT INTO users (email, username, full_name, avatar_url, role, password_hash) 
+                VALUES (%s, %s, %s, %s, 'USER', 'SOCIAL_AUTH') RETURNING *
+            """, (email, base_username, full_name, avatar_url))
+            user = cur.fetchone()
+            
+        conn.commit()
+        
+        # 3. Tạo System JWT Token bảo mật nội bộ
+        token = create_access_token({"sub": str(user["id"]), "email": user["email"], "role": user["role"]})
+        
+        return {
+            "status": "success", 
+            "access_token": token, 
+            "token_type": "bearer",
+            "is_new_user": is_new_user,
+            "user": {
+                "id": user["id"], 
+                "email": user["email"], 
+                "role": user["role"], 
+                "full_name": user.get("full_name"),
+                "username": user.get("username"),
+                "avatar_url": user.get("avatar_url")
+            }
+        }
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {str(e)}")
+    finally: 
+        cur.close()
 
 # ==========================================
 # 1. SERVICES (DỊCH VỤ CƠ SỞ)

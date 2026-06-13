@@ -6,6 +6,39 @@ import '../../core/network/api_client.dart';
 class UserApiService {
   static final Dio _dio = ApiClient.instance;
 
+  // 0. Authentication
+  static Future<Map<String, dynamic>?> loginEmail(String email, String password) async {
+    try {
+      final res = await _dio.post('/auth/login', data: {'email': email, 'password': password});
+      if (res.statusCode == 200 && res.data['status'] == 'success') return res.data;
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> registerEmail(String email, String password, String username, String fullName) async {
+    try {
+      final res = await _dio.post('/auth/register', data: {
+        'email': email, 'password': password, 'username': username, 'full_name': fullName
+      });
+      if (res.statusCode == 200 && res.data['status'] == 'success') return res.data;
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> loginFirebase(String idToken) async {
+    try {
+      final res = await _dio.post('/auth/firebase', data: {'id_token': idToken});
+      if (res.statusCode == 200 && res.data['status'] == 'success') return res.data;
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   // 1. Lấy hồ sơ cá nhân
   static Future<Map<String, dynamic>?> fetchPrivateProfile() async {
     try {
@@ -39,6 +72,40 @@ class UserApiService {
       return null;
     } catch (e) {
       return null;
+    }
+  }
+
+  // 3b. Lấy danh sách dịch vụ đi kèm của User cụ thể theo đặc tả OpenAPI
+  static Future<List<dynamic>> fetchUserServices(String userId) async {
+    try {
+      final res = await _dio.get('/services', queryParameters: {'user_id': userId});
+      if (res.statusCode == 200 && res.data != null) {
+        if (res.data is Map && res.data['data'] != null) {
+          return List<dynamic>.from(res.data['data']);
+        } else if (res.data is List) {
+          return List<dynamic>.from(res.data);
+        }
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // 3c. Lấy danh sách video đăng tải của User cụ thể theo đặc tả OpenAPI
+  static Future<List<dynamic>> fetchUserFeeds(String userId) async {
+    try {
+      final res = await _dio.get('/tiktok/feeds', queryParameters: {'user_id': userId});
+      if (res.statusCode == 200 && res.data != null) {
+        if (res.data is Map && res.data['data'] != null) {
+          return List<dynamic>.from(res.data['data']);
+        } else if (res.data is List) {
+          return List<dynamic>.from(res.data);
+        }
+      }
+      return [];
+    } catch (e) {
+      return [];
     }
   }
 
