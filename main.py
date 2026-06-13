@@ -158,7 +158,15 @@ def firebase_login(payload: schemas.FirebaseLogin, conn=Depends(get_db_connectio
     try:
         # 1. Xác thực ID Token trực tiếp với server Firebase
         try:
+            import time
+            start_time = time.time()
+            print(f"DEBUG: Bắt đầu verify_id_token...")
+            
             decoded_token = firebase_auth.verify_id_token(payload.id_token)
+            
+            end_time = time.time()
+            print(f"DEBUG: Verify hoàn tất mất {end_time - start_time:.2f} giây")
+            
             email = decoded_token.get("email")
             full_name = decoded_token.get("name") or "Người dùng Khách"
             avatar_url = decoded_token.get("picture")
