@@ -33,7 +33,7 @@ if not firebase_admin._apps:
             
         cred = credentials.Certificate(cred_path)
         firebase_admin.initialize_app(cred, {
-            'projectId': "ai-health-share-backend" # Thay bằng Project ID của bạn nếu cần
+            'projectId': PROJECT_ID
         })
     except Exception as e:
         print(f"Warning: Firebase Admin SDK chưa được khởi tạo. Lỗi: {e}")
