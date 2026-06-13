@@ -25,9 +25,16 @@ PROJECT_ID = "vnshare-auth"
 
 if not firebase_admin._apps:
     try:
-        # Bạn cần đặt file firebase_credentials.json tại thư mục gốc
-        cred = credentials.Certificate("firebase_credentials.json")
-        firebase_admin.initialize_app(cred)
+        # Tự động tìm file tại thư mục hệ thống của Render hoặc thư mục gốc
+        import os
+        cred_path = "/etc/secrets/firebase_credentials.json"
+        if not os.path.exists(cred_path):
+            cred_path = "firebase_credentials.json"
+            
+        cred = credentials.Certificate(cred_path)
+        firebase_admin.initialize_app(cred, {
+            'projectId': "ai-health-share-backend" # Thay bằng Project ID của bạn nếu cần
+        })
     except Exception as e:
         print(f"Warning: Firebase Admin SDK chưa được khởi tạo. Lỗi: {e}")
 
