@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
+import 'package:dio/dio.dart'; // THÊM ĐỂ BẮT LỖI API
 import '../../data/services/secure_storage_service.dart';
 import '../../data/services/user_api_service.dart';
 import '../widgets/app_toast.dart';
@@ -151,8 +152,13 @@ class _LoginScreenState extends State<LoginScreen> {
           if (mounted) AppToast.show(context: context, message: 'Chứng thực thất bại từ máy chủ hệ thống.', isSuccess: false);
         }
       }
+    } on DioException catch (e) {
+      // Phơi bày lỗi thật từ Backend
+      final String errorMessage = e.response?.data['detail'] ?? 'Lỗi từ máy chủ: ${e.message}';
+      if (mounted) AppToast.show(context: context, message: errorMessage, isSuccess: false);
     } catch (e) {
-      if (mounted) AppToast.show(context: context, message: 'Lỗi kết nối $provider. Vui lòng thử lại!', isSuccess: false);
+      // Lỗi hệ thống khác
+      if (mounted) AppToast.show(context: context, message: 'Lỗi ngoại lệ: $e', isSuccess: false);
     } finally {
       if (mounted) setState(() => isLoading = false);
     }

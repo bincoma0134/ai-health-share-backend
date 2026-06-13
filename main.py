@@ -21,6 +21,8 @@ import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 
 # Khởi tạo Firebase Admin SDK
+PROJECT_ID = "vnshare-auth"
+
 if not firebase_admin._apps:
     try:
         # Bạn cần đặt file firebase_credentials.json tại thư mục gốc

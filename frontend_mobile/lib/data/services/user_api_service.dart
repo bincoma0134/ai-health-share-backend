@@ -30,13 +30,16 @@ class UserApiService {
   }
 
   static Future<Map<String, dynamic>?> loginFirebase(String idToken) async {
-    try {
-      final res = await _dio.post('/auth/firebase', data: {'id_token': idToken});
-      if (res.statusCode == 200 && res.data['status'] == 'success') return res.data;
-      return null;
-    } catch (e) {
-      return null;
-    }
+    // BỎ CÁI CATCH ĐỂ LỖI ĐƯỢC NÉM THẲNG LÊN UI
+    final res = await _dio.post('/auth/firebase', data: {'id_token': idToken});
+    if (res.statusCode == 200 && res.data['status'] == 'success') return res.data;
+    
+    // Nếu status code khác 200 nhưng không văng lỗi, ném ra lỗi giả để bắt vào khối catch ở UI
+    throw DioException(
+      requestOptions: res.requestOptions,
+      response: res,
+      error: 'Backend không trả về status success',
+    );
   }
 
   // 1. Lấy hồ sơ cá nhân
