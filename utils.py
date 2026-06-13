@@ -6,13 +6,6 @@ from jose import JWTError, jwt
 import firebase_admin
 from firebase_admin import credentials
 
-# Khởi tạo Firebase Admin SDK
-if not firebase_admin._apps:
-    try:
-        firebase_admin.initialize_app()
-    except Exception as e:
-        print(f"Lưu ý: Không thể khởi tạo Firebase mặc định: {e}")
-
 # Cấu hình JWT từ biến môi trường
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
 if not SECRET_KEY:
