@@ -669,14 +669,25 @@ def create_community_post(post: schemas.CommunityPostCreate, current_user = Depe
     finally: cur.close()
 
 @app.get("/tiktok/feeds", tags=["TikTok Feeds"])
-def get_tiktok_feeds(user_id: str = None, limit: int = 50, conn=Depends(get_db_connection)):
+def get_tiktok_feeds(user_id: str = None, filter: str = None, limit: int = 50, conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        cur.execute("""
-            SELECT v.*, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url, 'username', u.username, 'role', u.role) as author
-            FROM tiktok_feeds v JOIN users u ON v.author_id = u.id
-            WHERE v.status = 'APPROVED' ORDER BY v.created_at DESC LIMIT %s
-        """, (limit,))
+        # Hỗ trợ bộ lọc 'liked' để lấy đúng danh sách video người dùng đã thả tim
+        if filter == "liked" and user_id:
+            cur.execute("""
+                SELECT v.*, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url, 'username', u.username, 'role', u.role) as author
+                FROM tiktok_feed_likes l
+                JOIN tiktok_feeds v ON l.video_id = v.id
+                JOIN users u ON v.author_id = u.id
+                WHERE l.user_id = %s AND v.status = 'APPROVED' 
+                ORDER BY l.created_at DESC LIMIT %s
+            """, (user_id, limit))
+        else:
+            cur.execute("""
+                SELECT v.*, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url, 'username', u.username, 'role', u.role) as author
+                FROM tiktok_feeds v JOIN users u ON v.author_id = u.id
+                WHERE v.status = 'APPROVED' ORDER BY v.created_at DESC LIMIT %s
+            """, (limit,))
         videos = cur.fetchall()
         
         if user_id and videos:
