@@ -343,12 +343,37 @@ def get_user_profile(current_user = Depends(verify_user_token), conn=Depends(get
         
         cur.execute("SELECT * FROM users WHERE id = %s", (current_user.id,))
         user_info = cur.fetchone()
+        
+        # Thống kê dành cho vai trò đối tác (Partner)
         cur.execute("SELECT count(*) as pending FROM services WHERE partner_id = %s AND status = 'PENDING'", (current_user.id,))
         pending = cur.fetchone()["pending"]
         cur.execute("SELECT count(*) as approved FROM services WHERE partner_id = %s AND status = 'APPROVED'", (current_user.id,))
         approved = cur.fetchone()["approved"]
 
-        return {"status": "success", "data": {"profile": user_info, "stats": {"pending_total": pending, "approved_count": approved, "total_processed": 0}}}
+        # Thống kê lượng tương tác thô thời gian thực (Real-time Raw Data Counting) cho người dùng tiêu chuẩn
+        cur.execute("SELECT count(*) as likes FROM tiktok_feed_likes WHERE user_id = %s", (current_user.id,))
+        likes_count = cur.fetchone()["likes"]
+        
+        cur.execute("SELECT count(*) as saves FROM tiktok_feed_saves WHERE user_id = %s", (current_user.id,))
+        saved_count = cur.fetchone()["saves"]
+        
+        cur.execute("SELECT count(*) as appointments FROM appointments WHERE user_id = %s", (current_user.id,))
+        bookings_count = cur.fetchone()["appointments"]
+
+        return {
+            "status": "success", 
+            "data": {
+                "profile": user_info, 
+                "stats": {
+                    "pending_total": pending, 
+                    "approved_count": approved, 
+                    "total_processed": 0,
+                    "likes_count": likes_count,
+                    "saved_count": saved_count,
+                    "bookings_count": bookings_count
+                }
+            }
+        }
     finally: cur.close()
 
 @app.get("/user/public/{username}", tags=["User"])
@@ -413,17 +438,39 @@ def get_public_profile(username: str, request: Request, conn=Depends(get_db_conn
 def update_user_profile(payload: dict, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
+        new_email = payload.get("email")
+        new_username = payload.get("username")
+        
+        # Bắt lỗi trùng lặp Email hoặc Username
+        if new_email or new_username:
+            cur.execute("""
+                SELECT id FROM users 
+                WHERE (email = %s OR username = %s) AND id != %s
+            """, (new_email, new_username, current_user.id))
+            if cur.fetchone():
+                raise HTTPException(status_code=400, detail="Email hoặc Tên người dùng này đã được sử dụng!")
+
         updates, values = [], []
         for k, v in payload.items():
-            if k not in ["id", "email", "password_hash"]: # Bảo vệ trường hệ thống
+            # Đã gỡ 'email' khỏi danh sách cấm để cho phép User tự cập nhật
+            if k not in ["id", "password_hash"]: 
                 updates.append(f"{k} = %s")
                 values.append(json.dumps(v) if isinstance(v, (dict, list)) else v)
+                
         if not updates: return {"status": "success"}
         values.append(current_user.id)
         cur.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = %s RETURNING *", tuple(values))
         updated = cur.fetchone()
         conn.commit()
         return {"status": "success", "data": updated}
+    except HTTPException:
+        raise
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail="Dữ liệu bị trùng lặp với người dùng khác!")
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally: cur.close()
 
 # ==========================================
