@@ -333,6 +333,22 @@ def complete_svalue_task(payload: dict, current_user = Depends(verify_user_token
     finally:
         cur.close()
 
+@app.get("/user/saves", tags=["User"])
+def get_user_saves(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Lấy danh sách các nội dung (video/dịch vụ) người dùng đã lưu"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT v.*, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url, 'username', u.username, 'role', u.role) as author
+            FROM tiktok_feed_saves s
+            JOIN tiktok_feeds v ON s.video_id = v.id
+            JOIN users u ON v.author_id = u.id
+            WHERE s.user_id = %s AND v.status = 'APPROVED'
+            ORDER BY s.created_at DESC
+        """, (current_user.id,))
+        return {"status": "success", "data": cur.fetchall()}
+    finally: cur.close()
+
 @app.get("/user/profile", tags=["User"])
 def get_user_profile(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
