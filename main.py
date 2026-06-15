@@ -12,7 +12,7 @@ import time
 import random
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import UploadFile, File, Form
 from groq import Groq
 import boto3
@@ -319,14 +319,134 @@ def complete_svalue_task(payload: dict, current_user = Depends(verify_user_token
             (current_user.id, action_type, points, ref_id)
         )
         
-        # 2. Cập nhật số dư tổng thể tại ví user_svalue_wallet hoặc bảng users trực tiếp
-        cur.execute("SELECT svalue_balance FROM users WHERE id = %s", (current_user.id,))
-        current_balance = cur.fetchone().get("svalue_balance") or 0
-        new_balance = current_balance + points
-        
+        # 2. Cập nhật số dư tổng thể tại ví chuyên trách (Chống Race Condition)
+        cur.execute("SELECT balance FROM user_svalue_wallet WHERE user_id = %s FOR UPDATE", (current_user.id,))
+        wallet = cur.fetchone()
+        if not wallet:
+            cur.execute("INSERT INTO user_svalue_wallet (user_id, balance, streak_count) VALUES (%s, %s, 0) RETURNING balance", (current_user.id, points))
+            new_balance = points
+        else:
+            new_balance = wallet['balance'] + points
+            cur.execute("UPDATE user_svalue_wallet SET balance = %s, updated_at = CURRENT_TIMESTAMP WHERE user_id = %s", (new_balance, current_user.id))
+            
+        # Đồng bộ ngược 1 bản sang users để tương thích ngược với API cũ
         cur.execute("UPDATE users SET svalue_balance = %s WHERE id = %s", (new_balance, current_user.id))
         conn.commit()
         return {"status": "success", "new_balance": new_balance}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+
+@app.post("/user/checkin", tags=["User"])
+def daily_checkin(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """API độc lập xử lý nghiệp vụ điểm danh: Chống gian lận thời gian, chống Spam và tự tính mốc thưởng"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # 1. Khóa dòng dữ liệu ví (Row-Level Lock) chống spam double click
+        cur.execute("SELECT * FROM user_svalue_wallet WHERE user_id = %s FOR UPDATE", (current_user.id,))
+        wallet = cur.fetchone()
+        if not wallet:
+            cur.execute("INSERT INTO user_svalue_wallet (user_id, balance, streak_count) VALUES (%s, 0, 0) RETURNING *", (current_user.id,))
+            wallet = cur.fetchone()
+
+        # 2. Tính toán múi giờ Việt Nam (Giả định server lưu UTC)
+        now_utc = datetime.utcnow()
+        now_vn = now_utc + timedelta(hours=7)
+        
+        new_streak = 1
+        points = 20
+
+        # 3. Business Logic: Kiểm tra ngày điểm danh & Tính chuỗi
+        last_checkin_at = wallet.get('last_checkin_at')
+        if last_checkin_at:
+            last_vn = last_checkin_at + timedelta(hours=7)
+            # Chặn điểm danh 2 lần trong 1 ngày
+            if last_vn.date() == now_vn.date():
+                raise HTTPException(status_code=400, detail="Bạn đã điểm danh hôm nay rồi!")
+            # Nối chuỗi nếu điểm danh đúng ngày tiếp theo
+            if (now_vn.date() - last_vn.date()).days == 1:
+                new_streak = wallet.get('streak_count', 0) + 1
+
+        # 4. Milestone Logic: Mốc 3 ngày và 7 ngày thưởng x2
+        if new_streak % 7 == 3 or new_streak % 7 == 0:
+            points = 40
+
+        new_balance = wallet.get('balance', 0) + points
+
+        # 5. Lưu thông tin vào DB
+        cur.execute("""
+            UPDATE user_svalue_wallet 
+            SET balance = %s, streak_count = %s, last_checkin_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
+            WHERE user_id = %s
+        """, (new_balance, new_streak, current_user.id))
+        
+        cur.execute("UPDATE users SET svalue_balance = %s WHERE id = %s", (new_balance, current_user.id))
+        cur.execute("INSERT INTO svalue_transaction_logs (user_id, action_type, points_changed) VALUES (%s, 'DAILY_CHECKIN', %s)", (current_user.id, points))
+        
+        conn.commit()
+        return {"status": "success", "data": {"points_earned": points, "new_streak": new_streak, "balance": new_balance}}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+
+@app.post("/user/checkin", tags=["User"])
+def daily_checkin(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """API độc lập xử lý nghiệp vụ điểm danh: Chống gian lận thời gian, chống Spam và tự tính mốc thưởng"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # 1. Khóa dòng dữ liệu ví (Row-Level Lock) chống spam double click
+        cur.execute("SELECT * FROM user_svalue_wallet WHERE user_id = %s FOR UPDATE", (current_user.id,))
+        wallet = cur.fetchone()
+        if not wallet:
+            cur.execute("INSERT INTO user_svalue_wallet (user_id, balance, streak_count) VALUES (%s, 0, 0) RETURNING *", (current_user.id,))
+            wallet = cur.fetchone()
+
+        # 2. Tính toán múi giờ Việt Nam (Giả định server lưu UTC)
+        now_utc = datetime.utcnow()
+        now_vn = now_utc + timedelta(hours=7)
+        
+        new_streak = 1
+        points = 20
+
+        # 3. Business Logic: Kiểm tra ngày điểm danh & Tính chuỗi
+        last_checkin_at = wallet.get('last_checkin_at')
+        if last_checkin_at:
+            last_vn = last_checkin_at + timedelta(hours=7)
+            # Chặn điểm danh 2 lần trong 1 ngày
+            if last_vn.date() == now_vn.date():
+                raise HTTPException(status_code=400, detail="Bạn đã điểm danh hôm nay rồi!")
+            # Nối chuỗi nếu điểm danh đúng ngày tiếp theo
+            if (now_vn.date() - last_vn.date()).days == 1:
+                new_streak = wallet.get('streak_count', 0) + 1
+
+        # 4. Milestone Logic: Mốc 3 ngày và 7 ngày thưởng x2
+        if new_streak % 7 == 3 or new_streak % 7 == 0:
+            points = 40
+
+        new_balance = wallet.get('balance', 0) + points
+
+        # 5. Lưu thông tin vào DB
+        cur.execute("""
+            UPDATE user_svalue_wallet 
+            SET balance = %s, streak_count = %s, last_checkin_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
+            WHERE user_id = %s
+        """, (new_balance, new_streak, current_user.id))
+        
+        cur.execute("UPDATE users SET svalue_balance = %s WHERE id = %s", (new_balance, current_user.id))
+        cur.execute("INSERT INTO svalue_transaction_logs (user_id, action_type, points_changed) VALUES (%s, 'DAILY_CHECKIN', %s)", (current_user.id, points))
+        
+        conn.commit()
+        return {"status": "success", "data": {"points_earned": points, "new_streak": new_streak, "balance": new_balance}}
+    except HTTPException:
+        conn.rollback()
+        raise
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -355,10 +475,22 @@ def get_user_profile(current_user = Depends(verify_user_token), conn=Depends(get
     try:
         # Tự động đồng bộ cấu trúc cột nếu hệ thống chưa đồng bộ
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS svalue_balance INT DEFAULT 0")
+        
+        # ĐỒNG BỘ: Chuyển nguồn sự thật SValue sang user_svalue_wallet theo DB Reality
+        cur.execute("SELECT balance, streak_count, last_checkin_at FROM user_svalue_wallet WHERE user_id = %s", (current_user.id,))
+        wallet = cur.fetchone()
+        if not wallet:
+            cur.execute("INSERT INTO user_svalue_wallet (user_id, balance, streak_count) VALUES (%s, 0, 0) RETURNING balance, streak_count, last_checkin_at", (current_user.id,))
+            wallet = cur.fetchone()
         conn.commit()
         
         cur.execute("SELECT * FROM users WHERE id = %s", (current_user.id,))
         user_info = cur.fetchone()
+        
+        # Bơm dữ liệu Ví vào user_info để Mobile App vẽ tiến trình 7 ngày
+        user_info['svalue_balance'] = wallet['balance']
+        user_info['streak_count'] = wallet['streak_count']
+        user_info['last_checkin_at'] = wallet['last_checkin_at'].isoformat() if wallet['last_checkin_at'] else None
         
         # Thống kê dành cho vai trò đối tác (Partner)
         cur.execute("SELECT count(*) as pending FROM services WHERE partner_id = %s AND status = 'PENDING'", (current_user.id,))
