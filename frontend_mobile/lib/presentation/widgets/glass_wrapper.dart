@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 /// Widget Wrapper cốt lõi dùng chung để biến bất kỳ Widget nào thành hiệu ứng kính lỏng Apple.
 /// Kết hợp mượt mà giữa BackdropFilter thời gian thực và Fragment Shader chạy bằng GPU phần cứng.
+@Deprecated('Xung đột kiến trúc và tốn GPU: Vui lòng chuyển sang sử dụng LiquidGlassSurface hoặc LiquidGlassPanel để đảm bảo 60FPS.')
 class GlassWrapper extends StatefulWidget {
   final Widget child;
   final double blurX;
@@ -49,11 +50,12 @@ class _GlassWrapperState extends State<GlassWrapper> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
-    // Tạo bộ đếm thời gian liên tục đẩy vào Shader tạo dòng chảy chuyển động mượt mà cho tấm kính
+    // Tắt lệnh .repeat() để khóa vòng lặp render vô tận, tiết kiệm pin.
+    // Hiệu ứng dòng chảy sẽ tĩnh ở trạng thái mặc định để đảm bảo 60fps trên máy yếu.
     _timeController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 8),
-    )..repeat();
+    );
 
     _loadShader();
   }
@@ -223,11 +225,15 @@ class _GlassShaderPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // index 0, 1: Gán kích thước vùng vẽ uSize
-    shader.setFloat(0, size.width);
-    shader.setFloat(1, size.height);
-    // index 2: Gán giá trị thời gian uTime điều khiển khúc xạ dòng chảy
-    shader.setFloat(2, time);
+    // Đồng bộ chỉ số Uniform chính xác với bản cập nhật liquid_glass_lens.frag
+    shader.setFloat(0, size.width);  // uResolution.x
+    shader.setFloat(1, size.height); // uResolution.y
+    shader.setFloat(2, size.width / 2);  // uMouse.x (Cố định tâm)
+    shader.setFloat(3, size.height / 2); // uMouse.y
+    shader.setFloat(4, 1.0);  // uEffectSize
+    shader.setFloat(5, 0.0);  // uBlurIntensity
+    shader.setFloat(6, 0.5);  // uDispersionStrength
+    shader.setFloat(7, time); // uTime (Bản cập nhật đẩy xuống index 7)
 
     final paint = Paint()..shader = shader;
     canvas.drawRect(Offset.zero & size, paint);

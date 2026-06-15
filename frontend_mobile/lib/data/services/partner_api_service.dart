@@ -128,6 +128,7 @@ class PartnerApiService {
     }
   }
 
+
   static Future<bool> requestWithdrawal(Map<String, dynamic> payload) async {
     try {
       final res = await _dio.post('/partner/withdraw', data: payload);
@@ -164,6 +165,34 @@ class PartnerApiService {
       return res.statusCode == 200;
     } catch (e) {
       return false;
+    }
+  }
+
+  static Future<List<dynamic>> fetchVouchers() async {
+    try {
+      final res = await _dio.get('/partner/vouchers');
+      if (res.statusCode == 200) return res.data['data'] ?? [];
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<bool> createVoucher(Map<String, dynamic> payload) async {
+    try {
+      final res = await _dio.post('/vouchers', data: payload);
+      return res.statusCode == 200;
+    } on DioException catch (e) {
+      // Đọc và phân tách chi tiết lỗi 422 hoặc 400 từ Backend
+      if (e.response != null && e.response?.data != null) {
+        final detail = e.response?.data['detail'];
+        if (detail is String) throw Exception(detail);
+        if (detail is List && detail.isNotEmpty) throw Exception(detail[0]['msg'] ?? 'Dữ liệu không hợp lệ (422)');
+        throw Exception('Lỗi từ máy chủ');
+      }
+      throw Exception('Không thể kết nối đến máy chủ');
+    } catch (e) {
+      throw Exception('Đã xảy ra lỗi không xác định');
     }
   }
 }

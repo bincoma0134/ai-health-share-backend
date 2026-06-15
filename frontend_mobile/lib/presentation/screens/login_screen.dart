@@ -7,6 +7,7 @@ import 'package:dio/dio.dart'; // THÊM ĐỂ BẮT LỖI API
 import '../../data/services/secure_storage_service.dart';
 import '../../data/services/user_api_service.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/auth_guard.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -51,6 +52,9 @@ class _LoginScreenState extends State<LoginScreen> {
           final fullName = res['user']['full_name'] ?? 'bạn';
           final role = res['user']['role'] ?? 'USER';
           await SecureStorageService.saveName(fullName);
+
+          // ĐỒNG BỘ RAM: Ép nạp lại dữ liệu mới nhất từ Storage (bỏ qua cờ khóa _isInitialized)
+          await AuthNotifier.instance.refresh();
 
           if (mounted) {
             // Toast 1: Thông báo đăng nhập thành công
@@ -113,7 +117,9 @@ class _LoginScreenState extends State<LoginScreen> {
         idToken = await userCred.user?.getIdToken();
       } 
       else if (provider == 'Facebook') {
-        final LoginResult result = await FacebookAuth.instance.login();
+        final LoginResult result = await FacebookAuth.instance.login(
+          permissions: ['public_profile', 'email'],
+        );
         if (result.status == LoginStatus.success) {
           final OAuthCredential credential = FacebookAuthProvider.credential(result.accessToken!.tokenString);
           final UserCredential userCred = await FirebaseAuth.instance.signInWithCredential(credential);
@@ -135,6 +141,9 @@ class _LoginScreenState extends State<LoginScreen> {
           await SecureStorageService.saveToken(res['access_token']);
           await SecureStorageService.saveRole(role);
           await SecureStorageService.saveName(fullName);
+
+          // ĐỒNG BỘ RAM: Ép nạp lại dữ liệu mới nhất từ Storage (bỏ qua cờ khóa _isInitialized)
+          await AuthNotifier.instance.refresh();
 
           if (mounted) {
             AppToast.show(context: context, message: 'Đăng nhập thành công', isSuccess: true, duration: const Duration(seconds: 2));

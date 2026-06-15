@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:flutter/services.dart';
+import 'auth_guard.dart';
 
 
 class FeedVideoPlayer extends StatefulWidget {
@@ -117,23 +118,25 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
   }
 
   void _handleDoubleTap() {
-    // Kích hoạt phản hồi xúc giác nhẹ (Haptic Feedback) chuẩn trải nghiệm TikTok
-    HapticFeedback.lightImpact();
+    AuthGuard.run(context, action: () {
+      // Kích hoạt phản hồi xúc giác nhẹ (Haptic Feedback) chuẩn trải nghiệm TikTok
+      HapticFeedback.lightImpact();
 
-    if (widget.onDoubleTap != null) {
-      widget.onDoubleTap!();
-    }
-    
-    final int id = ++_heartCounter;
+      if (widget.onDoubleTap != null) {
+        widget.onDoubleTap!();
+      }
+      
+      final int id = ++_heartCounter;
     setState(() {
       _hearts.add({'id': id, 'position': _lastTapPosition});
     });
     
     // Tự hủy tim khỏi bộ nhớ sau 1 giây (Tiết kiệm RAM)
-    Future.delayed(const Duration(milliseconds: 1000), () {
-      if (mounted) {
-        setState(() => _hearts.removeWhere((h) => h['id'] == id));
-      }
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        if (mounted) {
+          setState(() => _hearts.removeWhere((h) => h['id'] == id));
+        }
+      });
     });
   }
 

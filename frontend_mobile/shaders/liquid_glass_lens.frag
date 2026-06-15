@@ -4,9 +4,9 @@
 uniform vec2 uResolution;
 uniform vec2 uMouse;
 uniform float uEffectSize; // Controls the size of the lens effect (0.1 to 2.0 recommended)
-uniform float uBlurIntensity; // Controls the blur strength (0.0 = no blur, 2.0 = heavy blur)
-uniform float uDispersionStrength;
-// Add chromatic dispersion control
+uniform float uBlurIntensity;
+uniform float uDispersionStrength; // Add chromatic dispersion control
+uniform float uTime; // Đã thêm biến uTime để đồng bộ index 7 từ Flutter
 uniform sampler2D uTexture;
 
 // Output
@@ -60,28 +60,12 @@ void main() {
 
         vec4 colorResult = vec4(0.0);
 
-        // Blur sampling with enhanced chromatic dispersion
-        if (uBlurIntensity > 0.0) {
-            float blurRadius = uBlurIntensity / max(uResolution.x, uResolution.y);
-            float total = 0.0;
-            vec3 colorSum = vec3(0.0);
-            for (float x = -2.0; x <= 2.0; x += 1.0) {
-                for (float y = -2.0; y <= 2.0; y += 1.0) {
-                    vec2 offset = vec2(x, y) * blurRadius;
-                    colorSum.r += texture(uTexture, lens + offset + redOffset).r;
-                    colorSum.g += texture(uTexture, lens + offset + greenOffset).g;
-                    colorSum.b += texture(uTexture, lens + offset + blueOffset).b;
-                    total += 1.0;
-                }
-            }
-            colorResult = vec4(colorSum / total, 1.0);
-        } else {
-            // Enhanced single sample with directional offsets
-            colorResult.r = texture(uTexture, lens + redOffset).r;
-            colorResult.g = texture(uTexture, lens + greenOffset).g;
-            colorResult.b = texture(uTexture, lens + blueOffset).b;
-            colorResult.a = 1.0;
-        }
+        // Enhanced single sample with directional offsets
+        // Blur sampling has been explicitly delegated to Flutter's BackdropFilter to guarantee 60fps
+        colorResult.r = texture(uTexture, lens + redOffset).r;
+        colorResult.g = texture(uTexture, lens + greenOffset).g;
+        colorResult.b = texture(uTexture, lens + blueOffset).b;
+        colorResult.a = 1.0;
 
         // Add lighting effects
         float gradient = clamp((clamp(m2.y, 0.0, 0.2) + 0.1) / 2.0, 0.0, 1.0) +

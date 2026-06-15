@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../data/services/wallet_api_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../widgets/auth_guard.dart';
+import '../widgets/guest_profile_view.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -24,8 +26,14 @@ class _WalletScreenState extends State<WalletScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Ví Partner")),
+    return AuthGuardWidget(
+      fallbackBuilder: (context) => Scaffold(
+        appBar: AppBar(title: const Text("Ví Partner")),
+        body: GuestProfileView(onSuccess: () => AuthNotifier.instance.refresh()),
+      ),
+      builder: (context, token, userId) {
+        return Scaffold(
+          appBar: AppBar(title: const Text("Ví Partner")),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -52,7 +60,9 @@ class _WalletScreenState extends State<WalletScreen> {
             ElevatedButton(onPressed: _handleWithdraw, child: const Text("Xác nhận rút tiền"))
           ],
         ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

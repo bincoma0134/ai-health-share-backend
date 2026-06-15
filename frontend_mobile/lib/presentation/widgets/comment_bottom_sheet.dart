@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'auth_guard.dart';
 import 'package:go_router/go_router.dart'; // Bổ sung GoRouter
 import '../../core/network/api_client.dart';
 import '../../data/models/comment_model.dart';
@@ -65,8 +66,8 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
     final text = _commentController.text.trim();
     if (text.isEmpty) return;
 
-    final token = await _storage.read(key: 'ai-health-token');
-    if (token == null || token.isEmpty) {
+    // Đã thay thế việc đọc ổ cứng bằng đọc trực tiếp trạng thái RAM từ AuthNotifier
+    if (!AuthNotifier.instance.isAuthenticated) {
       Navigator.pop(context); 
       widget.onAuthRequired(); 
       return;

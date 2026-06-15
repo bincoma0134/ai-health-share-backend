@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../data/models/service_model.dart';
 import '../../core/network/api_client.dart';
+import 'auth_guard.dart';
 
 class ServiceBookingBottomSheet extends StatefulWidget {
   final ServiceModel service;
@@ -19,12 +20,13 @@ class _ServiceBookingBottomSheetState extends State<ServiceBookingBottomSheet> {
   bool _isSubmitting = false;
 
   Future<void> _submitBooking() async {
-    if (_nameController.text.isEmpty || _phoneController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng nhập Họ tên và SĐT')));
-      return;
-    }
+    AuthGuard.run(context, action: () async {
+      if (_nameController.text.isEmpty || _phoneController.text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng nhập Họ tên và SĐT')));
+        return;
+      }
 
-    setState(() => _isSubmitting = true);
+      setState(() => _isSubmitting = true);
     try {
       // 1. Kiểm tra mã Affiliate nếu có
       final code = _affiliateController.text.trim();
@@ -55,6 +57,7 @@ class _ServiceBookingBottomSheetState extends State<ServiceBookingBottomSheet> {
     } finally {
       setState(() => _isSubmitting = false);
     }
+    });
   }
 
   @override

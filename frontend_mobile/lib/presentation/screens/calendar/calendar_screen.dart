@@ -8,6 +8,7 @@ import '../../../data/models/appointment_model.dart';
 import '../../../data/services/calendar_api_service.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/auth_bottom_sheet.dart';
+import '../../widgets/auth_guard.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -17,10 +18,8 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  final _storage = const FlutterSecureStorage();
   List<AppointmentModel> _appointments = [];
   bool _isLoading = true;
-  bool _isAuthenticated = false;
   
   String _userRole = 'USER';
   String _searchQuery = ''; // Kính lúp tìm kiếm local dữ liệu lịch hẹn
@@ -140,17 +139,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
-    _checkAuthAndLoad();
-  }
-
-  Future<void> _checkAuthAndLoad() async {
-    final token = await _storage.read(key: 'ai-health-token');
-    if (token == null || token.isEmpty) {
-      setState(() { _isAuthenticated = false; _isLoading = false; });
-    } else {
-      setState(() => _isAuthenticated = true);
-      _loadData();
-    }
+    _loadData();
   }
 
   Future<void> _loadData() async {
@@ -362,10 +351,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_isAuthenticated) return _buildRequireLogin();
-    if (_isLoading) return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator(color: Color(0xFF80BF84))));
+    return AuthGuardWidget(
+      fallbackBuilder: (context) => _buildRequireLogin(),
+      builder: (context, token, userId) {
+        if (_isLoading) return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator(color: Color(0xFF80BF84))));
 
-    return Scaffold(
+        return Scaffold(
       backgroundColor: Colors.white, // Ép cứng nền sáng phẳng (Light Mode Only) theo bản vẽ thiết kế mới
       body: Column(
         children: [
@@ -391,6 +382,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         ],
       ),
+    );
+      },
     );
   }
 
@@ -1526,7 +1519,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
           ),
-          onPressed: () => showModalBottomSheet(context: context, useRootNavigator: true, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => AuthBottomSheet(onSuccess: _checkAuthAndLoad)),
+          onPressed: () => showModalBottomSheet(context: context, useRootNavigator: true, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => AuthBottomSheet(onSuccess: () async { await AuthNotifier.instance.refresh(); _loadData(); })),
           child: const Text('Đăng nhập để xem Lịch hẹn', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
         ),
       ),

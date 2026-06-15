@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart'; // Bổ sung thư viện
 import 'core/router/app_router.dart';
+import 'presentation/widgets/auth_guard.dart';
 
 void main() async { // Đổi thành hàm async
   WidgetsFlutterBinding.ensureInitialized();
   
   // BẮT BUỘC: Khởi tạo Firebase trước khi chạy App
   await Firebase.initializeApp();
+  
+  // BẮT BUỘC: Nạp phiên đăng nhập vào RAM trước khi dựng UI
+  await AuthNotifier.instance.initialize();
   
   runApp(const VNShareApp());
 }

@@ -8,7 +8,7 @@ import '../../../data/services/explore_api_service.dart'; // Nạp lớp dịch 
 import '../../widgets/mini_video_player.dart'; // Nạp trình phát video thực tế hệ thống
 import '../../widgets/booking_bottom_sheet.dart'; // Nạp bảng cấu hình đặt lịch chuẩn 404-resolved
 import '../../widgets/app_toast.dart'; // Bổ sung import AppToast để xử lý lỗi biên dịch
-import '../../widgets/app_toast.dart'; // Bổ sung import AppToast để xử lý lỗi biên dịch
+import '../../widgets/auth_guard.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -438,6 +438,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                               elevation: 0,
                             ),
                             onPressed: () {
+                              AuthGuard.run(context, action: () {
                               final dynamic currentService = _activeSelectedService;
                               
                               // SỬA LỖI NGHIÊM TRỌNG LUỒNG ĐẶT LỊCH: Gán adapter Map payload để tương thích hoàn toàn với getters của BookingBottomSheet
@@ -455,11 +456,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
                               
                               // Kích hoạt vuốt mở bảng đơn đặt lịch chuẩn hệ thống, không còn bị vấp lỗi Null/AuthorID nữa
                               showModalBottomSheet(
-                                context: context,
-                                isScrollControlled: true,
-                                backgroundColor: Colors.transparent,
-                                builder: (context) => BookingBottomSheet(video: currentService),
-                              );
+                                  context: context,
+                                  isScrollControlled: true,
+                                  backgroundColor: Colors.transparent,
+                                  builder: (context) => BookingBottomSheet(video: currentService),
+                                );
+                              });
                             },
                             child: const Row(
                               children: [
@@ -600,12 +602,14 @@ class _ExploreScreenState extends State<ExploreScreen> {
                               ),
                               GestureDetector(
                                 onTap: () {
+                                  AuthGuard.run(context, action: () {
                                   showModalBottomSheet(
                                     context: context,
                                     isScrollControlled: true,
                                     backgroundColor: Colors.transparent,
                                     builder: (context) => BookingBottomSheet(video: service),
                                   );
+                                  });
                                 },
                                 child: Container(
                                   padding: const EdgeInsets.all(6),

@@ -10,7 +10,7 @@ class ApiClient {
         baseUrl: 'https://ai-health-share-backend.onrender.com', 
         connectTimeout: const Duration(milliseconds: 30000), 
         receiveTimeout: const Duration(milliseconds: 30000),
-        headers: {'Content-Type': 'application/json'},
+        sendTimeout: const Duration(milliseconds: 300000),
       ));
       _instance!.interceptors.add(AuthInterceptor());
     }

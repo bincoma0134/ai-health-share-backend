@@ -1,15 +1,22 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../../data/services/secure_storage_service.dart';
+import '../../presentation/widgets/auth_guard.dart';
 
 class AuthInterceptor extends Interceptor {
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
-    // Gọi hàm trung tâm để lấy đúng từ khóa 'ai_health_token' đã lưu lúc Đăng nhập
-    final token = await SecureStorageService.getToken();
+    // Danh sách các public endpoint không được tự ý chèn token hệ thống
+    final publicEndpoints = ['/auth/login', '/auth/register', '/auth/firebase'];
     
-    if (token != null && token.isNotEmpty) {
-      options.headers['Authorization'] = 'Bearer $token';
+    final isPublic = publicEndpoints.any((path) => options.path.contains(path));
+    
+    if (!isPublic) {
+      // Đọc token trực tiếp từ RAM (AuthNotifier) để tăng tốc độ
+      final token = AuthNotifier.instance.token;
+      if (token != null && token.isNotEmpty) {
+        options.headers['Authorization'] = 'Bearer $token';
+      }
     }
     
     super.onRequest(options, handler);
@@ -19,8 +26,8 @@ class AuthInterceptor extends Interceptor {
   void onError(DioException err, ErrorInterceptorHandler handler) async {
     // Đồng bộ xử lý dọn dẹp phiên khi Backend trả về mã lỗi 401 Unauthorized
     if (err.response?.statusCode == 401) {
-      debugPrint('Token hết hạn hoặc không hợp lệ. Đang xóa phiên...');
-      await SecureStorageService.clearSession();
+      debugPrint('Token hết hạn hoặc không hợp lệ. Kích hoạt logout toàn cục...');
+      await AuthNotifier.instance.logout();
     }
     super.onError(err, handler);
   }

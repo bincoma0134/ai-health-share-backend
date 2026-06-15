@@ -1,11 +1,16 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../../data/services/partner_api_service.dart';
+import '../../../core/network/api_client.dart';
 import '../../../data/services/user_api_service.dart';
 import '../../widgets/mini_video_player.dart';
+import '../../widgets/image_uploader.dart';
+import '../../widgets/video_uploader.dart';
+import '../../widgets/app_toast.dart';
 
 class PartnerProfileScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -34,6 +39,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
   final _nameCtrl = TextEditingController();
   final _usernameCtrl = TextEditingController();
   final _bioCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   bool _isUpdatingProfile = false;
 
   final ImagePicker _picker = ImagePicker();
@@ -47,6 +53,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     _nameCtrl.text = widget.profile['full_name'] ?? '';
     _usernameCtrl.text = widget.profile['username'] ?? '';
     _bioCtrl.text = widget.profile['bio'] ?? '';
+    _phoneCtrl.text = widget.profile['phone'] ?? '';
     _loadPartnerData();
   }
 
@@ -111,7 +118,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (image != null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Đang tải ${type == 'avatar' ? 'Ảnh đại diện' : 'Ảnh bìa'} lên...')));
+      AppToast.show(context: context, message: 'Đang tải ${type == 'avatar' ? 'Ảnh đại diện' : 'Ảnh bìa'} lên...', isSuccess: true);
       
       String folder = type == 'avatar' ? 'users/avatars' : 'users/covers';
       final url = await UserApiService.uploadMedia(File(image.path), folder);
@@ -119,24 +126,34 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
       if (url != null) {
         await UserApiService.updateProfile({type == 'avatar' ? 'avatar_url' : 'cover_url': url});
         widget.onRefresh();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đổi ảnh thành công!'), backgroundColor: Colors.green));
+        if (mounted) AppToast.show(context: context, message: 'Đổi ảnh thành công!', isSuccess: true);
       } else {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lỗi đường truyền hoặc tải tệp!'), backgroundColor: Colors.red));
+        if (mounted) AppToast.show(context: context, message: 'Lỗi đường truyền hoặc tải tệp!', isSuccess: false);
       }
     }
   }
 
   Future<void> _handleUpdateProfile() async {
+    final name = _nameCtrl.text.trim();
+    final uname = _usernameCtrl.text.trim();
+    final phone = _phoneCtrl.text.trim();
+
+    if (name.isEmpty || uname.isEmpty || phone.isEmpty) {
+      AppToast.show(context: context, message: 'Tên, Username và SĐT không được để trống!', isSuccess: false);
+      return;
+    }
+
     setState(() => _isUpdatingProfile = true);
     final success = await UserApiService.updateProfile({
-      'username': _usernameCtrl.text.trim(),
-      'full_name': _nameCtrl.text.trim(),
+      'username': uname,
+      'full_name': name,
       'bio': _bioCtrl.text.trim(),
+      'phone': phone,
     });
     setState(() => _isUpdatingProfile = false);
     if (success && mounted) {
       widget.onRefresh();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã cập nhật hồ sơ doanh nghiệp!'), backgroundColor: Colors.blue));
+      AppToast.show(context: context, message: 'Đã cập nhật hồ sơ doanh nghiệp!', isSuccess: true);
     }
   }
 
@@ -148,9 +165,9 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     final priceCtrl = TextEditingController();
     final tagsCtrl = TextEditingController();
     final descCtrl = TextEditingController();
-    File? selectedMedia;
+    String uploadedMediaUrl = '';
     String mediaType = 'image';
-    bool isUploading = false;
+    bool isSubmitting = false;
 
     showModalBottomSheet(
       context: context,
@@ -159,86 +176,188 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
+          
+          InputDecoration _inputDeco(String label) => InputDecoration(
+            labelText: label,
+            labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500),
+            filled: true,
+            fillColor: const Color(0xFFF7FBF9),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)),
+          );
+
           return Container(
             height: MediaQuery.of(context).size.height * 0.9,
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
-            decoration: const BoxDecoration(color: Color(0xFF121214), borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 12),
+            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Thêm Dịch Vụ Mới', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 16),
+                Center(
+                  child: Container(
+                    width: 48, height: 5,
+                    margin: const EdgeInsets.only(bottom: 24),
+                    decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+                const Text('Thêm Dịch Vụ Mới', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                const SizedBox(height: 6),
+                const Text('Thiết lập thông tin và tải lên phương tiện giới thiệu.', style: TextStyle(color: Color(0xFF617D79), fontSize: 14)),
+                const SizedBox(height: 28),
                 Expanded(
                   child: SingleChildScrollView(
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(child: ChoiceChip(label: const Text('Ảnh minh họa'), selected: mediaType == 'image', onSelected: (v) => setModalState((){ mediaType = 'image'; selectedMedia = null; }), selectedColor: _bizPrimary.withOpacity(0.2), backgroundColor: Colors.white.withOpacity(0.05))),
-                            const SizedBox(width: 12),
-                            Expanded(child: ChoiceChip(label: const Text('Video giới thiệu'), selected: mediaType == 'video', onSelected: (v) => setModalState((){ mediaType = 'video'; selectedMedia = null; }), selectedColor: _bizPrimary.withOpacity(0.2), backgroundColor: Colors.white.withOpacity(0.05))),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        GestureDetector(
-                          onTap: () async {
-                            final XFile? file = mediaType == 'image' ? await _picker.pickImage(source: ImageSource.gallery) : await _picker.pickVideo(source: ImageSource.gallery);
-                            if (file != null) setModalState(() => selectedMedia = File(file.path));
-                          },
-                          child: Container(
-                            height: 150, width: double.infinity,
-                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: selectedMedia != null ? _bizPrimary : Colors.white24, style: BorderStyle.solid)),
-                            child: selectedMedia != null
-                                ? const Center(child: Icon(Icons.check_circle, color: Colors.blue, size: 48)) 
-                                : Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(mediaType == 'image' ? Icons.image : Icons.video_library, color: Colors.white54, size: 40), const SizedBox(height: 8), Text('Tải lên ${mediaType == 'image' ? 'Ảnh' : 'Video'}', style: const TextStyle(color: Colors.white54))]),
+                        // Cụm Segmented Control Mềm Mại
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F7F4),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: const Color(0xFFE2ECEB), width: 1),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () => setModalState((){ mediaType = 'image'; uploadedMediaUrl = ''; }),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: mediaType == 'image' ? Colors.white : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(20),
+                                      boxShadow: mediaType == 'image' ? [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4))] : [],
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text('Hình ảnh', style: TextStyle(color: mediaType == 'image' ? const Color(0xFF1A3A35) : const Color(0xFF617D79), fontWeight: FontWeight.bold, fontSize: 14)),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () => setModalState((){ mediaType = 'video'; uploadedMediaUrl = ''; }),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: mediaType == 'video' ? Colors.white : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(20),
+                                      boxShadow: mediaType == 'video' ? [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4))] : [],
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text('Video', style: TextStyle(color: mediaType == 'video' ? const Color(0xFF1A3A35) : const Color(0xFF617D79), fontWeight: FontWeight.bold, fontSize: 14)),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
+                        const SizedBox(height: 20),
+                        
+                        // Khu vực Tải lên Lơ lửng (Floating Upload Zone)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(28),
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.06), blurRadius: 24, offset: const Offset(0, 8))],
+                          ),
+                          child: Column(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle),
+                                child: const Icon(Icons.cloud_upload_rounded, size: 36, color: Color(0xFF48C9B0))
+                              ),
+                              const SizedBox(height: 16),
+                              const Text('Khu vực tải lên Media', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 17, fontWeight: FontWeight.w800)),
+                              const SizedBox(height: 6),
+                              Text(mediaType == 'image' ? 'Hỗ trợ định dạng JPG, PNG (Tối đa 10MB)' : 'Hỗ trợ định dạng MP4 (Tỉ lệ 9:16 hoặc 16:9)', style: const TextStyle(color: Color(0xFF617D79), fontSize: 13)),
+                              const SizedBox(height: 20),
+                              if (mediaType == 'image')
+                                ImageUploader(
+                                  label: 'Duyệt tìm tệp hình ảnh',
+                                  onUploadSuccess: (url) => setModalState(() => uploadedMediaUrl = url),
+                                )
+                              else
+                                VideoUploader(
+                                  label: 'Duyệt tìm tệp video',
+                                  folder: 'services/videos',
+                                  onUploadSuccess: (url) => setModalState(() => uploadedMediaUrl = url),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+
+                        // Form Fields
+                        const Text('Thông tin chi tiết', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
                         const SizedBox(height: 16),
-                        TextField(controller: nameCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: 'Tên dịch vụ (Bắt buộc)', filled: true, fillColor: Colors.white.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))),
-                        const SizedBox(height: 12),
+                        TextField(controller: nameCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _inputDeco('Tên dịch vụ (Bắt buộc)')),
+                        const SizedBox(height: 16),
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold), decoration: InputDecoration(labelText: 'Giá tiền (VNĐ)', filled: true, fillColor: Colors.white.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)))),
-                            const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: tagsCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: 'Tags (cách nhau bằng dấu phẩy)', filled: true, fillColor: Colors.white.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)))),
+                            Expanded(child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _inputDeco('Giá tiền (VNĐ)'))),
+                            const SizedBox(width: 16),
+                            Expanded(child: TextField(controller: tagsCtrl, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _inputDeco('Tags (cách nhau ,)'))),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        TextField(controller: descCtrl, maxLines: 3, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: 'Mô tả chi tiết', filled: true, fillColor: Colors.white.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))),
+                        const SizedBox(height: 16),
+                        TextField(controller: descCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _inputDeco('Mô tả dịch vụ')),
+                        const SizedBox(height: 32),
                       ]
                     )
                   )
                 ),
-                SizedBox(
-                  width: double.infinity, height: 50,
+                Container(
+                  width: double.infinity, 
+                  height: 60,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(100),
+                    gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2B5A53)]),
+                    boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8))],
+                  ),
                   child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: _bizPrimary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                    onPressed: isUploading ? null : () async {
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent, 
+                      shadowColor: Colors.transparent,
+                      foregroundColor: Colors.white, 
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100))
+                    ),
+                    onPressed: isSubmitting ? null : () async {
                       if (nameCtrl.text.isEmpty || priceCtrl.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng nhập Tên và Giá!'))); return;
+                        AppToast.show(context: context, message: 'Vui lòng nhập Tên và Giá!', isSuccess: false); return;
                       }
-                      setModalState(() => isUploading = true);
+                      setModalState(() => isSubmitting = true);
                       
                       final payload = {
                         'service_name': nameCtrl.text,
                         'description': descCtrl.text,
                         'price': double.tryParse(priceCtrl.text) ?? 0,
                         'tags': tagsCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-                        'service_type': 'RELAXATION'
+                        'service_type': 'RELAXATION',
+                        if (mediaType == 'image' && uploadedMediaUrl.isNotEmpty) 'image_url': uploadedMediaUrl,
+                        if (mediaType == 'video' && uploadedMediaUrl.isNotEmpty) 'video_url': uploadedMediaUrl,
                       };
                       
-                      final success = await PartnerApiService.createService(payload, selectedMedia, mediaType);
-                      setModalState(() => isUploading = false);
+                      final success = await PartnerApiService.createService(payload, null, mediaType);
+                      setModalState(() => isSubmitting = false);
                       
                       if (success && mounted) {
                         Navigator.pop(context);
                         _loadPartnerData();
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã gửi dịch vụ đi chờ kiểm duyệt!'), backgroundColor: Colors.blue));
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lỗi đường truyền!'), backgroundColor: Colors.red));
+                        AppToast.show(context: context, message: 'Đã gửi dịch vụ đi chờ kiểm duyệt!', isSuccess: true);
+                      } else if (mounted) {
+                        AppToast.show(context: context, message: 'Lỗi đường truyền!', isSuccess: false);
                       }
                     },
-                    child: isUploading ? const CircularProgressIndicator(color: Colors.white) : const Text('GỬI ĐI CHỜ KIỂM DUYỆT', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+                    child: isSubmitting ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('GỬI YÊU CẦU DUYỆT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 0.5)),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -254,7 +373,235 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     final titleCtrl = TextEditingController();
     final contentCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
-    File? selectedVideo;
+    String uploadedVideoUrl = '';
+    bool isSubmitting = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          
+          InputDecoration _inputDeco(String label) => InputDecoration(
+            labelText: label,
+            labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500),
+            filled: true,
+            fillColor: const Color(0xFFF7FBF9),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)),
+          );
+
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.9,
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 12),
+            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 48, height: 5,
+                    margin: const EdgeInsets.only(bottom: 24),
+                    decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+                const Text('Tải Lên Video Studio', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                const SizedBox(height: 6),
+                const Text('Chia sẻ không gian và quy trình dịch vụ của bạn.', style: TextStyle(color: Color(0xFF617D79), fontSize: 14)),
+                const SizedBox(height: 28),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(28),
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.06), blurRadius: 24, offset: const Offset(0, 8))],
+                          ),
+                          child: Column(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle),
+                                child: const Icon(Icons.video_library_rounded, size: 36, color: Color(0xFF48C9B0))
+                              ),
+                              const SizedBox(height: 16),
+                              const Text('Video ngắn (Tỉ lệ 9:16)', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 17, fontWeight: FontWeight.w800)),
+                              const SizedBox(height: 20),
+                              VideoUploader(
+                                width: 140,
+                                label: 'Chọn tệp Video',
+                                folder: 'tiktok_feeds/videos',
+                                onUploadSuccess: (url) => setModalState(() => uploadedVideoUrl = url),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        const Text('Thông tin chi tiết', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                        const SizedBox(height: 16),
+                        TextField(controller: titleCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _inputDeco('Tiêu đề video (Bắt buộc)')),
+                        const SizedBox(height: 16),
+                        TextField(controller: contentCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _inputDeco('Mô tả nội dung')),
+                        const SizedBox(height: 16),
+                        TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _inputDeco('Giá tham khảo đính kèm (VNĐ)')),
+                        const SizedBox(height: 32),
+                      ]
+                    )
+                  )
+                ),
+                Container(
+                  width: double.infinity, height: 60,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(100),
+                    gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2B5A53)]),
+                    boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8))],
+                  ),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent, 
+                      shadowColor: Colors.transparent,
+                      foregroundColor: Colors.white, 
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100))
+                    ),
+                    onPressed: isSubmitting ? null : () async {
+                      if (uploadedVideoUrl.isEmpty) {
+                        AppToast.show(context: context, message: 'Vui lòng chờ hệ thống tải video lên!', isSuccess: false); return;
+                      }
+                      if (titleCtrl.text.isEmpty) {
+                        AppToast.show(context: context, message: 'Vui lòng nhập Tiêu đề cho video!', isSuccess: false); return;
+                      }
+                      setModalState(() => isSubmitting = true);
+                      
+                      final payload = {
+                        'title': titleCtrl.text,
+                        'content': contentCtrl.text.isEmpty ? null : contentCtrl.text,
+                        'price': priceCtrl.text.isEmpty ? null : double.tryParse(priceCtrl.text),
+                        'video_url': uploadedVideoUrl,
+                      };
+                      
+                      try {
+                        final res = await ApiClient.instance.post('/tiktok/feeds', data: payload);
+                        final success = res.statusCode == 200;
+                        setModalState(() => isSubmitting = false);
+                        
+                        if (success && mounted) {
+                          Navigator.pop(context);
+                          _loadPartnerData();
+                          AppToast.show(context: context, message: 'Đã gửi video đi chờ duyệt!', isSuccess: true);
+                        } else if (mounted) {
+                          AppToast.show(context: context, message: 'Lỗi dữ liệu không hợp lệ!', isSuccess: false);
+                        }
+                      } catch (e) {
+                        setModalState(() => isSubmitting = false);
+                        if (mounted) AppToast.show(context: context, message: 'Lỗi kết nối máy chủ!', isSuccess: false);
+                      }
+                    },
+                    child: isSubmitting ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('PHÁT SÓNG VIDEO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 0.5)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          );
+        }
+      )
+    );
+  }
+
+  Future<void> _handleDeleteService(String id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(32),
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.08), blurRadius: 32, offset: const Offset(0, 16))],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20), 
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF0F2), 
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(color: const Color(0xFFE63946).withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 8))]
+                ), 
+                child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFE63946), size: 36)
+              ),
+              const SizedBox(height: 24),
+              const Text('Xóa Dịch Vụ', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+              const SizedBox(height: 12),
+              const Text('Bạn muốn xóa dịch vụ này?\nHành động này không thể hoàn tác.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF617D79), fontSize: 15, height: 1.5)),
+              const SizedBox(height: 32),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), backgroundColor: const Color(0xFFF7FBF9), foregroundColor: const Color(0xFF617D79)), 
+                      onPressed: () => Navigator.pop(context, false), 
+                      child: const Text('Hủy', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))
+                    )
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFFE63946).withOpacity(0.25), blurRadius: 16, offset: const Offset(0, 8))]),
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), backgroundColor: const Color(0xFFE63946), foregroundColor: Colors.white, elevation: 0), 
+                        onPressed: () => Navigator.pop(context, true), 
+                        child: const Text('Xóa ngay', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))
+                      ),
+                    )
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirm != true) return;
+    if (!mounted) return;
+    AppToast.show(context: context, message: 'Đang gửi yêu cầu xóa...', isSuccess: true);
+    
+    final success = await PartnerApiService.deleteService(id);
+    if (success && mounted) {
+      _loadPartnerData();
+      AppToast.show(context: context, message: 'Đã gửi yêu cầu xóa chờ duyệt!', isSuccess: true);
+    } else if (mounted) {
+      AppToast.show(context: context, message: 'Lỗi khi xóa dịch vụ!', isSuccess: false);
+    }
+  }
+
+  void _showEditServiceModal(Map<String, dynamic> svc) {
+    final nameCtrl = TextEditingController(text: svc['service_name']?.toString() ?? '');
+    final priceCtrl = TextEditingController(text: svc['price']?.toString() ?? '');
+    
+    String tagsText = '';
+    if (svc['tags'] != null) {
+      if (svc['tags'] is List) { tagsText = (svc['tags'] as List).join(', '); } 
+      else if (svc['tags'] is String) { tagsText = svc['tags']; }
+    }
+    final tagsCtrl = TextEditingController(text: tagsText);
+    final descCtrl = TextEditingController(text: svc['description']?.toString() ?? '');
     bool isUploading = false;
 
     showModalBottomSheet(
@@ -264,70 +611,218 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
+          InputDecoration _inputDeco(String label) => InputDecoration(labelText: label, labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500), filled: true, fillColor: const Color(0xFFF7FBF9), contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20), border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)));
+
           return Container(
             height: MediaQuery.of(context).size.height * 0.9,
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
-            decoration: const BoxDecoration(color: Color(0xFF121214), borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 12),
+            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Đăng Video Lên Studio', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 16),
+                Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10)))),
+                const Text('Sửa Dịch Vụ', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                const SizedBox(height: 24),
                 Expanded(
                   child: SingleChildScrollView(
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        GestureDetector(
-                          onTap: () async {
-                            final XFile? video = await _picker.pickVideo(source: ImageSource.gallery);
-                            if (video != null) setModalState(() => selectedVideo = File(video.path));
-                          },
-                          child: Container(
-                            height: 200, width: 140,
-                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: selectedVideo != null ? Colors.blue : Colors.white24, width: 2)),
-                            child: selectedVideo != null
-                                ? const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.video_file, color: Colors.blue, size: 48), SizedBox(height: 8), Text('Đã đính kèm', style: TextStyle(color: Colors.blue, fontSize: 10))]) 
-                                : const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.video_library, color: Colors.blueGrey, size: 40), SizedBox(height: 8), Text('Chọn Video', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))]),
-                          ),
+                        TextField(controller: nameCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _inputDeco('Tên dịch vụ (Bắt buộc)')),
+                        const SizedBox(height: 16),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _inputDeco('Giá tiền (VNĐ)'))),
+                            const SizedBox(width: 16),
+                            Expanded(child: TextField(controller: tagsCtrl, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _inputDeco('Tags (cách nhau ,)'))),
+                          ],
                         ),
-                        const SizedBox(height: 24),
-                        TextField(controller: titleCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: 'Tiêu đề (Bắt buộc)', filled: true, fillColor: Colors.white.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))),
-                        const SizedBox(height: 12),
-                        TextField(controller: contentCtrl, maxLines: 3, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: 'Mô tả', filled: true, fillColor: Colors.white.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))),
-                        const SizedBox(height: 12),
-                        TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: 'Giá tham khảo đính kèm (VNĐ)', filled: true, fillColor: Colors.white.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))),
+                        const SizedBox(height: 16),
+                        TextField(controller: descCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _inputDeco('Mô tả chi tiết')),
+                        const SizedBox(height: 32),
                       ]
                     )
                   )
                 ),
-                SizedBox(
-                  width: double.infinity, height: 50,
+                Container(
+                  width: double.infinity, height: 60,
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(100), gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2B5A53)]), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8))]),
                   child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: _bizPrimary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100))),
                     onPressed: isUploading ? null : () async {
-                      if (titleCtrl.text.isEmpty || selectedVideo == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng đính kèm Video và nhập Tiêu đề!'))); return;
-                      }
+                      if (nameCtrl.text.isEmpty || priceCtrl.text.isEmpty) { AppToast.show(context: context, message: 'Vui lòng nhập Tên và Giá!', isSuccess: false); return; }
                       setModalState(() => isUploading = true);
                       
                       final payload = {
-                        'title': titleCtrl.text,
-                        'content': contentCtrl.text,
+                        'service_name': nameCtrl.text,
+                        'description': descCtrl.text,
                         'price': double.tryParse(priceCtrl.text) ?? 0,
+                        'tags': tagsCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
                       };
                       
-                      final success = await PartnerApiService.createVideo(payload, selectedVideo!);
+                      final success = await PartnerApiService.updateService(svc['id'], payload);
                       setModalState(() => isUploading = false);
                       
                       if (success && mounted) {
                         Navigator.pop(context);
                         _loadPartnerData();
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã gửi video đi chờ duyệt!'), backgroundColor: Colors.blue));
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lỗi đường truyền!'), backgroundColor: Colors.red));
+                        AppToast.show(context: context, message: 'Bản sửa đổi đã được gửi duyệt lại!', isSuccess: true);
+                      } else if (mounted) {
+                        AppToast.show(context: context, message: 'Lỗi đường truyền!', isSuccess: false);
                       }
                     },
-                    child: isUploading ? const CircularProgressIndicator(color: Colors.white) : const Text('PHÁT SÓNG VIDEO', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+                    child: isUploading ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('LƯU THAY ĐỔI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 0.5)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          );
+        }
+      )
+    );
+  }
+
+  Future<void> _handleDeleteVideo(String id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: Container(
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(32),
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.08), blurRadius: 32, offset: const Offset(0, 16))],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20), 
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF0F2), 
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(color: const Color(0xFFE63946).withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 8))]
+                ), 
+                child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFE63946), size: 36)
+              ),
+              const SizedBox(height: 24),
+              const Text('Gỡ Video Studio', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+              const SizedBox(height: 12),
+              const Text('Bạn muốn gỡ video này khỏi Studio?\nHành động này không thể hoàn tác.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF617D79), fontSize: 15, height: 1.5)),
+              const SizedBox(height: 32),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), backgroundColor: const Color(0xFFF7FBF9), foregroundColor: const Color(0xFF617D79)), 
+                      onPressed: () => Navigator.pop(context, false), 
+                      child: const Text('Hủy', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))
+                    )
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFFE63946).withOpacity(0.25), blurRadius: 16, offset: const Offset(0, 8))]),
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), backgroundColor: const Color(0xFFE63946), foregroundColor: Colors.white, elevation: 0), 
+                        onPressed: () => Navigator.pop(context, true), 
+                        child: const Text('Gỡ ngay', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))
+                      ),
+                    )
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirm != true) return;
+    if (!mounted) return;
+    AppToast.show(context: context, message: 'Đang gửi yêu cầu gỡ video...', isSuccess: true);
+    
+    final success = await PartnerApiService.deleteVideo(id);
+    if (success && mounted) {
+      _loadPartnerData();
+      AppToast.show(context: context, message: 'Đã gửi yêu cầu gỡ video chờ duyệt!', isSuccess: true);
+    } else if (mounted) {
+      AppToast.show(context: context, message: 'Lỗi khi gỡ video!', isSuccess: false);
+    }
+  }
+
+  void _showEditVideoModal(Map<String, dynamic> vid) {
+    final titleCtrl = TextEditingController(text: vid['title']?.toString() ?? '');
+    final contentCtrl = TextEditingController(text: vid['content']?.toString() ?? '');
+    final priceCtrl = TextEditingController(text: vid['price']?.toString() ?? '');
+    bool isUploading = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          InputDecoration _inputDeco(String label) => InputDecoration(labelText: label, labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500), filled: true, fillColor: const Color(0xFFF7FBF9), contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20), border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)));
+
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.9,
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 12),
+            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10)))),
+                const Text('Sửa Thông Tin Video', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                const SizedBox(height: 24),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextField(controller: titleCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _inputDeco('Tiêu đề video (Bắt buộc)')),
+                        const SizedBox(height: 16),
+                        TextField(controller: contentCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _inputDeco('Mô tả nội dung')),
+                        const SizedBox(height: 16),
+                        TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _inputDeco('Giá tham khảo đính kèm (VNĐ)')),
+                        const SizedBox(height: 32),
+                      ]
+                    )
+                  )
+                ),
+                Container(
+                  width: double.infinity, height: 60,
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(100), gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2B5A53)]), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8))]),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100))),
+                    onPressed: isUploading ? null : () async {
+                      if (titleCtrl.text.isEmpty) { AppToast.show(context: context, message: 'Vui lòng nhập Tiêu đề!', isSuccess: false); return; }
+                      setModalState(() => isUploading = true);
+                      
+                      final payload = {
+                        'title': titleCtrl.text,
+                        'content': contentCtrl.text.isEmpty ? null : contentCtrl.text,
+                        'price': priceCtrl.text.isEmpty ? null : double.tryParse(priceCtrl.text),
+                      };
+                      
+                      final success = await PartnerApiService.updateVideo(vid['id'], payload);
+                      setModalState(() => isUploading = false);
+                      
+                      if (success && mounted) {
+                        Navigator.pop(context);
+                        _loadPartnerData();
+                        AppToast.show(context: context, message: 'Bản sửa đổi video đã được gửi duyệt lại!', isSuccess: true);
+                      } else if (mounted) {
+                        AppToast.show(context: context, message: 'Lỗi đường truyền!', isSuccess: false);
+                      }
+                    },
+                    child: isUploading ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('LƯU THAY ĐỔI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 0.5)),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -344,7 +839,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
   // ==========================================
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return Scaffold(backgroundColor: const Color(0xFF09090b), body: Center(child: CircularProgressIndicator(color: _bizPrimary)));
+    if (_isLoading) return Scaffold(backgroundColor: const Color(0xFFF7FBF9), body: Center(child: CircularProgressIndicator(color: _bizPrimary)));
 
     // XỬ LÝ LỖI TRẮNG ẢNH (Kiểm tra chuỗi rỗng "" từ Backend)
     final String? rawCover = widget.profile['cover_url'];
@@ -355,7 +850,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     final String fallbackAvatar = 'https://ui-avatars.com/api/?name=${widget.profile['full_name']}&background=3b82f6&color=fff';
 
     return Scaffold(
-      backgroundColor: const Color(0xFF09090b),
+      backgroundColor: const Color(0xFFF7FBF9),
       body: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(
@@ -365,46 +860,52 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                   clipBehavior: Clip.none,
                   alignment: Alignment.bottomCenter,
                   children: [
-                    // Ảnh Bìa
+                    // Ảnh Bìa (Fade xuống nền sáng)
                     GestureDetector(
                       onTap: () => _showImageOptions(hasCover ? rawCover : null, 'cover'),
                       child: Container(
                         height: 220,
                         width: double.infinity,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
+                          color: const Color(0xFFE8F5E9),
                           image: hasCover ? DecorationImage(image: NetworkImage(rawCover), fit: BoxFit.cover) : null,
                         ),
                         child: !hasCover 
-                          ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.business, color: _bizPrimary.withOpacity(0.5), size: 60), const SizedBox(height: 8), const Text('Tải ảnh bìa cơ sở', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))]))
-                          : Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, const Color(0xFF09090b).withOpacity(0.9)]))),
+                          ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.business, color: _bizPrimary.withOpacity(0.5), size: 60), const SizedBox(height: 8), Text('Tải ảnh bìa cơ sở', style: TextStyle(color: const Color(0xFF617D79), fontWeight: FontWeight.bold))]))
+                          : Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, const Color(0xFFF7FBF9).withOpacity(0.5), const Color(0xFFF7FBF9)]))),
                       ),
                     ),
                     
-                    // Nút Hành động Góc phải
+                    // Nút Hành động Góc phải (Áp dụng Liquid Glass)
                     Positioned(
                       top: MediaQuery.of(context).padding.top + 10,
                       right: 16,
-                      child: Container(
-                        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white10)),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.dashboard, color: Colors.cyanAccent, size: 20),
-                              tooltip: 'Dashboard',
-                              onPressed: () => context.push('/partner-dashboard'), // ĐIỀU HƯỚNG DASHBOARD
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                          child: Container(
+                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.7), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.5))),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(Icons.dashboard_rounded, color: _bizPrimary, size: 20),
+                                  tooltip: 'Dashboard',
+                                  onPressed: () => context.push('/partner-dashboard'),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.visibility_rounded, color: Color(0xFF1A3A35), size: 20),
+                                  tooltip: 'Xem công khai',
+                                  onPressed: () => context.push('/public-profile/${widget.profile['username']}'),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.logout_rounded, color: Colors.redAccent, size: 20),
+                                  onPressed: widget.onLogout,
+                                ),
+                              ],
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.visibility, color: Colors.white, size: 20),
-                              tooltip: 'Xem công khai',
-                              onPressed: () => context.push('/public-profile/${widget.profile['username']}'),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.logout, color: Colors.redAccent, size: 20),
-                              onPressed: widget.onLogout,
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
@@ -422,11 +923,13 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                               width: 110, height: 110,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: const Color(0xFF09090b),
-                                border: Border.all(color: Colors.white, width: 3),
+                                color: Colors.white,
+                                border: Border.all(color: Colors.white, width: 4),
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 16, offset: const Offset(0, 8))],
                                 image: DecorationImage(image: NetworkImage(hasAvatar ? rawAvatar : fallbackAvatar), fit: BoxFit.cover)
                               ),
                             ),
+                            // Giữ nguyên màu Blue cho Badge theo yêu cầu
                             Positioned(
                               bottom: -10,
                               child: Container(
@@ -434,8 +937,8 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                                 decoration: BoxDecoration(
                                   gradient: LinearGradient(colors: [_bizPrimary, _bizSecondary]),
                                   borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: Colors.white.withOpacity(0.2)),
-                                  boxShadow: [BoxShadow(color: _bizPrimary.withOpacity(0.5), blurRadius: 8, offset: const Offset(0, 4))]
+                                  border: Border.all(color: Colors.white, width: 1.5),
+                                  boxShadow: [BoxShadow(color: _bizPrimary.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]
                                 ),
                                 child: const Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -464,28 +967,27 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(widget.profile['full_name'] ?? 'Doanh nghiệp', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
-                          const SizedBox(width: 8),
-                          Icon(Icons.verified, color: _bizPrimary, size: 24),
+                          Text(widget.profile['full_name'] ?? 'Doanh nghiệp', style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                          const SizedBox(width: 6),
+                          Icon(Icons.verified_rounded, color: _bizPrimary, size: 22),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('@${widget.profile['username']}', style: const TextStyle(color: Colors.white54)),
+                      Text('@${widget.profile['username']}', style: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500)),
                       const SizedBox(height: 24),
                       
-                      // Chỉ số
+                      // Chỉ số - Thiết kế dạng thẻ nổi (Premium Floating Cards)
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _buildStatCol(widget.profile['followers_count']?.toString() ?? '0', 'Quan tâm'),
-                          Container(width: 1, height: 30, color: Colors.white10),
-                          _buildStatCol(_myServices.length.toString(), 'Dịch vụ'),
-                          Container(width: 1, height: 30, color: Colors.white10),
-                          _buildStatCol('${widget.profile['reputation_points'] ?? 92}', 'Uy tín', isHighlight: true),
+                          Expanded(child: _buildPremiumStatCard(Icons.favorite_rounded, widget.profile['followers_count']?.toString() ?? '0', 'Quan tâm', iconColor: const Color(0xFFF43F5E))),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildPremiumStatCard(Icons.local_mall_rounded, _myServices.length.toString(), 'Dịch vụ', iconColor: _bizPrimary)),
+                          const SizedBox(width: 12),
+                          Expanded(child: _buildPremiumStatCard(Icons.star_rounded, '${widget.profile['reputation_points'] ?? 100}', 'Uy tín', iconColor: const Color(0xFFF59E0B), isHighlight: true)),
                         ],
                       ),
                       const SizedBox(height: 24),
-                      Text(widget.profile['bio'] ?? "Đối tác y tế chính thức của AI Health. Cung cấp dịch vụ chăm sóc sức khỏe chủ động và chuyên nghiệp.", textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
+                      Text(widget.profile['bio'] ?? "Đối tác y tế chính thức của AI Health. Cung cấp dịch vụ chăm sóc sức khỏe chủ động và chuyên nghiệp.", textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF617D79), fontSize: 14, height: 1.5)),
                     ],
                   ),
                 ),
@@ -493,17 +995,21 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
             ),
           ),
 
-          // Menu Tabs
+          // Menu Tabs - Tái cấu trúc thành Segmented Control hiện đại
           SliverToBoxAdapter(
             child: Container(
-              margin: const EdgeInsets.only(top: 32),
-              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.1)))),
+              margin: const EdgeInsets.only(top: 32, left: 24, right: 24),
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.5), blurRadius: 24, offset: const Offset(0, 8))],
+              ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildTabBtn('DỊCH VỤ', Icons.local_mall, 'services'),
-                  _buildTabBtn('STUDIO', Icons.video_library, 'studio'),
-                  _buildTabBtn('HỒ SƠ', Icons.edit, 'info'),
+                  _buildTabBtn('Dịch vụ', Icons.local_mall_rounded, 'services'),
+                  _buildTabBtn('Studio', Icons.video_library_rounded, 'studio'),
+                  _buildTabBtn('Hồ sơ', Icons.edit_rounded, 'info'),
                 ],
               ),
             ),
@@ -531,42 +1037,135 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Dịch vụ hiện tại (${_myServices.length})', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: _bizPrimary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            Text('Dịch vụ hiện tại (${_myServices.length})', style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.w900)),
+            TextButton.icon(
+              style: TextButton.styleFrom(
+                backgroundColor: _bizPrimary.withOpacity(0.1),
+                foregroundColor: _bizPrimary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)
+              ),
               onPressed: _showAddServiceModal, 
-              icon: const Icon(Icons.add, size: 16), 
+              icon: const Icon(Icons.add_rounded, size: 18), 
               label: const Text('Thêm mới', style: TextStyle(fontWeight: FontWeight.bold))
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         if (_myServices.isEmpty)
-          const Padding(padding: EdgeInsets.symmetric(vertical: 40), child: Center(child: Text('Bạn chưa có dịch vụ nào.', style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold))))
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40), 
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.spa_rounded, size: 48, color: const Color(0xFFB0C4C1).withOpacity(0.5)),
+                  const SizedBox(height: 16),
+                  const Text('Chưa có dịch vụ nào', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text('Hãy thiết lập dịch vụ đầu tiên để thu hút\nkhách hàng đến với không gian của bạn.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF617D79), fontSize: 13, height: 1.5)),
+                ],
+              )
+            )
+          )
         else
           ..._myServices.map((svc) => Container(
             margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white10)),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white, 
+              borderRadius: BorderRadius.circular(24), 
+              boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.5), blurRadius: 24, offset: const Offset(0, 8))]
+            ),
             child: Row(
               children: [
                 Container(
-                  width: 100, height: 100,
-                  decoration: BoxDecoration(borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)), image: svc['image_url'] != null ? DecorationImage(image: NetworkImage(svc['image_url']), fit: BoxFit.cover) : null, color: Colors.black26),
-                  child: svc['image_url'] == null ? const Icon(Icons.image, color: Colors.white24) : null,
+                  width: 80, height: 80,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16), 
+                    image: svc['image_url'] != null ? DecorationImage(image: NetworkImage(svc['image_url']), fit: BoxFit.cover) : null, 
+                    color: const Color(0xFFF7FBF9),
+                    border: Border.all(color: const Color(0xFFE2ECEB).withOpacity(0.5))
+                  ),
+                  child: svc['image_url'] == null ? const Icon(Icons.spa_outlined, color: Color(0xFFB0C4C1)) : null,
                 ),
+                const SizedBox(width: 16),
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(svc['service_name'] ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 4),
-                        Text(_formatCurrency(svc['price']), style: TextStyle(color: _bizSecondary, fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 8),
-                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: svc['status'] == 'APPROVED' ? Colors.green.withOpacity(0.2) : Colors.amber.withOpacity(0.2), borderRadius: BorderRadius.circular(6)), child: Text(svc['status'], style: TextStyle(color: svc['status'] == 'APPROVED' ? Colors.green : Colors.amber, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 0.5))),
-                      ],
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(svc['service_name'] ?? '', style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                const SizedBox(height: 4),
+                                Text(_formatCurrency(svc['price']), style: TextStyle(color: _bizPrimary, fontWeight: FontWeight.w900, fontSize: 14)),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), 
+                            decoration: BoxDecoration(
+                              color: svc['status'] == 'APPROVED' ? const Color(0xFFE8F5E9) : const Color(0xFFFFF8E1), 
+                              borderRadius: BorderRadius.circular(8),
+                            ), 
+                            child: Text(
+                              svc['status'] == 'APPROVED' ? 'Đã duyệt' : 'Chờ duyệt', 
+                              style: TextStyle(color: svc['status'] == 'APPROVED' ? const Color(0xFF48C9B0) : Colors.amber.shade700, fontSize: 10, fontWeight: FontWeight.bold)
+                            )
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: (svc['tags'] != null && svc['tags'] is List && (svc['tags'] as List).isNotEmpty)
+                              ? Row(
+                                  children: [
+                                    const Icon(Icons.label_outline_rounded, size: 14, color: Color(0xFFB0C4C1)),
+                                    const SizedBox(width: 4),
+                                    Expanded(child: Text((svc['tags'] as List).first.toString(), style: const TextStyle(color: Color(0xFF617D79), fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                  ],
+                                )
+                              : const SizedBox(),
+                          ),
+                          Row(
+                            children: [
+                              Material(
+                                color: const Color(0xFFF2F2F7),
+                                shape: const CircleBorder(),
+                                child: InkWell(
+                                  onTap: () => _showEditServiceModal(svc),
+                                  customBorder: const CircleBorder(),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(8.0),
+                                    child: Icon(Icons.edit_rounded, color: Color(0xFF617D79), size: 18),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Material(
+                                color: const Color(0xFFFFF0F0),
+                                shape: const CircleBorder(),
+                                child: InkWell(
+                                  onTap: () => _handleDeleteService(svc['id']),
+                                  customBorder: const CircleBorder(),
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(8.0),
+                                    child: Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 18),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -582,59 +1181,278 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Video của tôi (${_myVideos.length})', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900)),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: _bizPrimary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+            Text('Video của tôi (${_myVideos.length})', style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.w900)),
+            TextButton.icon(
+              style: TextButton.styleFrom(
+                backgroundColor: _bizPrimary.withOpacity(0.1),
+                foregroundColor: _bizPrimary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)
+              ),
               onPressed: _showAddVideoModal, 
-              icon: const Icon(Icons.video_call, size: 16), 
+              icon: const Icon(Icons.video_call_rounded, size: 18), 
               label: const Text('Tải lên', style: TextStyle(fontWeight: FontWeight.bold))
             ),
           ],
         ),
-        const SizedBox(height: 16),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 9/16, crossAxisSpacing: 16, mainAxisSpacing: 16),
-          itemCount: _myVideos.length,
-          itemBuilder: (context, index) {
-            final v = _myVideos[index];
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Stack(
-                fit: StackFit.expand,
+        const SizedBox(height: 20),
+        if (_myVideos.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40), 
+            child: Center(
+              child: Column(
                 children: [
-                  MiniVideoPlayer(videoUrl: v['video_url']),
-                  Positioned(top: 8, left: 8, child: Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: v['status'] == 'APPROVED' ? Colors.green : Colors.amber, borderRadius: BorderRadius.circular(4)), child: Text(v['status'], style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900)))),
-                  Positioned(bottom: 0, left: 0, right: 0, child: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black87, Colors.transparent])), child: Text(v['title'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 12), maxLines: 2))),
+                  Icon(Icons.video_library_rounded, size: 48, color: const Color(0xFFB0C4C1).withOpacity(0.5)),
+                  const SizedBox(height: 16),
+                  const Text('Chưa có video nào', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text('Đăng tải video ngắn để giới thiệu không gian\nvà dịch vụ đến nhiều khách hàng hơn.', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF617D79), fontSize: 13, height: 1.5)),
                 ],
-              ),
+              )
+            )
+          )
+        else
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 9/16, crossAxisSpacing: 16, mainAxisSpacing: 16),
+            itemCount: _myVideos.length,
+            itemBuilder: (context, index) {
+              final v = _myVideos[index];
+              return Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.5), blurRadius: 24, offset: const Offset(0, 8))],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      MiniVideoPlayer(videoUrl: v['video_url']),
+                      
+                      // Status Badge (SaaS Clean Style)
+                      Positioned(
+                        top: 10, left: 10, 
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), 
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.85), 
+                                borderRadius: BorderRadius.circular(8),
+                              ), 
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 6, height: 6,
+                                    decoration: BoxDecoration(
+                                      color: v['status'] == 'APPROVED' ? const Color(0xFF48C9B0) : Colors.amber.shade600,
+                                      shape: BoxShape.circle
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    v['status'] == 'APPROVED' ? 'Đã duyệt' : 'Chờ duyệt', 
+                                    style: const TextStyle(color: Color(0xFF0F172A), fontSize: 10, fontWeight: FontWeight.bold)
+                                  ),
+                                ],
+                              )
+                            ),
+                          ),
+                        )
+                      ),
+
+                      // Action Buttons (Clean White)
+                      Positioned(
+                        top: 10, right: 10,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.85),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () => _showEditVideoModal(v),
+                                      child: const Padding(
+                                        padding: EdgeInsets.all(8),
+                                        child: Icon(Icons.edit_rounded, color: Color(0xFF64748B), size: 16),
+                                      ),
+                                    ),
+                                  ),
+                                  Container(width: 1, height: 16, color: const Color(0xFFE2ECEB)), // Divider mỏng
+                                  Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () => _handleDeleteVideo(v['id']),
+                                      child: const Padding(
+                                        padding: EdgeInsets.all(8),
+                                        child: Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 16),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      
+                      // Gradient Title - Refined
+                      Positioned(
+                        bottom: 0, left: 0, right: 0, 
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(12, 32, 12, 12), 
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withOpacity(0.8), Colors.transparent])
+                          ), 
+                          child: Text(v['title'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600, height: 1.3), maxLines: 2, overflow: TextOverflow.ellipsis)
+                        )
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          )
+      ],
+    );
+  }
+
+  Widget _buildSaaSField({
+    required TextEditingController controller,
+    required String label,
+    int maxLines = 1,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(label, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 14, fontWeight: FontWeight.w500)),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE2ECEB), width: 1),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+          ),
+          child: TextField(
+            controller: controller,
+            maxLines: maxLines,
+            keyboardType: keyboardType,
+            textAlign: TextAlign.left,
+            style: const TextStyle(color: Color(0xFF1C1C1E), fontSize: 16, fontWeight: FontWeight.w400),
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSaaSLockedField({required String label, required String value, required String badgeText}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(label, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 14, fontWeight: FontWeight.w500)),
+        ),
+        InkWell(
+          onTap: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Trường dữ liệu này đã được hệ thống bảo vệ.'), backgroundColor: Colors.orange)
             );
           },
-        )
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF2F2F7),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2ECEB), width: 1),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    value.isEmpty ? 'Trống' : value,
+                    textAlign: TextAlign.left,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 16, fontWeight: FontWeight.w400),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE2ECEB), width: 1),
+                  ),
+                  child: Text(badgeText, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 12, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
 
   Widget _buildInfoTab() {
+    final email = widget.profile['email'] ?? '';
     return Container(
       padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.03), borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white.withOpacity(0.05))),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF2F2F7),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2ECEB)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildTextField('Username định danh', _usernameCtrl),
+          _buildSaaSField(controller: _nameCtrl, label: 'Tên doanh nghiệp hiển thị'),
           const SizedBox(height: 20),
-          _buildTextField('Tên doanh nghiệp hiển thị', _nameCtrl),
+          _buildSaaSField(controller: _usernameCtrl, label: 'Username định danh'),
           const SizedBox(height: 20),
-          _buildTextField('Tiểu sử & Giới thiệu', _bioCtrl, maxLines: 4),
+          _buildSaaSField(controller: _phoneCtrl, label: 'Số điện thoại', keyboardType: TextInputType.phone),
+          const SizedBox(height: 20),
+          _buildSaaSLockedField(label: 'Email xác thực', value: email, badgeText: 'Bảo mật'),
+          const SizedBox(height: 20),
+          _buildSaaSField(controller: _bioCtrl, label: 'Tiểu sử & Giới thiệu', maxLines: 4),
           const SizedBox(height: 32),
           SizedBox(
-            width: double.infinity, height: 50,
+            width: double.infinity, height: 52,
             child: ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: _bizPrimary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1A3A35), 
+                foregroundColor: Colors.white, 
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+              ),
               onPressed: _isUpdatingProfile ? null : _handleUpdateProfile,
-              child: _isUpdatingProfile ? const CircularProgressIndicator(color: Colors.white) : const Text('LƯU THÔNG TIN HỒ SƠ', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+              child: _isUpdatingProfile 
+                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                : const Text('LƯU THÔNG TIN HỒ SƠ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
             ),
           )
         ],
@@ -646,41 +1464,79 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
+        Text(label, style: const TextStyle(color: Color(0xFF617D79), fontSize: 13, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         TextField(
           controller: controller,
           maxLines: maxLines,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          decoration: InputDecoration(filled: true, fillColor: Colors.black45, border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)),
+          style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w500, fontSize: 15),
+          decoration: InputDecoration(
+            filled: true, 
+            fillColor: Colors.white, 
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2ECEB))),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: _bizPrimary, width: 1.5)),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2ECEB))),
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildStatCol(String val, String label, {bool isHighlight = false}) {
-    return Column(
-      children: [
-        Text(val, style: TextStyle(color: isHighlight ? _bizPrimary : Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 4),
-        Text(label.toUpperCase(), style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-      ],
+  Widget _buildPremiumStatCard(IconData icon, String value, String label, {required Color iconColor, bool isHighlight = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isHighlight ? iconColor.withOpacity(0.4) : Colors.white, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: isHighlight ? iconColor.withOpacity(0.15) : const Color(0xFF94A3B8).withOpacity(0.12),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          )
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 18, color: iconColor),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(value, style: const TextStyle(color: Color(0xFF0F172A), fontSize: 16, fontWeight: FontWeight.w900, height: 1), maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildTabBtn(String label, IconData icon, String tabKey) {
     final isActive = _activeTab == tabKey;
-    return GestureDetector(
-      onTap: () => setState(() => _activeTab = tabKey),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: isActive ? _bizPrimary : Colors.transparent, width: 3))),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: isActive ? _bizPrimary : Colors.white54),
-            const SizedBox(width: 8),
-            Text(label.toUpperCase(), style: TextStyle(color: isActive ? _bizPrimary : Colors.white54, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
-          ],
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _activeTab = tabKey),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isActive ? const Color(0xFF1A3A35) : Colors.transparent,
+            borderRadius: BorderRadius.circular(20)
+          ),
+          child: Column(
+            children: [
+              Icon(icon, size: 20, color: isActive ? Colors.white : const Color(0xFFB0C4C1)),
+              const SizedBox(height: 4),
+              Text(label, style: TextStyle(color: isActive ? Colors.white : const Color(0xFFB0C4C1), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.2)),
+            ],
+          ),
         ),
       ),
     );

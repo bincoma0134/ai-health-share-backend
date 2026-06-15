@@ -97,7 +97,19 @@ class ChatMessage(BaseModel):
     content: str
 
 class AIChatRequest(BaseModel):
+    conversation_id: Optional[str] = None # Nếu None -> Backend tự tạo phiên chat mới
     messages: List[ChatMessage]
+
+class AIConversationResponse(BaseModel):
+    id: str
+    title: str
+    updated_at: datetime
+    
+class AIChatHistoryItem(BaseModel):
+    id: str
+    role: str
+    content: str
+    created_at: datetime
 
 # --- 10. CẤU TRÚC AUTH ---
 class AuthResolve(BaseModel):

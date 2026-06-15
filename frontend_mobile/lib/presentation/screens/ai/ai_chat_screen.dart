@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/network/api_client.dart';
 import '../../../data/models/chat_message_model.dart';
 import '../../widgets/app_toast.dart';
+import '../../widgets/auth_guard.dart';
+import '../../widgets/guest_profile_view.dart';
 
 class AiChatScreen extends StatefulWidget {
   const AiChatScreen({super.key});
@@ -23,6 +25,8 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
   // Animation Controller cho Quả cầu năng lượng AI 3D
   late AnimationController _orbController;
   bool _isTyping = false;
+  String? _activeConvId;
+  List<dynamic> _conversations = [];
   
   List<ChatMessageModel> _messages = [
     ChatMessageModel(
@@ -40,6 +44,58 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
       vsync: this,
       duration: const Duration(seconds: 4),
     )..repeat(); // Chạy vô hạn để tạo sóng chuyển động 3D
+    _loadConversations();
+  }
+
+  Future<void> _loadConversations() async {
+    try {
+      final res = await ApiClient.instance.get('/ai/conversations');
+      if (res.statusCode == 200 && mounted) {
+        setState(() {
+          _conversations = res.data['data'] ?? [];
+        });
+        if (_conversations.isNotEmpty && _activeConvId == null) {
+          _loadHistory(_conversations.first['id']);
+        }
+      }
+    } catch (e) {
+      debugPrint("Lỗi tải danh sách chat: $e");
+    }
+  }
+
+  Future<void> _loadHistory(String convId) async {
+    try {
+      final res = await ApiClient.instance.get('/ai/conversations/$convId/history');
+      if (res.statusCode == 200 && mounted) {
+        final List<dynamic> historyData = res.data['data'] ?? [];
+        setState(() {
+          _activeConvId = convId;
+          _messages = historyData.map((m) => ChatMessageModel(
+            id: m['id'].toString(),
+            role: m['role'] == 'assistant' ? 'bot' : 'user',
+            content: m['content'],
+            timestamp: DateTime.parse(m['created_at']).toLocal(),
+          )).toList();
+        });
+        _scrollToBottom();
+      }
+    } catch (e) {
+      debugPrint("Lỗi tải lịch sử chat: $e");
+    }
+  }
+
+  void _createNewChat() {
+    setState(() {
+      _activeConvId = null;
+      _messages = [
+        ChatMessageModel(
+          id: 'welcome',
+          role: 'bot',
+          content: 'Xin chào! Tôi là Trợ lý AI Đẳng cấp của bạn. Hệ thống y tế thông minh đã sẵn sàng hỗ trợ bạn chẩn đoán triệu chứng, lên thực đơn và tìm kiếm phòng khám ưu đãi tối ưu nhất.',
+          timestamp: DateTime.now(),
+        )
+      ];
+    });
   }
 
   @override
@@ -132,15 +188,25 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
       // Gọi API Endpoint, truyền đúng cấu trúc 'messages' mà schemas.AIChatRequest yêu cầu
       final response = await ApiClient.instance.post(
         '/ai/chat', 
-        data: {'messages': messagesPayload},
+        data: {
+          'conversation_id': _activeConvId,
+          'messages': messagesPayload
+        },
       );
 
       if (response.statusCode == 200) {
         final apiData = response.data['data'] ?? {};
         final reply = apiData['reply'] ?? '';
+        final newConvId = apiData['conversation_id'];
         
         if (mounted) {
-          setState(() => _isTyping = false);
+          setState(() {
+            _isTyping = false;
+            if (_activeConvId == null && newConvId != null) {
+              _activeConvId = newConvId;
+              _loadConversations(); // Cập nhật danh sách nếu là chat mới
+            }
+          });
           _processAiResponse(reply);
         }
       } else {
@@ -157,8 +223,15 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+    return AuthGuardWidget(
+      fallbackBuilder: (context) => Scaffold(
+        backgroundColor: const Color(0xFFF4F7F6),
+        appBar: AppBar(title: const Text('Trợ lý AI', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+        body: GuestProfileView(onSuccess: () => AuthNotifier.instance.refresh()),
+      ),
+      builder: (context, token, userId) {
+        return Scaffold(
+          backgroundColor: const Color(0xFFF4F7F6),
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -187,8 +260,10 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
             // 4. Ô NHẬP LIỆU LƠ LỬNG KIỂU CAPSULE VIÊN THUỐC
             _buildInputDock(),
           ],
-        ),
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -224,12 +299,83 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
                   Container(
                     width: 6, 
                     height: 6, 
-                    decoration: const BoxDecoration(color: Color(0xFF80BF84), shape: BoxShape.circle), // Giữ nguyên const tại đây để tối ưu RAM cho hạt chấm tròn
+                    decoration: const BoxDecoration(color: Color(0xFF80BF84), shape: BoxShape.circle),
                   ),
                   const Text('  Hệ thống AI thông minh đang mở', style: TextStyle(color: Colors.black38, fontSize: 11, fontWeight: FontWeight.bold)),
                 ],
               )
             ],
+          ),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.history_rounded, color: Colors.black54),
+            onPressed: () {
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: Colors.white,
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+                builder: (context) => _buildHistorySheet(),
+              );
+            },
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHistorySheet() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      height: MediaQuery.of(context).size.height * 0.6,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Lịch sử trò chuyện', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _createNewChat();
+                },
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Chat mới'),
+              )
+            ],
+          ),
+          const Divider(),
+          Expanded(
+            child: _conversations.isEmpty
+                ? const Center(child: Text('Chưa có cuộc trò chuyện nào', style: TextStyle(color: Colors.black54)))
+                : ListView.builder(
+                    itemCount: _conversations.length,
+                    itemBuilder: (context, index) {
+                      final conv = _conversations[index];
+                      final isSelected = conv['id'] == _activeConvId;
+                      return ListTile(
+                        leading: const Icon(Icons.chat_bubble_outline),
+                        title: Text(conv['title'] ?? 'Trò chuyện', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, color: isSelected ? const Color(0xFF80BF84) : Colors.black87)),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _loadHistory(conv['id']);
+                        },
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                          onPressed: () async {
+                            try {
+                              await ApiClient.instance.delete('/ai/conversations/${conv['id']}');
+                              if (_activeConvId == conv['id']) _createNewChat();
+                              _loadConversations();
+                              Navigator.pop(context);
+                            } catch (e) {
+                              AppToast.show(context: context, message: 'Lỗi xóa', isSuccess: false);
+                            }
+                          },
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

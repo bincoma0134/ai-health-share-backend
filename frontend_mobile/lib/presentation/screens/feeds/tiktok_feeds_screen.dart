@@ -15,10 +15,12 @@ import '../../widgets/auth_bottom_sheet.dart';
 import '../../widgets/booking_bottom_sheet.dart';
 import '../../widgets/comment_bottom_sheet.dart';
 import '../../widgets/app_toast.dart'; // Tích hợp thông báo đặc sắc của hệ thống
+import '../../widgets/auth_guard.dart';
 
 
 class TikTokFeedsScreen extends StatefulWidget {
-  const TikTokFeedsScreen({super.key});
+  final String? filter;
+  const TikTokFeedsScreen({super.key, this.filter});
 
   @override
   State<TikTokFeedsScreen> createState() => _TikTokFeedsScreenState();
@@ -49,24 +51,30 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
     _loadFeeds();
   }
 
+  @override
+  void didUpdateWidget(TikTokFeedsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Tự động tải lại dữ liệu nếu GoRouter truyền vào một bộ lọc mới
+    if (oldWidget.filter != widget.filter) {
+      setState(() => _isLoading = true);
+      _loadFeeds();
+    }
+  }
+
   Future<void> _loadFeeds() async {
     try {
-      // 1. Đọc Token và giải mã JWT để lấy user_id (Bắt buộc để BE trả về trạng thái is_liked)
-      final token = await _storage.read(key: 'ai-health-token');
-      String? userId;
-      
-      if (token != null && token.isNotEmpty) {
-        final parts = token.split('.');
-        if (parts.length == 3) {
-          final payload = json.decode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
-          userId = payload['sub'];
-        }
-      }
+      // 1. Đọc trực tiếp UserID từ bộ nhớ RAM siêu tốc (AuthNotifier)
+      final String? userId = AuthNotifier.instance.userId;
 
-      // 2. Gọi API truyền kèm user_id để Backend mapping với bảng likes/saves
+      // Xử lý bộ lọc từ Router truyền vào
+      final Map<String, dynamic> queryParams = {'limit': 50};
+      if (userId != null) queryParams['user_id'] = userId;
+      if (widget.filter != null) queryParams['filter'] = widget.filter;
+
+      // 2. Gọi API truyền kèm user_id và filter để Backend trả đúng dữ liệu
       final response = await ApiClient.instance.get(
         '/tiktok/feeds',
-        queryParameters: userId != null ? {'user_id': userId, 'limit': 50} : {'limit': 50},
+        queryParameters: queryParams,
       );
 
       if (response.statusCode == 200) {
@@ -92,13 +100,8 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
   }
 
   // Bẫy Logic Khách
-  Future<void> _handleAuthGuard(Function action) async {
-    final token = await _storage.read(key: 'ai-health-token');
-    if (token == null || token.isEmpty) {
-      _showAuthBottomSheet();
-    } else {
-      action(); 
-    }
+  Future<void> _handleAuthGuard(VoidCallback action) async {
+    await AuthGuard.run(context, action: action);
   }
 
   // Gọi API Tương tác (Like / Save)

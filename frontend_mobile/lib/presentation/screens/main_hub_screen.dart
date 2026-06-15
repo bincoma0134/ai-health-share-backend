@@ -1,10 +1,8 @@
-import 'dart:async';
-import 'dart:ui' as ui; // Import aliased tương thích chuẩn ui.Image
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart'; // Bổ sung để sửa lỗi RenderRepaintBoundary không nhận diện
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
-import '../widgets/glass_wrapper.dart';
+import '../widgets/liquid_glass/liquid_glass_panel.dart';
+import '../widgets/auth_guard.dart';
 
 class MainHubScreen extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -19,13 +17,6 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
   late AnimationController _shimmerController;
   bool _isPageLoading = false;
 
-  // Khai báo hệ thống khóa capture điểm ảnh toàn màn hình và bộ lưu trữ hình ảnh nền GPU texture
-  final GlobalKey _backgroundBoundaryKey = GlobalKey();
-  final GlobalKey _bottomNavKey = GlobalKey();
-  Timer? _captureTimer;
-  ui.Image? _capturedBackground;
-  bool _isCapturingFrame = false;
-
   @override
   void initState() {
     super.initState();
@@ -34,91 +25,47 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat();
-
-    // Khởi tạo vòng lặp chụp ảnh nền vùng thấu kính định kỳ hiệu năng cao
-    _startFrameCaptureLoop();
-  }
-
-  // Khởi tạo vòng lặp chụp lại phân vùng thấu kính real-time (Tối ưu 30 FPS để tránh quá tải GPU/Pin)
-  void _startFrameCaptureLoop() {
-    _captureTimer = Timer.periodic(const Duration(milliseconds: 32), (timer) async {
-      if (!mounted || _isCapturingFrame) return;
-      _isCapturingFrame = true;
-
-      try {
-        final boundary = _backgroundBoundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-        final navBox = _bottomNavKey.currentContext?.findRenderObject() as RenderBox?;
-
-        if (boundary != null && boundary.attached && navBox != null && navBox.hasSize) {
-          final boundaryBox = boundary as RenderBox;
-          if (boundaryBox.hasSize) {
-            final widgetRectInBoundary = Rect.fromPoints(
-              boundaryBox.globalToLocal(navBox.localToGlobal(Offset.zero)),
-              boundaryBox.globalToLocal(navBox.localToGlobal(navBox.size.bottomRight(Offset.zero))),
-            );
-
-            final boundaryRect = Rect.fromLTWH(0, 0, boundaryBox.size.width, boundaryBox.size.height);
-            final Rect regionToCapture = widgetRectInBoundary.intersect(boundaryRect);
-
-            if (!regionToCapture.isEmpty) {
-              final double pixelRatio = MediaQuery.of(_backgroundBoundaryKey.currentContext!).devicePixelRatio;
-              final OffsetLayer offsetLayer = boundary.debugLayer! as OffsetLayer;
-              final ui.Image croppedImage = await offsetLayer.toImage(
-                regionToCapture,
-                pixelRatio: pixelRatio,
-              );
-
-              if (mounted) {
-                setState(() {
-                  _capturedBackground?.dispose();
-                  _capturedBackground = croppedImage;
-                });
-              } else {
-                croppedImage.dispose();
-              }
-            }
-          }
-        }
-      } catch (_) {
-        // Bỏ qua lỗi đồng bộ khi cây widget đang tái cấu trúc hình học
-      } finally {
-        _isCapturingFrame = false;
-      }
-    });
   }
 
   @override
   void dispose() {
-    _captureTimer?.cancel();
     _shimmerController.dispose();
-    _capturedBackground?.dispose(); // Đảm bảo dọn dẹp tài nguyên hình ảnh đồ họa khi hủy màn hình chính
     super.dispose();
   }
 
   void _onTap(BuildContext context, int index) {
-    if (index != widget.navigationShell.currentIndex) {
-      setState(() {
-        _isPageLoading = true;
-      });
-      
-      widget.navigationShell.goBranch(
-        index,
-        initialLocation: index == widget.navigationShell.currentIndex,
-      );
+    void performNav() {
+      if (index != widget.navigationShell.currentIndex) {
+        setState(() {
+          _isPageLoading = true;
+        });
+        
+        widget.navigationShell.goBranch(
+          index,
+          initialLocation: index == widget.navigationShell.currentIndex,
+        );
 
-      // Tạo một khoảng trễ cực ngắn để hiển thị bộ xương skeleton mượt mà trước khi nạp trang mới hoàn tất
-      Future.delayed(const Duration(milliseconds: 350), () {
-        if (mounted) {
-          setState(() {
-            _isPageLoading = false;
-          });
-        }
-      });
+        // Tạo một khoảng trễ cực ngắn để hiển thị bộ xương skeleton mượt mà trước khi nạp trang mới hoàn tất
+        Future.delayed(const Duration(milliseconds: 350), () {
+          if (mounted) {
+            setState(() {
+              _isPageLoading = false;
+            });
+          }
+        });
+      } else {
+        widget.navigationShell.goBranch(
+          index,
+          initialLocation: true,
+        );
+      }
+    }
+
+    // Chặn điều hướng trực tiếp bằng AuthGuard nếu là Tab AI (3) hoặc Lịch (5)
+    if (index == 3 || index == 5) {
+      AuthGuard.run(context, action: performNav);
     } else {
-      widget.navigationShell.goBranch(
-        index,
-        initialLocation: true,
-      );
+      performNav();
     }
   }
 
@@ -126,13 +73,9 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      // CHỈ bao bọc màn hình nội dung cuộn phía sau vào RepaintBoundary để cắt đứt vòng lặp đệ quy vô hạn
-      body: RepaintBoundary(
-        key: _backgroundBoundaryKey,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 250),
-          child: _isPageLoading ? _buildSkeletonLayout() : widget.navigationShell,
-        ),
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 250),
+        child: _isPageLoading ? _buildSkeletonLayout() : widget.navigationShell,
       ),
       bottomNavigationBar: Padding(
           padding: EdgeInsets.only(
@@ -141,17 +84,12 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
             bottom: MediaQuery.of(context).padding.bottom > 0 ? MediaQuery.of(context).padding.bottom : 16
           ),
           child: SizedBox(
-            key: _bottomNavKey,
             height: 90,
             child: Stack(
               alignment: Alignment.bottomCenter,
               children: [
-                // 1. THANH NỀN KÍNH KHÚC XẠ TRONG SUỐT (CLEAR iOS GLASS LENS EFFECT)
-                GlassWrapper.lens(
-                  backgroundImage: _capturedBackground, // Nạp chính xác nguyên liệu điểm ảnh nền chuyển xuống GPU Shader
-                  borderRadius: const BorderRadius.all(Radius.circular(35)),
-                  border: Border.all(color: AppTheme.zinc50.withOpacity(0.35), width: 0.8),
-                  fallbackColor: AppTheme.zinc50.withOpacity(0.18), // Hạ opacity nền để khúc xạ thấu kính GPU hiển thị tối đa sắc nét
+                // 1. THANH NỀN KÍNH TRONG SUỐT ĐƯỢC TỐI ƯU BỞI LIQUID GLASS FOUNDATION
+                LiquidGlassPanel(
                   child: Container(
                   height: 70,
                   padding: const EdgeInsets.symmetric(horizontal: 8),

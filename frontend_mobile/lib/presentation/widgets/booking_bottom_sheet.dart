@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/network/api_client.dart';
+import 'auth_guard.dart';
 import '../widgets/app_toast.dart';
 
 class BookingBottomSheet extends StatefulWidget {
@@ -84,7 +85,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     final String title = voucher['title'] ?? 'Ưu đãi';
     final String type = voucher['discount_type'] ?? 'FIXED';
     final double value = (voucher['discount_value'] ?? 0).toDouble();
-    final double maxDiscount = (voucher['max_discount'] ?? 0).toDouble();
+    final double maxDiscount = (voucher['max_discount_amount'] ?? 0).toDouble();
     
     double calculatedDiscount = 0;
     if (type == 'PERCENTAGE') {
@@ -112,15 +113,16 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
   // LUỒNG GỬI ĐƠN ĐẶT LỊCH CHÍNH THỨC
   Future<void> _submitBooking() async {
-    if (_nameCtrl.text.isEmpty || _phoneCtrl.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng điền đủ Tên và Số điện thoại')));
-      return;
-    }
-    setState(() => _isLoading = true);
+    AuthGuard.run(context, action: () async {
+      if (_nameCtrl.text.isEmpty || _phoneCtrl.text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng điền đủ Tên và Số điện thoại')));
+        return;
+      }
+      setState(() => _isLoading = true);
     try {
       final payload = {
         'partner_id': _partnerId,
-        'service_id': widget.video.id, // Đã sửa dứt điểm: Gọi thuộc tính trực tiếp từ Class Object VideoModel gửi chính xác ID lên server
+        'video_id': widget.video.id, // Đã sửa dứt điểm: Gọi thuộc tính trực tiếp từ Class Object VideoModel gửi chính xác ID lên server làm video_id
         'appointment_date': DateTime.now().add(const Duration(days: 1)).toIso8601String().split('T')[0], 
         'start_time': '09:00:00', 
         'notes': 'Tên: ${_nameCtrl.text} | SĐT: ${_phoneCtrl.text} | Ghi chú: ${_noteCtrl.text}',
@@ -151,6 +153,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+    });
   }
 
   Widget _buildSoftInput(TextEditingController controller, String hint, IconData icon, {bool isPhone = false}) {

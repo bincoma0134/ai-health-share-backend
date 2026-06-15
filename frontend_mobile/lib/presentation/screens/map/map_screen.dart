@@ -9,6 +9,7 @@ import '../../widgets/booking_bottom_sheet.dart';
 import '../../../data/models/partner_map_model.dart';
 import '../../../data/services/map_api_service.dart';
 import '../../widgets/app_toast.dart';
+import '../../widgets/auth_guard.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -399,6 +400,7 @@ class _MapScreenState extends State<MapScreen> {
                                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                                       ),
                                                       onPressed: () {
+                                                        AuthGuard.run(context, action: () {
                                                         // Đóng gói dữ liệu Map dịch vụ thành cấu trúc tương thích ngược mà BookingBottomSheet yêu cầu
                                                         final adaptedVideoPayload = {
                                                           'id': service['id'] ?? service['service_id'] ?? '',
@@ -417,8 +419,9 @@ class _MapScreenState extends State<MapScreen> {
                                                           context: context,
                                                           isScrollControlled: true,
                                                           backgroundColor: Colors.transparent,
-                                                          builder: (context) => BookingBottomSheet(video: adaptedVideoPayload),
-                                                        );
+                                                            builder: (context) => BookingBottomSheet(video: adaptedVideoPayload),
+                                                          );
+                                                        });
                                                       },
                                                       child: const Text('ĐẶT LỊCH', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
                                                     ),

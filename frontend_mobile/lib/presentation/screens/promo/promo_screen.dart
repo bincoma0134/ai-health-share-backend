@@ -8,6 +8,7 @@ import '../../../data/models/voucher_model.dart';
 import '../../../data/services/explore_api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
+import '../../widgets/auth_guard.dart';
 
 
 class PromoScreen extends StatefulWidget {
@@ -33,10 +34,12 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
   int _svalueBalance = 3240; // Khớp chính xác con số trên ảnh mẫu
   int _currentStreakDay = 1; // Số ngày đã điểm danh thực tế
   bool _isTodayCheckedIn = false; // Trạng thái bấm nút Check-in ngày hôm nay
+  bool _isProfileSyncing = true; // KHÓA ĐỒNG BỘ: Chống Race Condition ghi đè điểm cũ
   
-  // Bộ đếm nhiệm vụ xem dịch vụ Khám phá (Đồng bộ hóa Userflow thật)
-  int _exploreCount = 0; 
-  bool _isExploreTaskClaimed = false;
+  // Mission States (Server-Driven)
+  List<dynamic> _missions = [];
+  bool _isLoadingMissions = true;
+  bool _isClaimingMission = false;
 
   final _currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
 
@@ -54,38 +57,121 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
     _loadPublicVouchers();
     _loadMyVouchers();
     _syncSValueBalance();
-    _loadLocalTaskProgress();
+    _loadMissions();
   }
 
-  // Nạp tiến độ lưu trữ vật lý của bộ đếm nhiệm vụ từ SharedPreferences
-  Future<void> _loadLocalTaskProgress() async {
+  // Tải danh sách nhiệm vụ từ Server (Server-Driven Mission Engine)
+  Future<void> _loadMissions() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      if (mounted) {
+      final response = await ApiClient.instance.get('/user/missions');
+      if (response.statusCode == 200 && mounted) {
         setState(() {
-          _exploreCount = prefs.getInt('svalue_task_explore_count') ?? 0;
-          _isExploreTaskClaimed = prefs.getBool('svalue_task_explore_claimed') ?? false;
+          _missions = response.data['data'] ?? [];
+          _isLoadingMissions = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingMissions = false);
+    }
+  }
+
+  // Xử lý nhận thưởng bọc thép qua API
+  Future<void> _claimMissionReward(String code) async {
+    if (_isClaimingMission) return;
+    setState(() => _isClaimingMission = true);
+    try {
+      final response = await ApiClient.instance.post('/user/missions/$code/claim');
+      if (response.statusCode == 200 && mounted) {
+        setState(() {
+          _svalueBalance = response.data['balance'] ?? _svalueBalance;
+          final idx = _missions.indexWhere((m) => m['code'] == code);
+          if (idx != -1) _missions[idx]['status'] = 'COMPLETED';
+        });
+        AppToast.show(context: context, message: response.data['message'], isSuccess: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.show(context: context, message: 'Nhận thưởng thất bại hoặc nhiệm vụ không hợp lệ.', isSuccess: false);
+      }
+    } finally {
+      if (mounted) setState(() => _isClaimingMission = false);
+    }
+  }
+
+  // Xử lý điều hướng và thực thi nhiệm vụ
+  Future<void> _executeMission(Map<String, dynamic> mission) async {
+    AuthGuard.run(context, action: () async {
+      final code = mission['code'];
+      
+      if (code == 'PUSH_NOTIFICATION') {
+        AppToast.show(context: context, message: '🔔 Đang kích hoạt yêu cầu xin quyền thông báo...', isSuccess: true);
+        await ApiClient.instance.post('/user/svalue/task', data: {'action_type': code});
+        await _loadMissions();
+      } else if (code == 'WATCH_VIDEO_3_MINS') {
+        AppToast.show(context: context, message: '🎥 Chuyển đến bảng tin Video. Bắt đầu tính thời gian!', isSuccess: true);
+        GoRouter.of(context).go('/');
+      } else if (code == 'EXPLORE_SERVICES') {
+        await ApiClient.instance.post('/user/svalue/task', data: {'action_type': code});
+        await _loadMissions();
+        AppToast.show(context: context, message: '🔍 Đang lướt khám phá dịch vụ!', isSuccess: true);
+        GoRouter.of(context).go('/explore');
+      } else {
+        await ApiClient.instance.post('/user/svalue/task', data: {'action_type': code});
+        await _loadMissions();
+      }
+    });
+  }
+
+  IconData _getMissionIcon(String code) {
+    if (code == 'PUSH_NOTIFICATION') return Icons.notifications_active_rounded;
+    if (code == 'WATCH_VIDEO_3_MINS') return Icons.play_circle_filled_rounded;
+    if (code == 'EXPLORE_SERVICES') return Icons.health_and_safety_rounded;
+    return Icons.star_rounded;
+  }
+
+  Color _getMissionBgColor(String code) {
+    if (code == 'PUSH_NOTIFICATION') return const Color(0xFFE8F2FF);
+    if (code == 'WATCH_VIDEO_3_MINS') return const Color(0xFFFFF2E8);
+    if (code == 'EXPLORE_SERVICES') return const Color(0xFFEAF8EE);
+    return const Color(0xFFFEF9C3);
+  }
+
+  Color _getMissionColor(String code) {
+    if (code == 'PUSH_NOTIFICATION') return const Color(0xFF3B82F6);
+    if (code == 'WATCH_VIDEO_3_MINS') return const Color(0xFFF97316);
+    if (code == 'EXPLORE_SERVICES') return const Color(0xFF22C55E);
+    return const Color(0xFFEAB308);
+  }
+
+  // Đồng bộ số dư thực tế và trạng thái điểm danh từ API Profile
+  Future<void> _syncSValueBalance() async {
+    try {
+      final response = await ApiClient.instance.get('/user/profile');
+      if (response.statusCode == 200 && mounted) {
+        final data = response.data['data']['profile'];
+        setState(() {
+          _svalueBalance = data['svalue_balance'] ?? 0;
+          _currentStreakDay = data['streak_count'] ?? 1;
           
-          // Kiểm tra ngầm xem bên luồng Video đã tích lũy đủ 3 phút xem chưa
-          final int watchSeconds = prefs.getInt('tiktok_watch_seconds_tally') ?? 0;
-          if (watchSeconds >= 180) {
-            // Đủ 180 giây (3 phút) -> Đạt điều kiện hoàn thành
+          // Tính toán trạng thái điểm danh dựa trên Server Time (Quy đổi UTC+7)
+          if (data['last_checkin_at'] != null) {
+            final lastCheckIn = DateTime.parse(data['last_checkin_at']).toUtc().add(const Duration(hours: 7));
+            final nowVN = DateTime.now().toUtc().add(const Duration(hours: 7));
+            
+            _isTodayCheckedIn = lastCheckIn.year == nowVN.year &&
+                                lastCheckIn.month == nowVN.month &&
+                                lastCheckIn.day == nowVN.day;
           }
         });
       }
-    } catch (_) {}
-  }
-
-  // Đồng bộ số dư thực tế từ database qua API Service nếu người dùng đã đăng nhập
-  Future<void> _syncSValueBalance() async {
-    try {
-      final dynamic serverBalance = await ExploreApiService.fetchSValueBalance();
-      if (serverBalance != null && mounted) {
+    } catch (_) {
+    } finally {
+      if (mounted) {
         setState(() {
-          _svalueBalance = int.parse(serverBalance.toString());
+          _isProfileSyncing = false; // Mở khóa UI chốt hạ sau khi load xong Snapshot DB
         });
       }
-    } catch (_) {}
+    }
   }
 
   @override
@@ -127,6 +213,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
   }
 
   Future<void> _claimVoucher(String code) async {
+    AuthGuard.run(context, action: () async {
     if (_isClaiming) return;
     setState(() => _isClaiming = true);
     
@@ -161,6 +248,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
     } finally {
       if (mounted) setState(() => _isClaiming = false);
     }
+    });
   }
 
   // Hàm hiển thị Pop-up chi tiết Voucher & Xử lý Điều hướng sử dụng mã chuẩn Website
@@ -232,7 +320,13 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Hạn dùng đến:', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                      Text(DateFormat('dd/MM/yyyy').format(DateTime.parse(voucher.validUntil)), style: const TextStyle(color: Color(0xFFFE2C55), fontSize: 12, fontWeight: FontWeight.bold)),
+                      Text(
+                        () {
+                          try { return DateFormat('dd/MM/yyyy').format(DateTime.parse(voucher.validUntil)); }
+                          catch (_) { return 'Vô thời hạn'; }
+                        }(), 
+                        style: const TextStyle(color: Color(0xFFFE2C55), fontSize: 12, fontWeight: FontWeight.bold)
+                      ),
                     ],
                   ),
                 ],
@@ -251,7 +345,8 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                 ),
                 onPressed: () {
                   Navigator.pop(context);
-                  final bool isExpired = DateTime.now().isAfter(DateTime.parse(voucher.validUntil));
+                  bool isExpired = false;
+                  try { isExpired = DateTime.now().isAfter(DateTime.parse(voucher.validUntil)); } catch (_) {}
                   
                   if (isExpired) {
                     AppToast.show(context: context, message: '⚠️ Mã giảm giá này đã hết hạn sử dụng, không thể áp dụng.', isSuccess: false);
@@ -285,35 +380,39 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
     );
   }
 
-  // Thực hiện nhận điểm thưởng nhiệm vụ khám phá dịch vụ khi đạt mốc 9/9
-  void _claimExploreReward() {
-    if (_exploreCount >= 9 && !_isExploreTaskClaimed) {
-      setState(() {
-        _svalueBalance += 15; // Cộng điểm thưởng nấc cuối
-        _isExploreTaskClaimed = true;
-      });
-      AppToast.show(
-        context: context,
-        message: '🎉 Nhận thành công +15 điểm SValue từ nhiệm vụ Khám phá!',
-        isSuccess: true,
-      );
-    }
-  }
+  // (Server-Driven Mission Engine đã tiếp quản luồng nhận thưởng an toàn)
 
   // Xử lý logic bấm nút điểm danh
-  void _executeDailyCheckIn() {
-    if (_isTodayCheckedIn) return;
-    setState(() {
-      _isTodayCheckedIn = true;
-      _currentStreakDay = 2; // Tăng tiến trình chuỗi ngày
-      _svalueBalance += 40; // Cộng dồn điểm thưởng ngày thứ 3 (Today)
-    });
+  Future<void> _executeDailyCheckIn() async {
+    AuthGuard.run(context, action: () async {
+      if (_isTodayCheckedIn) return;
+      
+      try {
+        final response = await ApiClient.instance.post('/user/checkin');
+        if (response.statusCode == 200 && mounted) {
+          final data = response.data['data'];
+          setState(() {
+            _isTodayCheckedIn = true;
+            _currentStreakDay = data['new_streak'] ?? _currentStreakDay;
+            _svalueBalance = data['balance'] ?? _svalueBalance;
+          });
 
-    AppToast.show(
-      context: context,
-      message: '🎉 Điểm danh thành công! Bạn nhận được +40 điểm SValue.',
-      isSuccess: true,
-    );
+          AppToast.show(
+            context: context,
+            message: '🎉 Điểm danh thành công! Bạn nhận được +${data['points_earned']} điểm SValue.',
+            isSuccess: true,
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          AppToast.show(
+            context: context,
+            message: 'Có lỗi xảy ra hoặc bạn đã điểm danh hôm nay rồi.',
+            isSuccess: false,
+          );
+        }
+      }
+    });
   }
 
   @override
@@ -343,10 +442,10 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                 icon: const Icon(Icons.card_giftcard_rounded, color: Color(0xFF4C8D50), size: 22),
                 tooltip: 'Đổi quà SValue',
                 onPressed: () {
-                  if (_svalueBalance < 5000) {
+                  if (_svalueBalance < 200) {
                     AppToast.show(
                       context: context,
-                      message: '🔒 Tính năng đổi quà sẽ mở khóa khi bạn đạt đủ 5,000 điểm SValue (Hiện tại: $_svalueBalance).',
+                      message: '🔒 Tính năng đổi quà sẽ mở khóa khi bạn đạt đủ 200 điểm SValue (Hiện tại: $_svalueBalance).',
                       isSuccess: false,
                     );
                   } else {
@@ -457,11 +556,13 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                             elevation: 0
                           ),
-                          onPressed: _isTodayCheckedIn ? null : _executeDailyCheckIn,
-                          child: Text(
-                            _isTodayCheckedIn ? 'Checked In' : 'Check in', 
-                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)
-                          ),
+                          onPressed: (_isTodayCheckedIn || _isProfileSyncing) ? null : _executeDailyCheckIn,
+                          child: _isProfileSyncing 
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black38, strokeWidth: 2))
+                              : Text(
+                                  _isTodayCheckedIn ? 'Checked In' : 'Check in', 
+                                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)
+                                ),
                         ),
                       )
                     ],
@@ -493,95 +594,64 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                   ),
                   const SizedBox(height: 12),
                   
-                  // Task 1: Push Notifications (Xin quyền vật lý thực tế từ Hệ điều hành máy)
-                  _buildTaskRewardRow(
-                    icon: Icons.notifications_active_rounded,
-                    iconBgColor: const Color(0xFFE8F2FF),
-                    iconColor: const Color(0xFF3B82F6),
-                    title: 'Push Notifications',
-                    points: 20,
-                    description: 'Enable Push for real-time updates',
-                    buttonText: 'Go',
-                    isActive: true,
-                    isOutline: true,
-                    onTap: () {
-                      AppToast.show(context: context, message: '🔔 Đang kích hoạt yêu cầu xin quyền thông báo...', isSuccess: true);
+                  // Render danh sách nhiệm vụ từ Server Engine
+                  if (_isLoadingMissions)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 30), 
+                        child: CircularProgressIndicator(color: Color(0xFF80BF84))
+                      )
+                    )
+                  else if (_missions.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      child: Center(child: Text('Hiện chưa có nhiệm vụ nào.', style: TextStyle(color: Colors.black45))),
+                    )
+                  else
+                    ..._missions.map((m) {
+                      final String code = m['code'];
+                      final String status = m['status']; // IN_PROGRESS, CLAIMABLE, COMPLETED
+                      final int progress = m['current_progress'];
+                      final int target = m['target_value'];
                       
-                      // Giải pháp tương thích tuyệt đối: Chờ khung hình Render xong hoàn chỉnh bằng callback chuẩn của Flutter Core
-                      WidgetsBinding.instance.addPostFrameCallback((_) async {
-                        try {
-                          // Thực thi gọi cổng API mạng để xác nhận và nạp log tích điểm vào bảng svalue_transaction_logs
-                          final bool success = await ExploreApiService.completeSValueTask('PUSH_NOTIFICATION', 20);
-                          if (success && mounted) {
-                            _syncSValueBalance(); // Đồng bộ ngay số dư My Balance thực tế từ Database về Header
-                            AppToast.show(
-                              context: context, 
-                              message: '🎉 Kích hoạt thành công! +20 điểm SValue đã được lưu vào Database ví của bạn.', 
-                              isSuccess: true
-                            );
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            AppToast.show(context: context, message: 'Thiết bị từ chối lệnh cấp quyền thông báo.', isSuccess: false);
-                          }
-                        }
-                      });
-                    },
-                  ),
-                  
-                  // Task 2: Watch For 3 Mins (Điều hướng mượt mà về Luồng video TikTokFeeds gốc)
-                  _buildTaskRewardRow(
-                    icon: Icons.play_circle_filled_rounded,
-                    iconBgColor: const Color(0xFFFFF2E8),
-                    iconColor: const Color(0xFFF97316),
-                    title: 'Watch For 3 Mins',
-                    points: 20,
-                    description: 'Complete the Full viewing of the 3mins',
-                    buttonText: 'Go',
-                    isActive: true,
-                    isOutline: false,
-                    onTap: () {
-                      // Điều hướng vật lý chuyển mạch Tab mượt mà theo cấu trúc Stack của GoRouter
-                      GoRouter.of(context).go('/');
-                      AppToast.show(context: context, message: '🎥 Đang lướt xem video ngắn. Hệ thống đếm thời gian bắt đầu tích lũy!', isSuccess: true);
-                    },
-                  ),
+                      String buttonText = 'Go';
+                      bool isActive = true;
+                      bool isOutline = true;
 
-                  // Task 3: Khám phá Dịch vụ y tế sạch chuẩn mốc bộ đếm 0/9
-                  _buildTaskRewardRow(
-                    icon: Icons.health_and_safety_rounded,
-                    iconBgColor: const Color(0xFFEAF8EE),
-                    iconColor: const Color(0xFF22C55E),
-                    title: 'Khám phá Dịch vụ ($_exploreCount/9)',
-                    points: 15,
-                    description: 'Tìm kiếm giải pháp sức khỏe tại tab Khám phá',
-                    buttonText: _isExploreTaskClaimed ? 'Done' : (_exploreCount >= 9 ? 'Claim' : 'Go'),
-                    isActive: !_isExploreTaskClaimed,
-                    isOutline: _exploreCount < 9,
-                    onTap: () async {
-                      if (_exploreCount >= 9) {
-                        // Gọi API đồng bộ điểm thưởng vật lý lưu vào database logs khi user nhấn Claim
-                        final bool success = await ExploreApiService.completeSValueTask('EXPLORE_SERVICES', 15);
-                        if (success) {
-                          _claimExploreReward();
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.setBool('svalue_task_explore_claimed', true);
-                          _syncSValueBalance();
-                        }
-                      } else {
-                        // Sử dụng GoRouter điều hướng trực tiếp sang Tab Khám Phá (Tab index 1)
-                        GoRouter.of(context).go('/explore');
-                        
-                        setState(() {
-                          if (_exploreCount < 9) _exploreCount += 1;
-                        });
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.setInt('svalue_task_explore_count', _exploreCount);
-
-                        AppToast.show(context: context, message: '🔍 Đã chuyển tới Tab Khám phá dịch vụ (${_exploreCount}/9)!', isSuccess: true);
+                      if (status == 'CLAIMABLE') {
+                        buttonText = 'Claim';
+                        isActive = true;
+                        isOutline = false;
+                      } else if (status == 'COMPLETED') {
+                        buttonText = 'Done';
+                        isActive = false;
+                        isOutline = false;
                       }
-                    },
-                  ),
+
+                      String titleDisplay = m['title'];
+                      if (target > 1) {
+                        titleDisplay += ' ($progress/$target)';
+                      }
+
+                      return _buildTaskRewardRow(
+                        icon: _getMissionIcon(code),
+                        iconBgColor: _getMissionBgColor(code),
+                        iconColor: _getMissionColor(code),
+                        title: titleDisplay,
+                        points: m['reward_points'],
+                        description: m['description'] ?? '',
+                        buttonText: buttonText,
+                        isActive: isActive,
+                        isOutline: isOutline,
+                        onTap: () {
+                          if (status == 'CLAIMABLE') {
+                            _claimMissionReward(code);
+                          } else if (status == 'IN_PROGRESS') {
+                            _executeMission(m);
+                          }
+                        },
+                      );
+                    }).toList(),
                 ],
               ),
             ),
@@ -624,6 +694,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
                       ),
                       onPressed: () {
+                        FocusScope.of(context).unfocus();
                         if (_codeController.text.trim().isNotEmpty) {
                           _claimVoucher(_codeController.text.trim().toUpperCase());
                           _codeController.clear();
@@ -798,11 +869,15 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
     if (_isLoadingPublic) return const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)));
     if (_publicVouchers.isEmpty) return const Center(child: Text("Hôm nay chưa có mã giảm giá mới.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)));
 
-    return ListView.builder(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      itemCount: _publicVouchers.length,
-      itemBuilder: (context, index) => _buildPremiumTicketCard(_publicVouchers[index], isClaimable: true),
+    return RefreshIndicator(
+      color: const Color(0xFF80BF84),
+      onRefresh: _loadPublicVouchers,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        itemCount: _publicVouchers.length,
+        itemBuilder: (context, index) => _buildPremiumTicketCard(_publicVouchers[index], isClaimable: true),
+      ),
     );
   }
 
@@ -810,11 +885,15 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
     if (_isLoadingMine) return const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)));
     if (_myVouchers.isEmpty) return const Center(child: Text("Ví ưu đãi của bạn đang trống.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)));
 
-    return ListView.builder(
-      physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      itemCount: _myVouchers.length,
-      itemBuilder: (context, index) => _buildPremiumTicketCard(_myVouchers[index], isClaimable: false),
+    return RefreshIndicator(
+      color: const Color(0xFF80BF84),
+      onRefresh: _loadMyVouchers,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        itemCount: _myVouchers.length,
+        itemBuilder: (context, index) => _buildPremiumTicketCard(_myVouchers[index], isClaimable: false),
+      ),
     );
   }
 
@@ -823,15 +902,19 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
     final String type = voucher.discountType;
     final double value = voucher.discountValue;
     final double minValue = voucher.minOrderValue;
-    final String expDate = DateFormat('dd/MM/yyyy').format(DateTime.parse(voucher.validUntil));
+    
+    String expDate = 'Vô thời hạn';
+    bool isExpired = false;
+    try {
+      final d = DateTime.parse(voucher.validUntil);
+      expDate = DateFormat('dd/MM/yyyy').format(d);
+      isExpired = DateTime.now().isAfter(d);
+    } catch (_) {}
     
     final bool isAdmin = voucher.issuerType == 'ADMIN';
     final String partnerName = isAdmin ? 'Toàn hệ thống AI Health' : (voucher.partnerName ?? 'Cơ sở đối tác');
 
     final String discountTitle = type == 'PERCENTAGE' ? 'Giảm ${value.toInt()}%' : 'Giảm ${_currencyFormat.format(value)}';
-    
-    // Thuật toán tự động quét mốc thời gian thực tế để tính toán cờ hết hạn (Expired Guard Ledger)
-    final bool isExpired = DateTime.now().isAfter(DateTime.parse(voucher.validUntil));
 
     // Đồng bộ hoàn toàn công thức tính FOMO % sử dụng của Website từ máy chủ
     final double progress = isClaimable 

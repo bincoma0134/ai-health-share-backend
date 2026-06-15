@@ -19,6 +19,8 @@ import boto3
 import uuid
 import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
+from fastapi import APIRouter, Depends, HTTPException
+from typing import List
 
 # Khởi tạo Firebase Admin SDK
 PROJECT_ID = "vnshare-auth"
@@ -900,21 +902,116 @@ def create_tiktok_feed(payload: schemas.TikTokFeedCreate, current_user = Depends
         return {"status": "success", "data": data}
     finally: cur.close()
 
-# ==========================================
-# 6. AI ASSISTANT
+ # ==========================================
+# 6. AI ASSISTANT (TÁI CẤU TRÚC ĐA LUỒNG & LƯU TRỮ)
 # ==========================================
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-@app.post("/ai/chat", tags=["AI Assistant"])
-def chat_with_llama(payload: schemas.AIChatRequest, current_user = Depends(verify_user_token)):
+@app.get("/ai/conversations", tags=["AI Assistant"])
+def get_conversations(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Lấy danh sách các cuộc trò chuyện của User, sắp xếp mới nhất lên đầu"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        messages = [{"role": "system", "content": "Bạn là Trợ lý AI Health. Dùng Markdown. Ngắn gọn."}]
+        cur.execute("""
+            SELECT id, title, updated_at 
+            FROM ai_conversations 
+            WHERE user_id = %s 
+            ORDER BY updated_at DESC
+        """, (current_user.id,))
+        return {"status": "success", "data": cur.fetchall()}
+    finally: cur.close()
+
+@app.get("/ai/conversations/{conversation_id}/history", tags=["AI Assistant"])
+def get_conversation_history(conversation_id: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Lấy lịch sử tin nhắn của một cuộc trò chuyện cụ thể"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT id FROM ai_conversations WHERE id = %s AND user_id = %s", (conversation_id, current_user.id))
+        if not cur.fetchone():
+            raise HTTPException(status_code=403, detail="Cuộc trò chuyện không tồn tại hoặc không có quyền truy cập.")
+            
+        cur.execute("""
+            SELECT id, role, content, created_at 
+            FROM ai_chat_history 
+            WHERE conversation_id = %s 
+            ORDER BY created_at ASC
+        """, (conversation_id,))
+        return {"status": "success", "data": cur.fetchall()}
+    finally: cur.close()
+
+@app.delete("/ai/conversations/{conversation_id}", tags=["AI Assistant"])
+def delete_conversation(conversation_id: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Xóa một cuộc trò chuyện (CASCADE sẽ tự xóa tin nhắn)"""
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM ai_conversations WHERE id = %s AND user_id = %s RETURNING id", (conversation_id, current_user.id))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Không tìm thấy cuộc trò chuyện.")
+        conn.commit()
+        return {"status": "success", "message": "Đã xóa cuộc trò chuyện."}
+    finally: cur.close()
+
+@app.post("/ai/chat", tags=["AI Assistant"])
+def chat_with_llama(payload: schemas.AIChatRequest, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        conversation_id = getattr(payload, 'conversation_id', None)
+        
+        # 1. Quản lý Phiên chat (Conversation)
+        if not conversation_id:
+            # Lấy 30 ký tự đầu của câu hỏi làm Title
+            first_msg = next((m.content for m in payload.messages if m.role == 'user'), "Trò chuyện mới")
+            title = (first_msg[:30] + '...') if len(first_msg) > 30 else first_msg
+
+            cur.execute("INSERT INTO ai_conversations (user_id, title) VALUES (%s, %s) RETURNING id", (current_user.id, title))
+            conversation_id = str(cur.fetchone()['id'])
+        else:
+            cur.execute("SELECT id FROM ai_conversations WHERE id = %s AND user_id = %s", (conversation_id, current_user.id))
+            if not cur.fetchone():
+                raise HTTPException(status_code=403, detail="Cấm truy cập cuộc trò chuyện này!")
+            cur.execute("UPDATE ai_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = %s", (conversation_id,))
+
+        # 2. Xử lý Logic AI LLM (Groq)
+        messages = [{"role": "system", "content": "Bạn là Trợ lý AI Health. Dùng Markdown. Trả lời trực tiếp, rõ ràng."}]
         for msg in payload.messages:
             messages.append({"role": "assistant" if msg.role == "bot" else "user", "content": msg.content})
-        chat_completion = groq_client.chat.completions.create(messages=messages, model="llama-3.1-8b-instant", temperature=0.6, max_tokens=1024)
-        return {"status": "success", "data": {"reply": chat_completion.choices[0].message.content}}
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+        
+        chat_completion = groq_client.chat.completions.create(
+            messages=messages, 
+            model="llama-3.1-8b-instant", 
+            temperature=0.6, 
+            max_tokens=1024
+        )
+        bot_reply = chat_completion.choices[0].message.content
+
+        # 3. Lưu cặp tin nhắn MỚI NHẤT vào Database để tránh lặp dữ liệu
+        last_user_msg = payload.messages[-1].content if payload.messages else ""
+        if last_user_msg:
+            cur.execute(
+                "INSERT INTO ai_chat_history (conversation_id, user_id, role, content) VALUES (%s, %s, 'user', %s)",
+                (conversation_id, current_user.id, last_user_msg)
+            )
+        cur.execute(
+            "INSERT INTO ai_chat_history (conversation_id, user_id, role, content) VALUES (%s, %s, 'assistant', %s)",
+            (conversation_id, current_user.id, bot_reply)
+        )
+        conn.commit()
+
+        return {
+            "status": "success", 
+            "data": {
+                "conversation_id": conversation_id,
+                "reply": bot_reply
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e: 
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally: 
+        cur.close()
 
 # ==========================================
 # 7. QUẢN TRỊ KIỂM DUYỆT (MODERATION)

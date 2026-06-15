@@ -147,13 +147,63 @@ class UserApiService {
         "folder": folder, // Điều hướng thư mục lưu trữ Backend
       });
       
-      final res = await _dio.post('/media/upload', data: formData);
+      final res = await _dio.post(
+        '/media/upload', 
+        data: formData,
+        options: Options(headers: {'Content-Type': 'multipart/form-data'}),
+      );
       if (res.statusCode == 200 && res.data['status'] == 'success') {
         return res.data['url'];
       }
       return null;
     } catch (e) {
       return null;
+    }
+  }
+
+  // 5b. TẢI VIDEO LÊN CLOUDFLARE R2 CHUYÊN DỤNG (Hỗ trợ theo dõi tiến trình và không nuốt lỗi)
+  static Future<String?> uploadVideo(File file, String folder, {Function(int, int)? onSendProgress}) async {
+    String fileName = file.path.split('/').last;
+    String ext = fileName.split('.').last.toLowerCase();
+    
+    FormData formData = FormData.fromMap({
+      "file": await MultipartFile.fromFile(
+        file.path, 
+        filename: fileName,
+        contentType: MediaType('video', ext)
+      ),
+      "folder": folder,
+    });
+    
+    final res = await _dio.post(
+      '/media/upload', 
+      data: formData,
+      options: Options(
+        headers: {'Content-Type': 'multipart/form-data'},
+        receiveTimeout: const Duration(minutes: 10),
+        sendTimeout: const Duration(minutes: 10),
+      ),
+      onSendProgress: onSendProgress,
+    );
+    
+    if (res.statusCode == 200 && res.data['status'] == 'success') {
+      return res.data['url'];
+    }
+    throw Exception(res.data['detail'] ?? 'Backend không trả về trạng thái thành công');
+  }
+
+  // 6. Lấy danh sách nội dung đã lưu
+
+  // 6. Lấy danh sách nội dung đã lưu
+  static Future<List<dynamic>> fetchSavedItems() async {
+    try {
+      final res = await _dio.get('/user/saves');
+      if (res.statusCode == 200 && res.data['status'] == 'success') {
+        return res.data['data'] ?? [];
+      }
+      return [];
+    } catch (e) {
+      return [];
     }
   }
 }

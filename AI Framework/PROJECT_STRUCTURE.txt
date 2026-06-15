@@ -1,12 +1,136 @@
 ﻿/
 ├── .git/ [SYSTEM FOLDER]
 ├── .venv/ [SYSTEM FOLDER]
-├── .vscode/ [SYSTEM FOLDER]
-├── __pycache__/ [SYSTEM FOLDER]
+├── .vscode/
+│   ├── database.py - Shortcut.lnk
+│   └── settings.json
+├── pycache/ [SYSTEM FOLDER]
+├── AI Framework/
+│   ├── AI_CONTEXT.md
+│   ├── AI_RULES.md
+│   ├── openapi.json
+│   ├── PROJECT_BASH.txt
+│   ├── PROJECT_STRUCTURE.txt
+│   └── TASK_TEMPLATE.txt
 ├── frontend/
 │   ├── .git/ [SYSTEM FOLDER]
 │   ├── .next/ [SYSTEM FOLDER]
-│   ├── android/ [SYSTEM FOLDER]
+│   ├── android/
+│   │   ├── .gradle/ [SYSTEM FOLDER]
+│   │   ├── .idea/ [SYSTEM FOLDER]
+│   │   ├── app/
+│   │   │   ├── build/ [SYSTEM FOLDER]
+│   │   │   ├── src/
+│   │   │   │   ├── androidTest/
+│   │   │   │   │   └── java/
+│   │   │   │   │       └── com/
+│   │   │   │   │           └── getcapacitor/
+│   │   │   │   │               └── myapp/
+│   │   │   │   │                   └── ExampleInstrumentedTest.java
+│   │   │   │   ├── main/
+│   │   │   │   │   ├── assets/
+│   │   │   │   │   │   ├── public/ [SYSTEM FOLDER]
+│   │   │   │   │   │   ├── capacitor.config.json
+│   │   │   │   │   │   └── capacitor.plugins.json
+│   │   │   │   │   ├── java/
+│   │   │   │   │   │   └── com/
+│   │   │   │   │   │       └── aihealth/
+│   │   │   │   │   │           └── share/
+│   │   │   │   │   │               └── MainActivity.java
+│   │   │   │   │   ├── res/
+│   │   │   │   │   │   ├── drawable/
+│   │   │   │   │   │   │   ├── ic_launcher_background.xml
+│   │   │   │   │   │   │   └── splash.png
+│   │   │   │   │   │   ├── drawable-land-hdpi/
+│   │   │   │   │   │   │   └── splash.png
+│   │   │   │   │   │   ├── drawable-land-mdpi/
+│   │   │   │   │   │   │   └── splash.png
+│   │   │   │   │   │   ├── drawable-land-xhdpi/
+│   │   │   │   │   │   │   └── splash.png
+│   │   │   │   │   │   ├── drawable-land-xxhdpi/
+│   │   │   │   │   │   │   └── splash.png
+│   │   │   │   │   │   ├── drawable-land-xxxhdpi/
+│   │   │   │   │   │   │   └── splash.png
+│   │   │   │   │   │   ├── drawable-port-hdpi/
+│   │   │   │   │   │   │   └── splash.png
+│   │   │   │   │   │   ├── drawable-port-mdpi/
+│   │   │   │   │   │   │   └── splash.png
+│   │   │   │   │   │   ├── drawable-port-xhdpi/
+│   │   │   │   │   │   │   └── splash.png
+│   │   │   │   │   │   ├── drawable-port-xxhdpi/
+│   │   │   │   │   │   │   └── splash.png
+│   │   │   │   │   │   ├── drawable-port-xxxhdpi/
+│   │   │   │   │   │   │   └── splash.png
+│   │   │   │   │   │   ├── drawable-v24/
+│   │   │   │   │   │   │   └── ic_launcher_foreground.xml
+│   │   │   │   │   │   ├── layout/
+│   │   │   │   │   │   │   └── activity_main.xml
+│   │   │   │   │   │   ├── mipmap-anydpi-v26/
+│   │   │   │   │   │   │   ├── ic_launcher.xml
+│   │   │   │   │   │   │   └── ic_launcher_round.xml
+│   │   │   │   │   │   ├── mipmap-hdpi/
+│   │   │   │   │   │   │   ├── ic_launcher.png
+│   │   │   │   │   │   │   ├── ic_launcher_foreground.png
+│   │   │   │   │   │   │   └── ic_launcher_round.png
+│   │   │   │   │   │   ├── mipmap-mdpi/
+│   │   │   │   │   │   │   ├── ic_launcher.png
+│   │   │   │   │   │   │   ├── ic_launcher_foreground.png
+│   │   │   │   │   │   │   └── ic_launcher_round.png
+│   │   │   │   │   │   ├── mipmap-xhdpi/
+│   │   │   │   │   │   │   ├── ic_launcher.png
+│   │   │   │   │   │   │   ├── ic_launcher_foreground.png
+│   │   │   │   │   │   │   └── ic_launcher_round.png
+│   │   │   │   │   │   ├── mipmap-xxhdpi/
+│   │   │   │   │   │   │   ├── ic_launcher.png
+│   │   │   │   │   │   │   ├── ic_launcher_foreground.png
+│   │   │   │   │   │   │   └── ic_launcher_round.png
+│   │   │   │   │   │   ├── mipmap-xxxhdpi/
+│   │   │   │   │   │   │   ├── ic_launcher.png
+│   │   │   │   │   │   │   ├── ic_launcher_foreground.png
+│   │   │   │   │   │   │   └── ic_launcher_round.png
+│   │   │   │   │   │   ├── values/
+│   │   │   │   │   │   │   ├── ic_launcher_background.xml
+│   │   │   │   │   │   │   ├── strings.xml
+│   │   │   │   │   │   │   └── styles.xml
+│   │   │   │   │   │   └── xml/
+│   │   │   │   │   │       ├── config.xml
+│   │   │   │   │   │       └── file_paths.xml
+│   │   │   │   │   └── AndroidManifest.xml
+│   │   │   │   └── test/
+│   │   │   │       └── java/
+│   │   │   │           └── com/
+│   │   │   │               └── getcapacitor/
+│   │   │   │                   └── myapp/
+│   │   │   │                       └── ExampleUnitTest.java
+│   │   │   ├── .gitignore
+│   │   │   ├── build.gradle
+│   │   │   ├── capacitor.build.gradle
+│   │   │   └── proguard-rules.pro
+│   │   ├── build/ [SYSTEM FOLDER]
+│   │   ├── capacitor-cordova-android-plugins/
+│   │   │   ├── build/ [SYSTEM FOLDER]
+│   │   │   ├── src/
+│   │   │   │   └── main/
+│   │   │   │       ├── java/
+│   │   │   │       │   └── .gitkeep
+│   │   │   │       ├── res/
+│   │   │   │       │   └── .gitkeep
+│   │   │   │       └── AndroidManifest.xml
+│   │   │   ├── build.gradle
+│   │   │   └── cordova.variables.gradle
+│   │   ├── gradle/
+│   │   │   └── wrapper/
+│   │   │       ├── gradle-wrapper.jar
+│   │   │       └── gradle-wrapper.properties
+│   │   ├── .gitignore
+│   │   ├── build.gradle
+│   │   ├── capacitor.settings.gradle
+│   │   ├── gradle.properties
+│   │   ├── gradlew.
+│   │   ├── gradlew.bat
+│   │   ├── local.properties
+│   │   ├── settings.gradle
+│   │   └── variables.gradle
 │   ├── app/
 │   │   ├── [username]/
 │   │   │   ├── page.tsx
@@ -86,7 +210,15 @@
 │   │   └── UIContext.tsx
 │   ├── node_modules/ [SYSTEM FOLDER]
 │   ├── out/ [SYSTEM FOLDER]
-│   ├── public/ [SYSTEM FOLDER]
+│   ├── public/
+│   │   ├── file.svg
+│   │   ├── globe.svg
+│   │   ├── next.svg
+│   │   ├── vercel.svg
+│   │   ├── video-1.mp4
+│   │   ├── video-2.mp4
+│   │   ├── video-3.mp4
+│   │   └── window.svg
 │   ├── store/
 │   │   └── useVoucherStore.ts
 │   ├── utils/
@@ -107,10 +239,93 @@
 ├── frontend_mobile/
 │   ├── .dart_tool/ [SYSTEM FOLDER]
 │   ├── .idea/ [SYSTEM FOLDER]
-│   ├── android/ [SYSTEM FOLDER]
+│   ├── android/
+│   │   ├── .gradle/ [SYSTEM FOLDER]
+│   │   ├── .kotlin/
+│   │   │   ├── errors/
+│   │   │   │   ├── errors-1779925735863.log
+│   │   │   │   ├── errors-1779925879629.log
+│   │   │   │   └── errors-1779926540305.log
+│   │   │   └── sessions/
+│   │   ├── app/
+│   │   │   ├── src/
+│   │   │   │   ├── debug/
+│   │   │   │   │   └── AndroidManifest.xml
+│   │   │   │   ├── main/
+│   │   │   │   │   ├── java/
+│   │   │   │   │   │   └── io/
+│   │   │   │   │   │       └── flutter/
+│   │   │   │   │   │           └── plugins/
+│   │   │   │   │   │               └── GeneratedPluginRegistrant.java
+│   │   │   │   │   ├── kotlin/
+│   │   │   │   │   │   └── com/
+│   │   │   │   │   │       └── gsx/
+│   │   │   │   │   │           └── health/
+│   │   │   │   │   │               └── frontend_mobile/
+│   │   │   │   │   │                   └── MainActivity.kt
+│   │   │   │   │   ├── res/
+│   │   │   │   │   │   ├── drawable/
+│   │   │   │   │   │   │   └── launch_background.xml
+│   │   │   │   │   │   ├── drawable-hdpi/
+│   │   │   │   │   │   │   └── ic_launcher_foreground.png
+│   │   │   │   │   │   ├── drawable-mdpi/
+│   │   │   │   │   │   │   └── ic_launcher_foreground.png
+│   │   │   │   │   │   ├── drawable-v21/
+│   │   │   │   │   │   │   └── launch_background.xml
+│   │   │   │   │   │   ├── drawable-xhdpi/
+│   │   │   │   │   │   │   └── ic_launcher_foreground.png
+│   │   │   │   │   │   ├── drawable-xxhdpi/
+│   │   │   │   │   │   │   └── ic_launcher_foreground.png
+│   │   │   │   │   │   ├── drawable-xxxhdpi/
+│   │   │   │   │   │   │   └── ic_launcher_foreground.png
+│   │   │   │   │   │   ├── mipmap-anydpi-v26/
+│   │   │   │   │   │   │   └── launcher_icon.xml
+│   │   │   │   │   │   ├── mipmap-hdpi/
+│   │   │   │   │   │   │   ├── ic_launcher.png
+│   │   │   │   │   │   │   └── launcher_icon.png
+│   │   │   │   │   │   ├── mipmap-mdpi/
+│   │   │   │   │   │   │   ├── ic_launcher.png
+│   │   │   │   │   │   │   └── launcher_icon.png
+│   │   │   │   │   │   ├── mipmap-xhdpi/
+│   │   │   │   │   │   │   ├── ic_launcher.png
+│   │   │   │   │   │   │   └── launcher_icon.png
+│   │   │   │   │   │   ├── mipmap-xxhdpi/
+│   │   │   │   │   │   │   ├── ic_launcher.png
+│   │   │   │   │   │   │   └── launcher_icon.png
+│   │   │   │   │   │   ├── mipmap-xxxhdpi/
+│   │   │   │   │   │   │   ├── ic_launcher.png
+│   │   │   │   │   │   │   └── launcher_icon.png
+│   │   │   │   │   │   ├── values/
+│   │   │   │   │   │   │   ├── colors.xml
+│   │   │   │   │   │   │   ├── strings.xml
+│   │   │   │   │   │   │   └── styles.xml
+│   │   │   │   │   │   ├── values-night/
+│   │   │   │   │   │   │   └── styles.xml
+│   │   │   │   │   │   └── xml/
+│   │   │   │   │   │       └── network_security_config.xml
+│   │   │   │   │   └── AndroidManifest.xml
+│   │   │   │   └── profile/
+│   │   │   │       └── AndroidManifest.xml
+│   │   │   ├── build.gradle.kts
+│   │   │   └── google-services.json
+│   │   ├── build/ [SYSTEM FOLDER]
+│   │   ├── gradle/
+│   │   │   └── wrapper/
+│   │   │       ├── gradle-wrapper.jar
+│   │   │       └── gradle-wrapper.properties
+│   │   ├── .gitignore
+│   │   ├── build.gradle.kts
+│   │   ├── frontend_mobile_android.iml
+│   │   ├── gradle.properties
+│   │   ├── gradlew.
+│   │   ├── gradlew.bat
+│   │   ├── local.properties
+│   │   └── settings.gradle.kts
 │   ├── assets/
-│   │   └── images/
-│   │       └── app_icon.png
+│   │   ├── images/
+│   │   │   └── app_icon.png
+│   │   └── lottie/
+│   │       └── 20733-39021-assistant-character.riv
 │   ├── build/ [SYSTEM FOLDER]
 │   ├── lib/
 │   │   ├── core/
@@ -130,9 +345,9 @@
 │   │   │   │   ├── partner_map_model.dart
 │   │   │   │   ├── service_model.dart
 │   │   │   │   ├── video_model.dart
+│   │   │   │   ├── voucher_model.dart
 │   │   │   │   ├── wallet_model.dart
 │   │   │   │   └── withdrawal_request_model.dart
-│   │   │   │   └── voucher_model.dart
 │   │   │   └── services/
 │   │   │       ├── admin_api_service.dart
 │   │   │       ├── appointment_api_service.dart
@@ -151,10 +366,11 @@
 │   │   │   │   │   ├── admin_dashboard_screen.dart
 │   │   │   │   │   ├── creator_dashboard_screen.dart
 │   │   │   │   │   ├── moderator_dashboard_screen.dart
-│   │   │   │   │   ├── partner_dashboard_screen.dart
-│   │   │   │   │   └── Untitled.
+│   │   │   │   │   └── partner_dashboard_screen.dart
 │   │   │   │   ├── ai/
 │   │   │   │   │   └── ai_chat_screen.dart
+│   │   │   │   ├── auth/
+│   │   │   │   │   └── onboarding_screen.dart
 │   │   │   │   ├── calendar/
 │   │   │   │   │   └── calendar_screen.dart
 │   │   │   │   ├── explore/
@@ -182,19 +398,20 @@
 │   │   │       ├── booking_bottom_sheet.dart
 │   │   │       ├── comment_bottom_sheet.dart
 │   │   │       ├── feed_video_player.dart
+│   │   │       ├── glass_wrapper.dart
 │   │   │       ├── guest_profile_view.dart
 │   │   │       ├── mini_video_player.dart
 │   │   │       └── service_booking_bottom_sheet.dart
-│   │   │── shaders/
-│   │    │      └── liquid_glass_lens.frag	
 │   │   └── main.dart
+│   ├── shaders/
+│   │   └── liquid_glass_lens.frag
 │   ├── test/
 │   ├── .flutter-plugins-dependencies
 │   ├── .gitignore
 │   ├── .metadata
 │   ├── analysis_options.yaml
 │   ├── frontend_mobile.iml
-│   ├── pubspec.lock
+│   ├── pubspec.lock 
 │   ├── pubspec.yaml
 │   └── README.md
 ├── node_modules/ [SYSTEM FOLDER]
@@ -204,6 +421,7 @@
 ├── AI_STATE_Temp.txt
 ├── database.py
 ├── Feedback_01.docx
+├── firebase_credentials.json
 ├── main.py
 ├── note.txt
 ├── package-lock.json
@@ -211,5 +429,3 @@
 ├── requirements.txt
 ├── schemas.py
 └── utils.py
-
-

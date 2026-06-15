@@ -16,12 +16,14 @@ import '../../presentation/screens/admin/creator_dashboard_screen.dart'; // IMPO
 import '../../presentation/screens/splash_screen.dart'; // Đổi đường dẫn nếu bạn lưu ở thư mục khác
 import '../../presentation/screens/auth/onboarding_screen.dart';
 import '../../presentation/screens/login_screen.dart';
+import '../../presentation/widgets/auth_guard.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final GoRouter appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
   initialLocation: '/splash', // Đặt Splash làm trang chạy đầu tiên
+  refreshListenable: AuthNotifier.instance, // Lắng nghe thay đổi Auth để tự động cập nhật Navigation
   routes: [
     // KHAI BÁO TUYẾN ĐƯỜNG SPLASH ĐỘC LẬP (Không dính Bottom Bar)
     GoRoute(
@@ -44,7 +46,7 @@ final GoRouter appRouter = GoRouter(
         return MainHubScreen(navigationShell: navigationShell);
       },
       branches: [
-        StatefulShellBranch(routes: [GoRoute(path: '/', builder: (context, state) => const TikTokFeedsScreen())]),
+        StatefulShellBranch(routes: [GoRoute(path: '/', builder: (context, state) => TikTokFeedsScreen(filter: state.uri.queryParameters['filter']))]),
         StatefulShellBranch(routes: [GoRoute(path: '/explore', builder: (context, state) => const ExploreScreen())]),
         StatefulShellBranch(routes: [GoRoute(path: '/promo', builder: (context, state) => const PromoScreen())]),
         StatefulShellBranch(routes: [GoRoute(path: '/ai', builder: (context, state) => const AiChatScreen())]),

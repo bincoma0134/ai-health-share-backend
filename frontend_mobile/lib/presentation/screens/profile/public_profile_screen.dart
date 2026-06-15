@@ -6,6 +6,7 @@ import '../../widgets/mini_video_player.dart';
 import '../../widgets/app_toast.dart';
 import '../../../core/network/api_client.dart';
 import '../../widgets/booking_bottom_sheet.dart';
+import '../../widgets/auth_guard.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String username;
@@ -232,7 +233,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                         width: 180, height: 44,
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(backgroundColor: _isFollowing ? const Color(0xFFD4D4D8) : primaryColor, foregroundColor: _isFollowing ? const Color(0xFF18181B) : Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
-                          onPressed: _handleToggleFollow,
+                          onPressed: () => AuthGuard.run(context, action: _handleToggleFollow),
                           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(_isFollowing ? Icons.check : Icons.person_add, size: 18), const SizedBox(width: 8), Text(_isFollowing ? 'ĐÃ QUAN TÂM' : 'QUAN TÂM', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.5))]),
                         ),
                       ),
@@ -309,6 +310,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                             child: ElevatedButton(
                               style: ElevatedButton.styleFrom(backgroundColor: primaryColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
                               onPressed: () {
+                                AuthGuard.run(context, action: () {
                                 // Ánh xạ dữ liệu dịch vụ sang cấu trúc tương thích với BookingBottomSheet
                                 final targetUserId = profile['id'] ?? '';
                                 final Map<String, dynamic> adaptedVideoContext = {
@@ -321,11 +323,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 };
                                 
                                 showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (context) => BookingBottomSheet(video: adaptedVideoContext),
-                                );
+                                    context: context,
+                                    isScrollControlled: true,
+                                    backgroundColor: Colors.transparent,
+                                    builder: (context) => BookingBottomSheet(video: adaptedVideoContext),
+                                  );
+                                });
                               },
                               child: const Text('ĐẶT LỊCH', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10)),
                             ),
