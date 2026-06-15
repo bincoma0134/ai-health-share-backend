@@ -1661,7 +1661,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
     final String endIso = DateTime(parsed.year, parsed.month, parsed.day, endTime.hour, endTime.minute).toIso8601String();
 
     try {
-      await ApiClient.instance.put('/appointments/$id/status', data: {
+      await ApiClient.instance.patch('/appointments/$id/respond', data: {
         'action': 'ACCEPT',
         'start_time': startIso,
         'end_time': endIso,
@@ -1701,7 +1701,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
               }
               Navigator.pop(context);
               try {
-                await ApiClient.instance.put('/appointments/$id/status', data: {
+                await ApiClient.instance.patch('/appointments/$id/respond', data: {
                   'action': 'REJECT',
                   'reason': reasonCtrl.text.trim(),
                 });

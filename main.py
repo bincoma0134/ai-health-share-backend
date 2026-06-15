@@ -1579,13 +1579,10 @@ def preview_appointment_payment(appointment_id: str, current_user = Depends(veri
         # --- BỌC THÉP VOUCHER STATE PERSISTENCE ---
         # Ưu tiên lấy giá final đã được chốt từ lúc tạo Booking
         db_total_amount = float(appt.get("total_amount", 0))
-        if db_total_amount > 0 and original_amount > 0 and applied_uv_id:
-            # Nội suy số tiền giảm giá thực tế từ Database để tránh rủi ro tính toán sai
-            max_discount = original_amount - db_total_amount
-            if max_discount < 0: max_discount = 0
-            final_amount = db_total_amount
-        else:
-            final_amount = original_amount - max_discount
+        if db_total_amount > 0:
+            original_amount = db_total_amount
+            
+        final_amount = original_amount - max_discount
             
         if final_amount < 10000: final_amount = 10000 
             
@@ -1652,12 +1649,10 @@ def create_appointment_payment(appointment_id: str, request: Request, current_us
         # --- BỌC THÉP VOUCHER STATE PERSISTENCE ---
         # Ưu tiên lấy giá final đã được chốt từ lúc tạo Booking để đảm bảo Payment chính xác
         db_total_amount = float(appt.get("total_amount", 0))
-        if db_total_amount > 0 and original_amount > 0 and applied_uv_id:
-            max_discount = original_amount - db_total_amount
-            if max_discount < 0: max_discount = 0
-            final_amount = db_total_amount
-        else:
-            final_amount = original_amount - max_discount
+        if db_total_amount > 0:
+            original_amount = db_total_amount
+            
+        final_amount = original_amount - max_discount
             
         if final_amount < 10000: final_amount = 10000 # Ràng buộc PayOS tối thiểu 10k
             
