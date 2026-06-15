@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_compress/video_compress.dart';
 import '../../../data/services/user_api_service.dart';
 
 class VideoUploader extends StatefulWidget {
@@ -54,9 +55,24 @@ class _VideoUploaderState extends State<VideoUploader> {
     });
 
     try {
-      // 2. Upload ngầm với cổng stream chuyên dụng và lắng nghe tiến trình nhị phân
+      // 2. THUẬT TOÁN NÉN TỐI ƯU: Nén video tại Local trước khi tải lên để giảm 70-80% dung lượng
+      File fileToUpload = file;
+      try {
+        final MediaInfo? mediaInfo = await VideoCompress.compressVideo(
+          file.path,
+          quality: VideoQuality.MediumQuality, // Cân bằng hoàn hảo giữa dung lượng và chất lượng
+          deleteOrigin: false, // Giữ nguyên file gốc trong máy người dùng
+        );
+        if (mediaInfo != null && mediaInfo.file != null) {
+          fileToUpload = mediaInfo.file!;
+        }
+      } catch (e) {
+        debugPrint("Lỗi thuật toán nén (Fallback sang file gốc): $e");
+      }
+
+      // 3. Upload ngầm file đã nén với cổng stream chuyên dụng và lắng nghe tiến trình nhị phân
       final url = await UserApiService.uploadVideo(
-        file,
+        fileToUpload,
         widget.folder,
         onSendProgress: (int sent, int total) {
           if (mounted && total > 0) {
@@ -155,7 +171,7 @@ class _VideoUploaderState extends State<VideoUploader> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      const Text('Hệ thống đang tải lên...', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                      Text(_progress == 0.0 ? 'Đang xử lý nén video...' : 'Hệ thống đang tải lên...', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1)),
                       const SizedBox(height: 4),
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 12),

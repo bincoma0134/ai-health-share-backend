@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../../data/models/appointment_model.dart';
 import '../../../data/services/calendar_api_service.dart';
+import '../../../core/network/api_client.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/auth_bottom_sheet.dart';
 import '../../widgets/auth_guard.dart';
@@ -17,7 +18,7 @@ class CalendarScreen extends StatefulWidget {
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
+class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObserver {
   List<AppointmentModel> _appointments = [];
   bool _isLoading = true;
   
@@ -139,7 +140,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // Lắng nghe App Lifecycle
     _loadData();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // 🚀 ĐỒNG BỘ LOGIC: Tự động tải lại lịch hẹn ngay khi khách quay về từ cổng thanh toán PayOS
+      _loadData();
+    }
   }
 
   Future<void> _loadData() async {
@@ -1385,6 +1395,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 const SizedBox(height: 12),
                                 _buildActionWidgetButton('Hủy yêu cầu đặt lịch', Colors.red.shade50, Colors.red, () => _handleCancel(appt.id)),
                               ],
+                              
+                              // ĐỒNG BỘ LOGIC WEB: Nút hành động dành riêng cho Đối tác
+                              if (appt.status.toUpperCase() == 'WAITING_PARTNER' && _isMyClient) ...[
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(child: _buildActionWidgetButton('Từ chối', Colors.red.shade50, Colors.red, () => _handlePartnerReject(appt.id))),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: _buildActionWidgetButton('Duyệt & Chọn giờ', const Color(0xFFEAF8EE), const Color(0xFF22C55E), () => _handlePartnerAccept(appt.id, appt.startTime))),
+                                  ],
+                                ),
+                              ],
+
                               if (appt.status.toUpperCase() == 'PENDING_PAYMENT' && !_isMyClient) ...[
                                 const SizedBox(height: 12),
                                 _buildActionWidgetButton('Xem hóa đơn & Thanh toán', const Color(0xFF3B82F6).withOpacity(0.08), const Color(0xFF3B82F6), () => _handlePayment(appt.id)), // Đổi sang tone xanh lam an toàn bảo chứng Escrow
@@ -1607,6 +1630,94 @@ class _CalendarScreenState extends State<CalendarScreen> {
       },
     );
   }
+  // ĐỒNG BỘ LOGIC WEB: Đối tác duyệt lịch phải thiết lập khung giờ thực tế
+  Future<void> _handlePartnerAccept(String id, String? startTimeString) async {
+    final TimeOfDay? startTime = await showTimePicker(
+      context: context, 
+      initialTime: const TimeOfDay(hour: 9, minute: 0),
+      helpText: 'CHỌN GIỜ BẮT ĐẦU PHỤC VỤ',
+    );
+    if (startTime == null || !mounted) return;
+
+    final TimeOfDay? endTime = await showTimePicker(
+      context: context, 
+      initialTime: TimeOfDay(hour: startTime.hour + 1, minute: startTime.minute),
+      helpText: 'CHỌN GIỜ KẾT THÚC DỰ KIẾN',
+    );
+    if (endTime == null || !mounted) return;
+
+    // Chuẩn hóa ISO 8601 bằng cách bóc tách chuỗi ngày thực tế từ startTime
+    String baseDate = DateTime.now().toIso8601String().split('T')[0];
+    if (startTimeString != null && startTimeString.isNotEmpty) {
+      if (startTimeString.contains('T')) {
+        baseDate = startTimeString.split('T')[0];
+      } else {
+        baseDate = startTimeString;
+      }
+    }
+    
+    final DateTime parsed = DateTime.parse(baseDate);
+    final String startIso = DateTime(parsed.year, parsed.month, parsed.day, startTime.hour, startTime.minute).toIso8601String();
+    final String endIso = DateTime(parsed.year, parsed.month, parsed.day, endTime.hour, endTime.minute).toIso8601String();
+
+    try {
+      await ApiClient.instance.put('/appointments/$id/status', data: {
+        'action': 'ACCEPT',
+        'start_time': startIso,
+        'end_time': endIso,
+      });
+      if (mounted) AppToast.show(context: context, message: '🎉 Đã duyệt lịch hẹn và chốt giờ thành công!', isSuccess: true);
+      _loadData();
+    } catch (e) {
+      if (mounted) AppToast.show(context: context, message: '❌ Lỗi khi duyệt lịch.', isSuccess: false);
+    }
+  }
+
+  // ĐỒNG BỘ LOGIC WEB: Đối tác từ chối bắt buộc phải có lý do minh bạch
+  Future<void> _handlePartnerReject(String id) async {
+    final TextEditingController reasonCtrl = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Từ chối yêu cầu', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        content: TextField(
+          controller: reasonCtrl,
+          decoration: const InputDecoration(
+            hintText: 'Nhập lý do từ chối (bắt buộc)...',
+            hintStyle: TextStyle(fontSize: 13),
+            border: OutlineInputBorder(),
+          ),
+          maxLines: 2,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              if (reasonCtrl.text.trim().isEmpty) {
+                AppToast.show(context: context, message: 'Vui lòng nhập lý do!', isSuccess: false);
+                return;
+              }
+              Navigator.pop(context);
+              try {
+                await ApiClient.instance.put('/appointments/$id/status', data: {
+                  'action': 'REJECT',
+                  'reason': reasonCtrl.text.trim(),
+                });
+                if (mounted) AppToast.show(context: context, message: 'Đã từ chối lịch hẹn.', isSuccess: true);
+                _loadData();
+              } catch (e) {
+                if (mounted) AppToast.show(context: context, message: '❌ Lỗi khi từ chối.', isSuccess: false);
+              }
+            },
+            child: const Text('Từ chối', style: TextStyle(color: Colors.white)),
+          )
+        ],
+      ),
+    );
+  }
+
   Future<void> _handlePayment(String id) async {
     // 🚀 ĐỒNG BỘ HOÀN HẢO LOGIC WEB: Gọi API Preview hóa đơn minh bạch trước khi chuyển hướng cổng thanh toán
     final preview = await CalendarApiService.fetchPaymentPreview(id);
@@ -1698,14 +1809,91 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+  // ĐỒNG BỘ LOGIC WEB: Khách hàng xác nhận giải ngân kèm đánh giá chất lượng
   Future<void> _handleUserConfirm(String id) async {
-    await CalendarApiService.confirmCompletion(id);
-    AppToast.show(context: context, message: '🎉 Đã ký xác nhận giải ngân thành công!', isSuccess: true);
-    _loadData();
+    bool isSatisfied = true;
+    final TextEditingController feedbackCtrl = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text('Xác nhận & Đánh giá', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Bạn có hài lòng với chất lượng dịch vụ y tế vừa nhận không?', style: TextStyle(fontSize: 13), textAlign: TextAlign.center),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Hài lòng 💖'),
+                        selected: isSatisfied,
+                        onSelected: (val) => setDialogState(() => isSatisfied = true),
+                        selectedColor: const Color(0xFF80BF84).withOpacity(0.3),
+                      ),
+                      const SizedBox(width: 12),
+                      ChoiceChip(
+                        label: const Text('Chưa tốt 💔'),
+                        selected: !isSatisfied,
+                        onSelected: (val) => setDialogState(() => isSatisfied = false),
+                        selectedColor: Colors.red.withOpacity(0.2),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: feedbackCtrl,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      hintText: 'Để lại góp ý cho Cơ sở (không bắt buộc)...',
+                      hintStyle: const TextStyle(fontSize: 12, color: Colors.black38),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.all(12),
+                    ),
+                  )
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4C8D50),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    try {
+                      await ApiClient.instance.post('/appointments/$id/confirm', data: {
+                        'is_satisfied': isSatisfied,
+                        'feedback': feedbackCtrl.text.trim(),
+                      });
+                      if (mounted) AppToast.show(context: context, message: '🎉 Cảm ơn bạn! Đã ký xác nhận và giải ngân tiền cho Cơ sở.', isSuccess: true);
+                      _loadData();
+                    } catch (e) {
+                      if (mounted) AppToast.show(context: context, message: '❌ Lỗi hệ thống, chưa thể xác nhận.', isSuccess: false);
+                    }
+                  },
+                  child: const Text('Gửi xác nhận', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          }
+        );
+      }
+    );
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // Gỡ lắng nghe
     _searchController.dispose();
     for (var controller in _checkInControllers.values) {
       controller.dispose();

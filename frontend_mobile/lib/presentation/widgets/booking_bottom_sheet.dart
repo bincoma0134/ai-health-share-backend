@@ -33,9 +33,9 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
 
-  // ĐÃ KHẮC PHỤC DỨT ĐIỂM: Đổi sang cú pháp chấm gọi thuộc tính đối tượng Class VideoModel chuẩn xác để tránh lấy giá trị rỗng gây lỗi 404
-  double get _basePrice => (widget.video.price).toDouble();
-  String get _partnerId => (widget.video.authorId).toString();
+  // Xử lý linh hoạt: Tự động tương thích cả dạng Object Model và Map truyền từ Profile sang
+  double get _basePrice => (widget.video is Map ? widget.video['price'] : widget.video.price).toDouble();
+  String get _partnerId => (widget.video is Map ? widget.video['authorId'] : widget.video.authorId).toString();
   
   double get _finalPrice {
     double total = _basePrice - _discountAmount;
@@ -71,6 +71,54 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
           } else {
             _myVouchers = [];
           }
+
+          // TỰ ĐỘNG CHỌN MÃ GIẢM SÂU NHẤT KHI MỞ POP-UP (Đồng bộ tuyệt đối với Website)
+          if (_myVouchers.isNotEmpty) {
+            dynamic bestVoucher;
+            double maxDiscount = 0.0;
+
+            for (var v in _myVouchers) {
+              final String wStatus = v['wallet_status'] ?? '';
+              if (wStatus != 'UNUSED') continue;
+
+              final String issuerType = (v['issuer_type'] ?? '').toString().toUpperCase();
+              final String? rawIssuerId = v['issuer_id']?.toString();
+              final bool isAdmin = issuerType == 'ADMIN';
+              final bool isPartnerValid = isAdmin || rawIssuerId == _partnerId;
+
+              final double minOrder = (v['min_order_value'] ?? 0).toDouble();
+              if (_basePrice < minOrder || !isPartnerValid) continue;
+
+              final String dType = v['discount_type'] ?? 'FIXED';
+              final double dValue = (v['discount_value'] ?? 0).toDouble();
+              final double maxDiscountAmount = (v['max_discount_amount'] ?? 0).toDouble();
+
+              double currentDiscount = 0.0;
+              if (dType == 'PERCENTAGE') {
+                currentDiscount = _basePrice * (dValue / 100);
+                if (maxDiscountAmount > 0 && currentDiscount > maxDiscountAmount) {
+                  currentDiscount = maxDiscountAmount;
+                }
+              } else {
+                currentDiscount = dValue;
+              }
+
+              if (currentDiscount > _basePrice) currentDiscount = _basePrice;
+
+              if (currentDiscount > maxDiscount) {
+                maxDiscount = currentDiscount;
+                bestVoucher = v;
+              }
+            }
+
+            if (bestVoucher != null) {
+              _appliedVoucherCode = bestVoucher['code'];
+              _appliedVoucherTitle = bestVoucher['title'] ?? 'Ưu đãi';
+              _discountAmount = maxDiscount;
+              _isVoucherSuccess = true;
+            }
+          }
+
           _isLoadingWallet = false;
         });
       }
@@ -120,29 +168,48 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
       }
       setState(() => _isLoading = true);
     try {
+      final code = _affiliateCtrl.text.trim();
+      if (code.isNotEmpty) {
+        try {
+          final validateRes = await ApiClient.instance.get('/affiliates/validate?code=$code');
+          if (validateRes.statusCode != 200) {
+            throw Exception('Mã giới thiệu không hợp lệ');
+          }
+        } catch (_) {
+          if (mounted) {
+            AppToast.show(
+              context: context,
+              message: 'Mã giới thiệu không hợp lệ hoặc không tồn tại!',
+              isSuccess: false,
+            );
+            setState(() => _isLoading = false);
+          }
+          return;
+        }
+      }
+
       final payload = {
         'partner_id': _partnerId,
-        'video_id': widget.video.id, // Đã sửa dứt điểm: Gọi thuộc tính trực tiếp từ Class Object VideoModel gửi chính xác ID lên server làm video_id
-        'appointment_date': DateTime.now().add(const Duration(days: 1)).toIso8601String().split('T')[0], 
-        'start_time': '09:00:00', 
-        'notes': 'Tên: ${_nameCtrl.text} | SĐT: ${_phoneCtrl.text} | Ghi chú: ${_noteCtrl.text}',
-        if (_appliedVoucherCode != null) 'voucher_code': _appliedVoucherCode,
-        if (_affiliateCtrl.text.trim().isNotEmpty) 'affiliate_code': _affiliateCtrl.text.trim(),
+        'video_id': (widget.video is Map ? widget.video['id'] : widget.video.id).toString(),
+        'customer_name': _nameCtrl.text.trim(),
+        'customer_phone': _phoneCtrl.text.trim(),
+        'note': _noteCtrl.text.trim(),
+        'total_amount': _finalPrice.toInt(),
+        'voucher_code': _appliedVoucherCode,
+        'affiliate_code': code.isNotEmpty ? code : null,
       };
-      // 🚀 ĐÃ SỬA: Đổi sang endpoint chính xác theo main.py của bạn để dứt điểm lỗi 404
+      
       await ApiClient.instance.post('/appointments/request', data: payload);
       if (mounted) {
         Navigator.pop(context);
         
-        // 🚀 ĐÃ NÂNG CẤP: Sử dụng AppToast kính mờ cao cấp + Lời nhắc kiểm tra trang Lịch
         AppToast.show(
           context: context,
-          message: '🎉 Đăng ký thành công! Vui lòng kiểm tra trạng thái và tiến độ tại trang Lịch.',
+          message: '🎉 Yêu cầu đã được gửi! Vui lòng theo dõi tại tab \'Lịch hẹn\'.',
           isSuccess: true,
         );
       }
     } catch (e) {
-      // Đồng bộ thông báo lỗi mượt mà qua AppToast
       if (mounted) {
         AppToast.show(
           context: context,
