@@ -306,144 +306,181 @@ def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify
 # ==========================================
 @app.post("/user/svalue/task", tags=["User"])
 def complete_svalue_task(payload: dict, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
-    """API lưu log lịch sử và cộng điểm SValue vật lý vào database"""
+    """API lưu log lịch sử và cập nhật tiến trình nhiệm vụ bảo mật tự động hệ thống"""
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         action_type = payload.get("action_type")
         points = int(payload.get("points_changed", 0))
         ref_id = payload.get("reference_id")
         
-        # 1. Ghi log kiểm toán dòng tiền điểm thưởng vào bảng svalue_transaction_logs
-        cur.execute(
-            "INSERT INTO svalue_transaction_logs (user_id, action_type, points_changed, reference_id) VALUES (%s, %s, %s, %s)",
-            (current_user.id, action_type, points, ref_id)
-        )
+        # Kiểm tra xem hành động có phải là một Mission chính thức không
+        cur.execute("SELECT * FROM missions WHERE code = %s AND status = 'ACTIVE'", (action_type,))
+        mission = cur.fetchone()
         
-        # 2. Cập nhật số dư tổng thể tại ví chuyên trách (Chống Race Condition)
+        if mission:
+            # Luồng xử lý tiến trình Mission Engine (Server-Driven)
+            cur.execute("SELECT * FROM user_missions WHERE user_id = %s AND mission_code = %s FOR UPDATE", (current_user.id, action_type))
+            user_mission = cur.fetchone()
+            
+            now_utc = datetime.utcnow()
+            now_vn = now_utc + timedelta(hours=7)
+            
+            progress = 0
+            status = 'IN_PROGRESS'
+            
+            if user_mission:
+                progress = user_mission['current_progress']
+                status = user_mission['status']
+                last_progress_at = user_mission['last_progress_at']
+                
+                # Kiểm tra Daily Reset nếu là nhiệm vụ hàng ngày
+                if mission['mission_type'] == 'DAILY' and last_progress_at:
+                    last_vn = last_progress_at + timedelta(hours=7)
+                    if last_vn.date() < now_vn.date():
+                        progress = 0
+                        status = 'IN_PROGRESS'
+            
+            # Tăng tiến trình nếu chưa hoàn thành hoặc chưa nhận thưởng
+            if status == 'IN_PROGRESS':
+                progress += 1
+                if progress >= mission['target_value']:
+                    progress = mission['target_value']
+                    status = 'CLAIMABLE'
+                    
+                if user_mission:
+                    cur.execute("""
+                        UPDATE user_missions 
+                        SET current_progress = %s, status = %s, last_progress_at = CURRENT_TIMESTAMP 
+                        WHERE user_id = %s AND mission_code = %s
+                    """, (progress, status, current_user.id, action_type))
+                else:
+                    cur.execute("""
+                        INSERT INTO user_missions (user_id, mission_code, current_progress, status, last_progress_at)
+                        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    """, (current_user.id, action_type, progress, status))
+            
+            conn.commit()
+            return {"status": "success", "mission_code": action_type, "current_progress": progress, "mission_status": status}
+            
+        else:
+            # Luồng fallback tương thích ngược cho các task thủ công cũ
+            cur.execute(
+                "INSERT INTO svalue_transaction_logs (user_id, action_type, points_changed, reference_id) VALUES (%s, %s, %s, %s)",
+                (current_user.id, action_type, points, ref_id)
+            )
+            cur.execute("SELECT balance FROM user_svalue_wallet WHERE user_id = %s FOR UPDATE", (current_user.id,))
+            wallet = cur.fetchone()
+            if not wallet:
+                cur.execute("INSERT INTO user_svalue_wallet (user_id, balance, streak_count) VALUES (%s, %s, 0) RETURNING balance", (current_user.id, points))
+                new_balance = points
+            else:
+                new_balance = wallet['balance'] + points
+                cur.execute("UPDATE user_svalue_wallet SET balance = %s, updated_at = CURRENT_TIMESTAMP WHERE user_id = %s", (new_balance, current_user.id))
+                
+            cur.execute("UPDATE users SET svalue_balance = %s WHERE id = %s", (new_balance, current_user.id))
+            conn.commit()
+            return {"status": "success", "new_balance": new_balance}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+
+@app.get("/user/missions", tags=["Missions"])
+def get_user_missions(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Lấy danh sách nhiệm vụ hệ thống kèm tiến trình real-time của người dùng"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM missions WHERE status = 'ACTIVE' ORDER BY created_at ASC")
+        all_missions = cur.fetchall()
+        
+        cur.execute("SELECT * FROM user_missions WHERE user_id = %s", (current_user.id,))
+        user_progress = {p['mission_code']: p for p in cur.fetchall()}
+        
+        now_vn = datetime.utcnow() + timedelta(hours=7)
+        result = []
+        
+        for m in all_missions:
+            code = m['code']
+            progress = 0
+            status = 'IN_PROGRESS'
+            
+            if code in user_progress:
+                p_data = user_progress[code]
+                progress = p_data['current_progress']
+                status = p_data['status']
+                last_progress_at = p_data['last_progress_at']
+                
+                # Áp dụng bộ lọc thời gian Daily Reset ngay khi đọc dữ liệu
+                if m['mission_type'] == 'DAILY' and last_progress_at:
+                    last_vn = last_progress_at + timedelta(hours=7)
+                    if last_vn.date() < now_vn.date():
+                        progress = 0
+                        status = 'IN_PROGRESS'
+            
+            result.append({
+                "code": code,
+                "title": m['title'],
+                "description": m['description'],
+                "mission_type": m['mission_type'],
+                "target_value": m['target_value'],
+                "reward_points": m['reward_points'],
+                "current_progress": progress,
+                "status": status
+            })
+            
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+
+@app.post("/user/missions/{mission_code}/claim", tags=["Missions"])
+def claim_mission_reward(mission_code: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Xử lý nhận thưởng bọc thép: Chống nhận trùng lặp, chống nhấp đúp qua Row-level Locking"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM missions WHERE code = %s AND status = 'ACTIVE'", (mission_code,))
+        mission = cur.fetchone()
+        if not mission:
+            raise HTTPException(status_code=404, detail="Nhiệm vụ không tồn tại hoặc đã bị đóng.")
+            
+        cur.execute("SELECT * FROM user_missions WHERE user_id = %s AND mission_code = %s FOR UPDATE", (current_user.id, mission_code))
+        user_mission = cur.fetchone()
+        
+        if not user_mission or user_mission['status'] != 'CLAIMABLE':
+            raise HTTPException(status_code=400, detail="Nhiệm vụ chưa hoàn thành hoặc đã nhận thưởng trước đó.")
+            
+        reward_points = mission['reward_points']
+        
+        # Cập nhật trạng thái tiến trình sang COMPLETED
+        cur.execute("""
+            UPDATE user_missions 
+            SET status = 'COMPLETED', completed_at = CURRENT_TIMESTAMP 
+            WHERE user_id = %s AND mission_code = %s
+        """, (current_user.id, mission_code))
+        
+        # Cộng điểm vào ví chuyên trách user_svalue_wallet
         cur.execute("SELECT balance FROM user_svalue_wallet WHERE user_id = %s FOR UPDATE", (current_user.id,))
         wallet = cur.fetchone()
-        if not wallet:
-            cur.execute("INSERT INTO user_svalue_wallet (user_id, balance, streak_count) VALUES (%s, %s, 0) RETURNING balance", (current_user.id, points))
-            new_balance = points
-        else:
-            new_balance = wallet['balance'] + points
+        new_balance = reward_points
+        if wallet:
+            new_balance = wallet['balance'] + reward_points
             cur.execute("UPDATE user_svalue_wallet SET balance = %s, updated_at = CURRENT_TIMESTAMP WHERE user_id = %s", (new_balance, current_user.id))
+        else:
+            cur.execute("INSERT INTO user_svalue_wallet (user_id, balance, streak_count) VALUES (%s, %s, 0)", (current_user.id, new_balance))
             
-        # Đồng bộ ngược 1 bản sang users để tương thích ngược với API cũ
+        # Đồng bộ hóa sang bảng users phục vụ hiển thị cũ
         cur.execute("UPDATE users SET svalue_balance = %s WHERE id = %s", (new_balance, current_user.id))
-        conn.commit()
-        return {"status": "success", "new_balance": new_balance}
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cur.close()
-
-@app.post("/user/checkin", tags=["User"])
-def daily_checkin(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
-    """API độc lập xử lý nghiệp vụ điểm danh: Chống gian lận thời gian, chống Spam và tự tính mốc thưởng"""
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    try:
-        # 1. Khóa dòng dữ liệu ví (Row-Level Lock) chống spam double click
-        cur.execute("SELECT * FROM user_svalue_wallet WHERE user_id = %s FOR UPDATE", (current_user.id,))
-        wallet = cur.fetchone()
-        if not wallet:
-            cur.execute("INSERT INTO user_svalue_wallet (user_id, balance, streak_count) VALUES (%s, 0, 0) RETURNING *", (current_user.id,))
-            wallet = cur.fetchone()
-
-        # 2. Tính toán múi giờ Việt Nam (Giả định server lưu UTC)
-        now_utc = datetime.utcnow()
-        now_vn = now_utc + timedelta(hours=7)
         
-        new_streak = 1
-        points = 20
-
-        # 3. Business Logic: Kiểm tra ngày điểm danh & Tính chuỗi
-        last_checkin_at = wallet.get('last_checkin_at')
-        if last_checkin_at:
-            last_vn = last_checkin_at + timedelta(hours=7)
-            # Chặn điểm danh 2 lần trong 1 ngày
-            if last_vn.date() == now_vn.date():
-                raise HTTPException(status_code=400, detail="Bạn đã điểm danh hôm nay rồi!")
-            # Nối chuỗi nếu điểm danh đúng ngày tiếp theo
-            if (now_vn.date() - last_vn.date()).days == 1:
-                new_streak = wallet.get('streak_count', 0) + 1
-
-        # 4. Milestone Logic: Mốc 3 ngày và 7 ngày thưởng x2
-        if new_streak % 7 == 3 or new_streak % 7 == 0:
-            points = 40
-
-        new_balance = wallet.get('balance', 0) + points
-
-        # 5. Lưu thông tin vào DB
+        # Ghi log lịch sử giao dịch điểm thưởng
         cur.execute("""
-            UPDATE user_svalue_wallet 
-            SET balance = %s, streak_count = %s, last_checkin_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
-            WHERE user_id = %s
-        """, (new_balance, new_streak, current_user.id))
-        
-        cur.execute("UPDATE users SET svalue_balance = %s WHERE id = %s", (new_balance, current_user.id))
-        cur.execute("INSERT INTO svalue_transaction_logs (user_id, action_type, points_changed) VALUES (%s, 'DAILY_CHECKIN', %s)", (current_user.id, points))
+            INSERT INTO svalue_transaction_logs (user_id, action_type, points_changed, reference_id) 
+            VALUES (%s, %s, %s, %s)
+        """, (current_user.id, f"CLAIM_{mission_code}", reward_points, str(user_mission['id'])))
         
         conn.commit()
-        return {"status": "success", "data": {"points_earned": points, "new_streak": new_streak, "balance": new_balance}}
-    except HTTPException:
-        conn.rollback()
-        raise
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cur.close()
-
-@app.post("/user/checkin", tags=["User"])
-def daily_checkin(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
-    """API độc lập xử lý nghiệp vụ điểm danh: Chống gian lận thời gian, chống Spam và tự tính mốc thưởng"""
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    try:
-        # 1. Khóa dòng dữ liệu ví (Row-Level Lock) chống spam double click
-        cur.execute("SELECT * FROM user_svalue_wallet WHERE user_id = %s FOR UPDATE", (current_user.id,))
-        wallet = cur.fetchone()
-        if not wallet:
-            cur.execute("INSERT INTO user_svalue_wallet (user_id, balance, streak_count) VALUES (%s, 0, 0) RETURNING *", (current_user.id,))
-            wallet = cur.fetchone()
-
-        # 2. Tính toán múi giờ Việt Nam (Giả định server lưu UTC)
-        now_utc = datetime.utcnow()
-        now_vn = now_utc + timedelta(hours=7)
-        
-        new_streak = 1
-        points = 20
-
-        # 3. Business Logic: Kiểm tra ngày điểm danh & Tính chuỗi
-        last_checkin_at = wallet.get('last_checkin_at')
-        if last_checkin_at:
-            last_vn = last_checkin_at + timedelta(hours=7)
-            # Chặn điểm danh 2 lần trong 1 ngày
-            if last_vn.date() == now_vn.date():
-                raise HTTPException(status_code=400, detail="Bạn đã điểm danh hôm nay rồi!")
-            # Nối chuỗi nếu điểm danh đúng ngày tiếp theo
-            if (now_vn.date() - last_vn.date()).days == 1:
-                new_streak = wallet.get('streak_count', 0) + 1
-
-        # 4. Milestone Logic: Mốc 3 ngày và 7 ngày thưởng x2
-        if new_streak % 7 == 3 or new_streak % 7 == 0:
-            points = 40
-
-        new_balance = wallet.get('balance', 0) + points
-
-        # 5. Lưu thông tin vào DB
-        cur.execute("""
-            UPDATE user_svalue_wallet 
-            SET balance = %s, streak_count = %s, last_checkin_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
-            WHERE user_id = %s
-        """, (new_balance, new_streak, current_user.id))
-        
-        cur.execute("UPDATE users SET svalue_balance = %s WHERE id = %s", (new_balance, current_user.id))
-        cur.execute("INSERT INTO svalue_transaction_logs (user_id, action_type, points_changed) VALUES (%s, 'DAILY_CHECKIN', %s)", (current_user.id, points))
-        
-        conn.commit()
-        return {"status": "success", "data": {"points_earned": points, "new_streak": new_streak, "balance": new_balance}}
+        return {"status": "success", "message": f"Nhận thưởng thành công +{reward_points} SValue", "balance": new_balance}
     except HTTPException:
         conn.rollback()
         raise
@@ -1325,7 +1362,7 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
             cur.execute("""
                 SELECT uv.id FROM user_vouchers uv 
                 JOIN vouchers v ON uv.voucher_id = v.id 
-                WHERE uv.user_id = %s AND uv.status = 'UNUSED' AND v.code = %s AND v.valid_until > NOW()
+                WHERE uv.user_id = %s AND uv.status = 'UNUSED' AND v.code = %s AND v.valid_until > NOW() AND v.used_quantity < v.total_quantity
             """, (current_user.id, voucher_code))
             uv = cur.fetchone()
             if uv:
