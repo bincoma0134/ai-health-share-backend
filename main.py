@@ -1465,6 +1465,19 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
             if uv:
                 applied_uv_id = uv["id"]
                 cur.execute("UPDATE user_vouchers SET status = 'LOCKED', locked_until = NULL WHERE id = %s", (applied_uv_id,))
+            else:
+                # BỌC THÉP & TỰ CHỮA LỖI (SELF-HEALING)
+                # Tự động Claim mã vào ví nếu frontend chưa Claim, hoặc chặn lại nếu mã sai/đã dùng
+                cur.execute("SELECT id FROM vouchers WHERE code = %s AND status = 'APPROVED' AND valid_until > NOW() AND used_quantity < total_quantity", (voucher_code,))
+                public_v = cur.fetchone()
+                if public_v:
+                    try:
+                        cur.execute("INSERT INTO user_vouchers (user_id, voucher_id, status) VALUES (%s, %s, 'LOCKED') RETURNING id", (current_user.id, public_v["id"]))
+                        applied_uv_id = cur.fetchone()["id"]
+                    except psycopg2.IntegrityError:
+                        raise HTTPException(status_code=400, detail="Mã giảm giá đã được sử dụng hoặc đang bị khóa cho một lịch hẹn khác!")
+                else:
+                    raise HTTPException(status_code=400, detail="Mã giảm giá không hợp lệ, đã hết hạn hoặc hết lượt!")
 
         cur.execute("""
             INSERT INTO appointments 
@@ -1563,7 +1576,17 @@ def preview_appointment_payment(appointment_id: str, current_user = Depends(veri
                         discount = float(best_voucher["max_discount_amount"])
                 max_discount = discount
                 
-        final_amount = original_amount - max_discount
+        # --- BỌC THÉP VOUCHER STATE PERSISTENCE ---
+        # Ưu tiên lấy giá final đã được chốt từ lúc tạo Booking
+        db_total_amount = float(appt.get("total_amount", 0))
+        if db_total_amount > 0 and original_amount > 0 and applied_uv_id:
+            # Nội suy số tiền giảm giá thực tế từ Database để tránh rủi ro tính toán sai
+            max_discount = original_amount - db_total_amount
+            if max_discount < 0: max_discount = 0
+            final_amount = db_total_amount
+        else:
+            final_amount = original_amount - max_discount
+            
         if final_amount < 10000: final_amount = 10000 
             
         return {
@@ -1626,7 +1649,16 @@ def create_appointment_payment(appointment_id: str, request: Request, current_us
                         discount = float(best_voucher["max_discount_amount"])
                 max_discount = discount
                 
-        final_amount = original_amount - max_discount
+        # --- BỌC THÉP VOUCHER STATE PERSISTENCE ---
+        # Ưu tiên lấy giá final đã được chốt từ lúc tạo Booking để đảm bảo Payment chính xác
+        db_total_amount = float(appt.get("total_amount", 0))
+        if db_total_amount > 0 and original_amount > 0 and applied_uv_id:
+            max_discount = original_amount - db_total_amount
+            if max_discount < 0: max_discount = 0
+            final_amount = db_total_amount
+        else:
+            final_amount = original_amount - max_discount
+            
         if final_amount < 10000: final_amount = 10000 # Ràng buộc PayOS tối thiểu 10k
             
         order_code = int(time.time() * 1000) % 1000000000 + random.randint(100, 999)
