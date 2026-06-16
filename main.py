@@ -1687,7 +1687,20 @@ def create_appointment_payment(appointment_id: str, request: Request, current_us
         target_url = f"{frontend_origin}/features/calendar" if "localhost" in frontend_origin or "127.0.0.1" in frontend_origin else "https://ai-health-share-frontend.vercel.app/features/calendar"
 
         payment_data = PaymentData(orderCode=order_code, amount=int(final_amount), description=f"Lich {order_code}", returnUrl=target_url, cancelUrl=target_url)
-        return {"status": "success", "checkout_url": payos_client.createPaymentLink(paymentData=payment_data).checkoutUrl}
+        payment_link = payos_client.createPaymentLink(paymentData=payment_data)
+        
+        return {
+            "status": "success", 
+            "checkout_url": payment_link.checkoutUrl,
+            "in_app_data": {
+                "qr_code": getattr(payment_link, 'qrCode', None),
+                "account_number": getattr(payment_link, 'accountNumber', None),
+                "account_name": getattr(payment_link, 'accountName', None),
+                "amount": getattr(payment_link, 'amount', None),
+                "description": getattr(payment_link, 'description', None),
+                "order_code": order_code
+            }
+        }
     except Exception as e: 
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))

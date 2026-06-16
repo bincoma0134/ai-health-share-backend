@@ -224,12 +224,35 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
         // 3. Phân tách doanh thu Escrow bọc thép bảo vệ quyền lợi Đối tác khi áp Voucher sàn (ADMIN)
         if (s == 'COMPLETED' || s == 'SERVED') {
           totalCompleted++;
-          double actualPartnerRevenue = a.totalAmount;
           
-          // Nếu voucher do ADMIN phát hành -> Sàn tự bỏ tiền túi bồi hoàn giá gốc cho Cơ sở
-          if (a.voucherInfo.isNotEmpty && a.voucherInfo['issuer_type'] == 'ADMIN') {
-            actualPartnerRevenue = (a.serviceInfo['price'] ?? a.totalAmount ?? 0.0).toDouble();
+          double originalTotal = a.totalAmount;
+          double discountAmount = 0.0;
+          String? fundedBy;
+
+          if (a.voucherInfo.isNotEmpty) {
+            fundedBy = a.voucherInfo['issuer_type'];
+            
+            // Tính toán mức giảm trừ tương tự giao diện
+            double basePrice = (a.serviceInfo['price'] ?? a.totalAmount ?? 0).toDouble();
+            if (a.voucherInfo['discount_value'] != null) {
+              double discountValue = (a.voucherInfo['discount_value'] ?? 0).toDouble();
+              if (a.voucherInfo['discount_type'] == 'PERCENTAGE') {
+                discountAmount = (basePrice * discountValue) / 100.0;
+                if (a.voucherInfo['max_discount_amount'] != null) {
+                  double maxDiscount = (a.voucherInfo['max_discount_amount'] ?? 0).toDouble();
+                  if (discountAmount > maxDiscount) discountAmount = maxDiscount;
+                }
+              } else {
+                discountAmount = discountValue;
+              }
+            }
           }
+
+          // Công thức Escrow Toán học đồng bộ Backend: Đối tác nhận 70% doanh thu
+          // Nếu Đối tác phát hành mã -> Chịu phần discount. Nếu Sàn phát hành -> Sàn chịu.
+          double revenueBase = (fundedBy == 'PARTNER') ? (originalTotal - discountAmount) : originalTotal;
+          if (revenueBase < 0) revenueBase = 0;
+          double actualPartnerRevenue = revenueBase * 0.70;
 
           if (revByDay.containsKey(dateLabel)) {
             revByDay[dateLabel] = revByDay[dateLabel]! + actualPartnerRevenue;
@@ -1249,7 +1272,13 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
         ),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            // Đã đồng bộ toán học: 90px (thanh Nav) + 16px (Padding cơ sở) + Safe Area + 24px (Không gian thừa để nút không bị sát viền)
+            padding: EdgeInsets.only(
+              left: 16, 
+              right: 16, 
+              top: 2, 
+              bottom: 130 + MediaQuery.paddingOf(context).bottom
+            ), 
             physics: const BouncingScrollPhysics(),
             itemCount: filteredList.length,
             itemBuilder: (context, index) {
@@ -1358,6 +1387,10 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                   }
 
                                   final bool hasActiveVoucher = calculatedDiscount > 0;
+                                  
+                                  // Tính toán giá trị thực trả cuối cùng
+                                  double finalPrice = originalPrice - calculatedDiscount;
+                                  if (finalPrice < 0) finalPrice = 0;
 
                                   return Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1367,13 +1400,13 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                           Icon(Icons.credit_card_rounded, color: Colors.black26, size: 14),
                                           const SizedBox(width: 6),
                                           Text(
-                                            _formatPrice(totalAmount),
+                                            _formatPrice(finalPrice), // Đã sửa: In đậm số tiền khách thực trả
                                             style: TextStyle(color: themeColor, fontWeight: FontWeight.bold, fontSize: 12),
                                           ),
                                           if (hasActiveVoucher) ...[
                                             const SizedBox(width: 6),
                                             Text(
-                                              _formatPrice(originalPrice),
+                                              _formatPrice(originalPrice), // Đã sửa: Gạch ngang số tiền gốc
                                               style: const TextStyle(color: Colors.black26, fontSize: 11, decoration: TextDecoration.lineThrough),
                                             ),
                                           ]
@@ -1558,7 +1591,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
     // Hiển thị Custom Dialog bẫy cảnh báo mất quyền lợi Voucher đồng bộ 1:1 với bản Website
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Row(
@@ -1597,7 +1630,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Không, Giữ lại', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
             ),
             ElevatedButton(
@@ -1606,19 +1639,19 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
               onPressed: () async {
-                Navigator.pop(context); // Đóng Dialog
+                Navigator.pop(dialogContext); // Đóng Dialog bằng context riêng
                 final success = await CalendarApiService.cancelAppointment(id);
                 if (success) {
                   if (mounted) {
                     AppToast.show(
-                      context: context, 
+                      context: context, // An toàn: Trỏ về context gốc của màn hình đang hiển thị
                       message: isPendingPayment 
                           ? '🎉 Đã hủy lịch hẹn! Voucher đã áp dụng bị hủy bỏ theo chính sách.' 
                           : '🎉 Đã hủy yêu cầu thành công! Voucher đã được trả lại ví.', 
                       isSuccess: true
                     );
                   }
-                  _loadData();
+                  _loadData(); // Lệnh F5 ngầm sẽ được chạy mượt mà
                 } else {
                   if (mounted) AppToast.show(context: context, message: '❌ Hủy lịch hẹn thất bại. Vui lòng thử lại!', isSuccess: false);
                 }
@@ -1678,7 +1711,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
     final TextEditingController reasonCtrl = TextEditingController();
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Từ chối yêu cầu', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         content: TextField(
@@ -1691,7 +1724,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
           maxLines: 2,
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy', style: TextStyle(color: Colors.grey))),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Hủy', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
@@ -1699,7 +1732,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                 AppToast.show(context: context, message: 'Vui lòng nhập lý do!', isSuccess: false);
                 return;
               }
-              Navigator.pop(context);
+              Navigator.pop(dialogContext); // Đóng Dialog an toàn
               try {
                 await ApiClient.instance.patch('/appointments/$id/respond', data: {
                   'action': 'REJECT',
@@ -1728,65 +1761,212 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
 
     if (!mounted) return;
     
-    // Mở BottomSheet hiển thị hóa đơn kế toán minh bạch (Glassmorphism design)
-    showModalBottomSheet(
+    // Đã chuyển đổi sang Dialog lơ lửng giữa màn hình để triệt tiêu hoàn toàn lỗi che khuất bởi Bottom Navigation nổi
+    showDialog(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) {
+      builder: (dialogContext) {
         final orig = (preview['original_amount'] ?? 0).toDouble();
         final disc = (preview['discount_amount'] ?? 0).toDouble();
         final finalPrice = (preview['final_amount'] ?? 0).toDouble();
         final code = preview['applied_voucher_code'] ?? 'Không áp dụng';
 
-        return Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Xác Nhận Hóa Đơn Đặt Lịch', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [const Text('Giá dịch vụ niêm yết:'), Text(_formatPrice(orig))],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Voucher ưu đãi giảm:'), 
-                  Text('- ${_formatPrice(disc)}', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
-                ],
-              ),
-              Text('Mã tự động áp dụng: $code', style: const TextStyle(fontSize: 10, color: Colors.black38, fontStyle: FontStyle.italic)),
-              const Divider(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Tổng thanh toán ký gửi:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text(_formatPrice(finalPrice), style: const TextStyle(color: Color(0xFF4C8D50), fontSize: 18, fontWeight: FontWeight.w900))
-                ],
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3A1E)),
-                  onPressed: () async {
-                    Navigator.pop(context); // Đóng BottomSheet
-                    final url = await CalendarApiService.getPaymentUrl(id);
-                    if (url != null) {
-                      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                    } else {
-                      if(mounted) AppToast.show(context: context, message: '❌ Lỗi khởi tạo link PayOS', isSuccess: false);
-                    }
-                  },
-                  child: const Text('XÁC NHẬN CHUYỂN KHOẢN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Xác Nhận Hóa Đơn Đặt Lịch', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, size: 20, color: Colors.black45),
+                      onPressed: () => Navigator.pop(dialogContext),
+                    ),
+                  ],
                 ),
-              )
-            ],
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [const Text('Giá dịch vụ niêm yết:'), Text(_formatPrice(orig))],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Voucher ưu đãi giảm:'), 
+                    Text('- ${_formatPrice(disc)}', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
+                  ],
+                ),
+                Text('Mã tự động áp dụng: $code', style: const TextStyle(fontSize: 10, color: Colors.black38, fontStyle: FontStyle.italic)),
+                const Divider(height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Tổng thanh toán ký gửi:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    Text(_formatPrice(finalPrice), style: const TextStyle(color: Color(0xFF4C8D50), fontSize: 18, fontWeight: FontWeight.w900))
+                  ],
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E3A1E),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () async {
+                      Navigator.pop(dialogContext); // Đóng hóa đơn tạm tính
+                      
+                      // 1. Hiển thị Overlay Loading chờ khởi tạo PayOS
+                      showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (loadCtx) => const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84))),
+                      );
+                      
+                      try {
+                        // 2. Gọi trực tiếp API tạo thanh toán
+                        final res = await ApiClient.instance.post('/appointments/$id/pay');
+                        Navigator.pop(context); // Tắt Overlay Loading
+                        
+                        if (res.statusCode == 200 && res.data['status'] == 'success') {
+                          final data = res.data;
+                          final inAppData = data['in_app_data'];
+                          
+                          if (inAppData != null && inAppData['qr_code'] != null) {
+                            // 3. THÀNH CÔNG: Hiển thị In-App QR Box
+                            if (!mounted) return;
+                            _showQrPaymentDialog(id, inAppData);
+                          } else if (data['checkout_url'] != null) {
+                            // 4. FALLBACK AN TOÀN: Nếu lỗi QR, vẫn mở Browser như cũ
+                            launchUrl(Uri.parse(data['checkout_url']), mode: LaunchMode.externalApplication);
+                          }
+                        } else {
+                          if (mounted) AppToast.show(context: context, message: '❌ Lỗi khởi tạo thanh toán', isSuccess: false);
+                        }
+                      } catch (e) {
+                        Navigator.pop(context); // Tắt Overlay nếu lỗi mạng
+                        if (mounted) AppToast.show(context: context, message: '❌ Lỗi kết nối hệ thống PayOS', isSuccess: false);
+                      }
+                    },
+                    child: const Text('XÁC NHẬN CHUYỂN KHOẢN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                )
+              ],
+            ),
           ),
+        );
+      },
+    );
+  }
+
+  void _showQrPaymentDialog(String appointmentId, Map<String, dynamic> inAppData) {
+    bool isChecking = false;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (qrContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              backgroundColor: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Thanh Toán Ký Gửi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF4C8D50))),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, size: 20, color: Colors.black45),
+                          onPressed: () => Navigator.pop(qrContext),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // Rendering Mã VietQR động qua API mã nguồn mở (Tránh phụ thuộc package qr_flutter)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFF4F7F6), width: 2),
+                      ),
+                      child: Image.network(
+                        'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${Uri.encodeComponent(inAppData['qr_code'] ?? '')}',
+                        width: 200,
+                        height: 200,
+                        loadingBuilder: (ctx, child, progress) => progress == null ? child : const SizedBox(width: 200, height: 200, child: Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)))),
+                        errorBuilder: (ctx, err, stack) => const SizedBox(width: 200, height: 200, child: Center(child: Icon(Icons.qr_code_scanner, size: 64, color: Colors.black12))),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Thông tin tài khoản Click-to-Copy
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: const Color(0xFFF4F7F6), borderRadius: BorderRadius.circular(12)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Text('Ngân hàng: PayOS', style: TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 4),
+                          Text('${inAppData['account_number'] ?? ''}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                          Text('${inAppData['account_name'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          Text('Số tiền: ${_formatPrice((inAppData['amount'] ?? 0).toDouble())}', style: const TextStyle(fontSize: 14, color: Colors.red, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 4),
+                          Text('Nội dung: ${inAppData['description'] ?? ''}', style: const TextStyle(fontSize: 14, color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    // Khối Callback Xác thực chủ động (Polling Button)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 44,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF10B981),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: isChecking ? null : () async {
+                          setState(() => isChecking = true);
+                          try {
+                            final res = await ApiClient.instance.get('/appointments/payment/verify?orderCode=${inAppData['order_code']}');
+                            if (res.statusCode == 200 && res.data['status'] == 'success') {
+                              Navigator.pop(qrContext); // Đóng Dialog QR
+                              if (mounted) AppToast.show(context: context, message: '🎉 Thanh toán thành công!', isSuccess: true);
+                              _loadData(); // Tải lại toàn bộ Lịch hẹn (Đổi màu sang Đã thanh toán)
+                            } else {
+                              if (mounted) AppToast.show(context: context, message: '⏳ Hệ thống chưa nhận được tiền. Vui lòng đợi giây lát!', isSuccess: false);
+                              setState(() => isChecking = false);
+                            }
+                          } catch (e) {
+                            if (mounted) AppToast.show(context: context, message: '❌ Không thể kết nối tới hệ thống xác thực', isSuccess: false);
+                            setState(() => isChecking = false);
+                          }
+                        },
+                        child: isChecking 
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text('TÔI ĐÃ CHUYỂN KHOẢN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                      ),
+                    )
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -1816,9 +1996,9 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
 
     await showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (statefulContext, setDialogState) {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               title: const Text('Xác nhận & Đánh giá', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
@@ -1860,7 +2040,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(dialogContext),
                   child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
                 ),
                 ElevatedButton(
@@ -1869,7 +2049,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: () async {
-                    Navigator.pop(context);
+                    Navigator.pop(dialogContext); // Đóng Dialog an toàn
                     try {
                       await ApiClient.instance.post('/appointments/$id/confirm', data: {
                         'is_satisfied': isSatisfied,

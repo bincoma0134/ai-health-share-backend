@@ -194,7 +194,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         'customer_name': _nameCtrl.text.trim(),
         'customer_phone': _phoneCtrl.text.trim(),
         'note': _noteCtrl.text.trim(),
-        'total_amount': _finalPrice.toInt(),
+        'total_amount': _basePrice.toInt(), // Đã đồng bộ: Gửi giá gốc nguyên bản để Backend tự xử lý logic Voucher
         'voucher_code': _appliedVoucherCode,
         'affiliate_code': code.isNotEmpty ? code : null,
       };
