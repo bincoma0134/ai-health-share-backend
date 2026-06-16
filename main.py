@@ -1577,10 +1577,14 @@ def preview_appointment_payment(appointment_id: str, current_user = Depends(veri
                 max_discount = discount
                 
         # --- BỌC THÉP VOUCHER STATE PERSISTENCE ---
-        # Ưu tiên lấy giá final đã được chốt từ lúc tạo Booking
+        # Đã đồng bộ: total_amount lưu giá gốc từ Booking.
         db_total_amount = float(appt.get("total_amount", 0))
         if db_total_amount > 0:
-            original_amount = db_total_amount
+            # Tự động chữa lỗi (Self-Healing) cho các app cũ từng gửi nhầm giá đã giảm
+            if original_amount > 0 and db_total_amount <= (original_amount - max_discount):
+                original_amount = db_total_amount + max_discount
+            else:
+                original_amount = db_total_amount
             
         final_amount = original_amount - max_discount
             
@@ -1647,10 +1651,14 @@ def create_appointment_payment(appointment_id: str, request: Request, current_us
                 max_discount = discount
                 
         # --- BỌC THÉP VOUCHER STATE PERSISTENCE ---
-        # Ưu tiên lấy giá final đã được chốt từ lúc tạo Booking để đảm bảo Payment chính xác
+        # Đã đồng bộ: total_amount lưu giá gốc từ Booking để đảm bảo Payment chính xác.
         db_total_amount = float(appt.get("total_amount", 0))
         if db_total_amount > 0:
-            original_amount = db_total_amount
+            # Tự động chữa lỗi (Self-Healing) cho các app cũ từng gửi nhầm giá đã giảm
+            if original_amount > 0 and db_total_amount <= (original_amount - max_discount):
+                original_amount = db_total_amount + max_discount
+            else:
+                original_amount = db_total_amount
             
         final_amount = original_amount - max_discount
             
