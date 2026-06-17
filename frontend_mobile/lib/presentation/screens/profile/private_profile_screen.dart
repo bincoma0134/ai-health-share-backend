@@ -13,6 +13,7 @@ import '../../widgets/auth_guard.dart';
 import '../../widgets/glass_wrapper.dart';
 import '../../widgets/app_toast.dart';
 import '../../../core/network/global_cache_engine.dart';
+import '../../widgets/shimmer_wrapper.dart';
 
 class PrivateProfileScreen extends StatefulWidget {
   const PrivateProfileScreen({super.key});
@@ -44,9 +45,13 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
     _loadData();
   }
 
+  bool _isFetchingLock = false;
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-    // Gọi API song song để tăng tốc độ tải
+    if (_isFetchingLock) return;
+    _isFetchingLock = true;
+    try {
+      setState(() => _isLoading = true);
+      // Gọi API song song để tăng tốc độ tải
     final results = await Future.wait([
       UserApiService.fetchPrivateProfile(),
       UserApiService.fetchSavedItems(),
@@ -58,6 +63,9 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
       _savedItems = results[1] as List<dynamic>? ?? [];
       _isLoading = false;
     });
+    } finally {
+      _isFetchingLock = false;
+    }
   }
 
   Future<void> _handleLogout() async {
@@ -380,7 +388,30 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
     return AuthGuardWidget(
       fallbackBuilder: (context) => Scaffold(backgroundColor: const Color(0xFFF7FBF9), body: GuestProfileView(onSuccess: () async { await AuthNotifier.instance.refresh(); _loadData(); })),
       builder: (context, token, userId) {
-        if (_isLoading) return const Scaffold(backgroundColor: Color(0xFFF7FBF9), body: Center(child: CircularProgressIndicator(color: Color(0xFF48C9B0))));
+        if (_isLoading) {
+          return Scaffold(
+            backgroundColor: const Color(0xFFF7FBF9),
+            body: ShimmerWrapper(
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(),
+                child: Column(
+                  children: [
+                  Container(height: 192, color: const Color(0xFFE2ECEB)),
+                  const SizedBox(height: 16),
+                  Container(height: 24, width: 120, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(8))),
+                  const SizedBox(height: 32),
+                  Container(margin: const EdgeInsets.symmetric(horizontal: 24), height: 200, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32))),
+                  const SizedBox(height: 32),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(3, (index) => Container(margin: const EdgeInsets.symmetric(horizontal: 6), height: 80, width: 80, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)))),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          );
+        }
 
         // Cầu dao rẽ nhánh giao diện (Routing)
         final role = _profileData?['profile']?['role'] ?? 'USER';

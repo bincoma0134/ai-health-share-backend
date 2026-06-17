@@ -5,10 +5,12 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 // 🚀 LÕI GLOBAL CACHE ENGINE
 // Quản lý lưu trữ tĩnh (Hình ảnh) qua Memory và Disk (Ổ cứng)
-class GlobalCacheEngine {
+class GlobalCacheEngine extends CacheManager with ImageCacheManager {
   static const String key = 'VNShareImageCache';
   
-  static final CacheManager manager = CacheManager(
+  static final GlobalCacheEngine manager = GlobalCacheEngine._internal();
+
+  GlobalCacheEngine._internal() : super(
     Config(
       key,
       stalePeriod: const Duration(days: 7), // Lưu ổ cứng tối đa 7 ngày
@@ -49,10 +51,13 @@ class GlobalCacheImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 🚀 HOTFIX: Tiền xử lý Absolute URL cho đường dẫn tương đối từ DB
-    final String absoluteUrl = imageUrl.startsWith('/') 
-        ? 'https://ai-health-share-backend.onrender.com$imageUrl' 
-        : imageUrl;
+    // 🚀 HOTFIX: Bọc thép mọi kịch bản URL (Có '/', không có '/', HTTP, hoặc Rỗng)
+    String absoluteUrl = imageUrl;
+    if (imageUrl.isNotEmpty && !imageUrl.startsWith('http')) {
+      absoluteUrl = imageUrl.startsWith('/') 
+          ? 'https://ai-health-share-backend.onrender.com$imageUrl' 
+          : 'https://ai-health-share-backend.onrender.com/$imageUrl';
+    }
 
     // 🚀 HOTFIX: Làm sạch URL trước khi gọi mạng và tạo Cache Key tuyệt đối an toàn cho File System OS
     final safeUrl = Uri.encodeFull(absoluteUrl);
@@ -76,10 +81,13 @@ class GlobalCacheImage extends StatelessWidget {
 // 🚀 PROVIDER ĐẠI DIỆN: Dành riêng thay thế cho CircleAvatar / DecorationImage
 class GlobalCacheProvider {
   static CachedNetworkImageProvider create(String url, {int? maxWidth, int? maxHeight}) {
-    // 🚀 HOTFIX: Tiền xử lý Absolute URL cho đường dẫn tương đối từ DB
-    final String absoluteUrl = url.startsWith('/') 
-        ? 'https://ai-health-share-backend.onrender.com$url' 
-        : url;
+    // 🚀 HOTFIX: Bọc thép mọi kịch bản URL (Có '/', không có '/', HTTP, hoặc Rỗng)
+    String absoluteUrl = url;
+    if (url.isNotEmpty && !url.startsWith('http')) {
+      absoluteUrl = url.startsWith('/') 
+          ? 'https://ai-health-share-backend.onrender.com$url' 
+          : 'https://ai-health-share-backend.onrender.com/$url';
+    }
 
     // 🚀 HOTFIX: Đồng bộ mã hóa URL và Cache Key cho tầng Provider
     final safeUrl = Uri.encodeFull(absoluteUrl);

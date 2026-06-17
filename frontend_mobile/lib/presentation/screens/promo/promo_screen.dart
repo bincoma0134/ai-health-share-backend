@@ -29,10 +29,11 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
   bool _isLoadingPublic = true;
   bool _isLoadingMine = true;
   bool _isClaiming = false;
+  bool _isCheckingIn = false;
+  int _currentStreakDay = 0;
 
   // Gamification States (Tích hợp chuẩn theo ảnh mẫu)
   int _svalueBalance = 3240; // Khớp chính xác con số trên ảnh mẫu
-  int _currentStreakDay = 1; // Số ngày đã điểm danh thực tế
   bool _isTodayCheckedIn = false; // Trạng thái bấm nút Check-in ngày hôm nay
   bool _isProfileSyncing = true; // KHÓA ĐỒNG BỘ: Chống Race Condition ghi đè điểm cũ
   
@@ -385,7 +386,8 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
   // Xử lý logic bấm nút điểm danh
   Future<void> _executeDailyCheckIn() async {
     AuthGuard.run(context, action: () async {
-      if (_isTodayCheckedIn) return;
+      if (_isTodayCheckedIn || _isCheckingIn) return;
+      setState(() => _isCheckingIn = true);
       
       try {
         final response = await ApiClient.instance.post('/user/checkin');
@@ -411,6 +413,8 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
             isSuccess: false,
           );
         }
+      } finally {
+        if (mounted) setState(() => _isCheckingIn = false);
       }
     });
   }
@@ -531,15 +535,22 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                       // HÀNG NGANG TIẾN TRÌNH 7 NGÀY CHUẨN XÁC THEO ẢNH THIẾT KẾ MẪU
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          _buildStreakDayItem(dayNum: 1, points: 20, isCompleted: true, isCurrent: false),
-                          _buildStreakDayItem(dayNum: 2, points: 20, isCompleted: _isTodayCheckedIn, isCurrent: !_isTodayCheckedIn),
-                          _buildStreakDayItem(dayNum: 3, points: 40, isCompleted: false, isCurrent: _isTodayCheckedIn, isRewardBox: true),
-                          _buildStreakDayItem(dayNum: 4, points: 20, isCompleted: false, isCurrent: false),
-                          _buildStreakDayItem(dayNum: 5, points: 20, isCompleted: false, isCurrent: false),
-                          _buildStreakDayItem(dayNum: 6, points: 20, isCompleted: false, isCurrent: false),
-                          _buildStreakDayItem(dayNum: 7, points: 40, isCompleted: false, isCurrent: false, isRewardBox: true),
-                        ],
+                        children: List.generate(7, (index) {
+                          final dayNum = index + 1;
+                          final points = (dayNum == 3 || dayNum == 7) ? 40 : 20;
+                          final isRewardBox = (dayNum == 3 || dayNum == 7);
+                          
+                          bool isCompleted = dayNum <= _currentStreakDay;
+                          bool isCurrent = dayNum == _currentStreakDay + 1;
+                          
+                          return _buildStreakDayItem(
+                            dayNum: dayNum, 
+                            points: points, 
+                            isCompleted: isCompleted, 
+                            isCurrent: isCurrent, 
+                            isRewardBox: isRewardBox
+                          );
+                        }),
                       ),
                       const SizedBox(height: 20),
                       
@@ -556,7 +567,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                             elevation: 0
                           ),
-                          onPressed: (_isTodayCheckedIn || _isProfileSyncing) ? null : _executeDailyCheckIn,
+                          onPressed: (_isTodayCheckedIn || _isProfileSyncing || _isCheckingIn) ? null : _executeDailyCheckIn,
                           child: _isProfileSyncing 
                               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.black38, strokeWidth: 2))
                               : Text(

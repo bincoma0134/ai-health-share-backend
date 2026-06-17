@@ -10,6 +10,7 @@ import '../../widgets/mini_video_player.dart'; // Nạp trình phát video thự
 import '../../widgets/booking_bottom_sheet.dart'; // Nạp bảng cấu hình đặt lịch chuẩn 404-resolved
 import '../../widgets/app_toast.dart'; // Bổ sung import AppToast để xử lý lỗi biên dịch
 import '../../widgets/auth_guard.dart';
+import '../../widgets/shimmer_wrapper.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -126,20 +127,25 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
     super.dispose();
   }
 
+  bool _isFetchingLock = false;
   // --- ĐỒNG BỘ ĐƯỜNG ỐNG NẠP DỮ LIỆU SẠCH ---
   Future<void> _fetchExploreData() async {
+    if (_isFetchingLock) return;
+    _isFetchingLock = true;
     try {
       // Nạp song song cả danh sách đối tác bản đồ và mảng gói dịch vụ lẻ chuẩn Web
-      final partnerData = await ExploreApiService.fetchExplorePartners(); // 
-      final serviceData = await ExploreApiService.fetchAllServices();
+      final results = await Future.wait([
+        ExploreApiService.fetchExplorePartners(),
+        ExploreApiService.fetchAllServices(),
+      ]);
       
       if (mounted) {
         setState(() {
-          _partners = partnerData; // 
-          _filteredPartners = partnerData; // Khởi tạo dữ liệu bộ đệm ban đầu trùng với dữ liệu gốc
+          _partners = results[0] as List<PartnerMapModel>; // 
+          _filteredPartners = results[0] as List<PartnerMapModel>; // Khởi tạo dữ liệu bộ đệm ban đầu trùng với dữ liệu gốc
           
-          _services = serviceData;
-          _filteredServices = serviceData;
+          _services = results[1] as List<dynamic>;
+          _filteredServices = results[1] as List<dynamic>;
           
           _isLoading = false; // 
         });
@@ -148,6 +154,8 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
     } catch (e) {
       debugPrint("Lỗi nạp dữ liệu Explore UI: $e"); // 
       if (mounted) setState(() => _isLoading = false); // 
+    } finally {
+      _isFetchingLock = false;
     }
   }
 
@@ -496,8 +504,53 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
   // --- WIDGET LƯỚI DỊCH VỤ LẺ ĐỒNG BỘ THEO MẪU GIAO DIỆN WEB ---
   Widget _buildServiceGrid() {
     if (_isLoading) {
-      return const SliverToBoxAdapter(
-        child: Center(child: Padding(padding: EdgeInsets.all(32.0), child: CircularProgressIndicator(color: Color(0xFF80BF84)))),
+      return SliverPadding(
+        padding: const EdgeInsets.only(left: 16, right: 16, bottom: 32),
+        sliver: SliverGrid(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2, mainAxisSpacing: 16, crossAxisSpacing: 16, childAspectRatio: 0.65,
+          ),
+          delegate: SliverChildBuilderDelegate(
+          (context, index) => ShimmerWrapper(
+            child: Container(
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.black.withOpacity(0.05))),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AspectRatio(aspectRatio: 4 / 3, child: Container(decoration: const BoxDecoration(color: Color(0xFFE2ECEB), borderRadius: BorderRadius.vertical(top: Radius.circular(19))))),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(height: 10, width: 60, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(4))),
+                              const SizedBox(height: 8),
+                              Container(height: 14, width: double.infinity, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(4))),
+                            ],
+                          ),
+                          Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(height: 16, width: 50, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(4))),
+                          Container(height: 24, width: 24, decoration: const BoxDecoration(color: Color(0xFFE2ECEB), shape: BoxShape.circle)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            ],
+          ),
+        ),
+      ),
+      childCount: 4,
+          ),
+        ),
       );
     }
     
@@ -1010,14 +1063,44 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
         SizedBox(
           height: 230,
           child: _isLoading 
-            ? const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)))
-            : _filteredPartners.isEmpty
+            ? ShimmerWrapper(
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  itemCount: 3,
+                itemBuilder: (context, index) => Container(
+                  width: 160,
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.black.withOpacity(0.05))),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(height: 110, decoration: const BoxDecoration(color: Color(0xFFE2ECEB), borderRadius: BorderRadius.vertical(top: Radius.circular(20)))),
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(height: 14, width: 100, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(4))),
+                            const SizedBox(height: 8),
+                            Container(height: 12, width: 60, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(4))),
+                      ],
+                    ),
+                  )
+                ],
+              ),
+            ),
+          ),
+        )
+        : _filteredPartners.isEmpty
               ? const Center(child: Text("Không tìm thấy kết quả phù hợp.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)))
               : ListView.builder(
                   scrollDirection: Axis.horizontal,
                   physics: const BouncingScrollPhysics(),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  itemCount: _filteredPartners.length,
+                  // [CLIENT-SIDE PAGINATION] Giới hạn hiển thị Top 10 để tránh Over-rendering
+                  itemCount: _filteredPartners.length > 10 ? 10 : _filteredPartners.length,
                   itemBuilder: (context, index) {
                     final partner = _filteredPartners[index];
                     final List<String> tags = partner.tags;

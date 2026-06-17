@@ -11,6 +11,7 @@ import '../../../data/services/map_api_service.dart';
 import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/auth_guard.dart';
+import '../../widgets/shimmer_wrapper.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -60,8 +61,11 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
     super.dispose();
   }
 
+  bool _isFetchingLock = false;
   // --- LUỒNG KHỞI TẠO ĐA LUỒNG SONG SONG KHÔNG CHẶN (NON-BLOCKING DECOUPLED PIPELINE) ---
   Future<void> _initMapDataLocationAndProfile() async {
+    if (_isFetchingLock) return;
+    _isFetchingLock = true;
     try {
       // 1. LUỒNG NGẦM A: Xin quyền và cập nhật tọa độ GPS thiết bị (Không dùng await để tránh nghẽn luồng)
       _determineUserLocation().catchError((error) {
@@ -94,6 +98,8 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
       if (mounted) setState(() => _isLoading = false);
       debugPrint("❌ SỰ CỐ TẠI LUỒNG KHỞI TẠO MAP: $e");
       AppToast.show(context: context, message: 'Mạng trục trặc, vui lòng kiểm tra lại!', isSuccess: false);
+    } finally {
+      _isFetchingLock = false;
     }
   }
 
@@ -174,8 +180,40 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F6),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)))
-          : Stack(
+          ? ShimmerWrapper(
+              child: Stack(
+                children: [
+                  // 1. Skeleton Nền Bản Đồ
+                Container(color: const Color(0xFFE2ECEB)), 
+                // 2. Skeleton Thanh Tìm Kiếm Lơ Lửng
+                Positioned(
+                  top: MediaQuery.paddingOf(context).top + 10, left: 16, right: 16,
+                  child: Container(height: 50, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30))),
+                ),
+                // 3. Skeleton Khối Half-BottomSheet
+                Positioned(
+                  bottom: 0, left: 0, right: 0,
+                  child: Container(
+                    height: size.height * 0.55,
+                    decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 10),
+                        Container(width: 40, height: 5, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10))),
+                        const SizedBox(height: 20),
+                        // Skeleton Bộ lọc Chips
+                        Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(4, (index) => Container(margin: const EdgeInsets.symmetric(horizontal: 4), height: 36, width: 80, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(20))))),
+                        const SizedBox(height: 32),
+                        // Skeleton Thẻ Gợi Ý
+                    Container(margin: const EdgeInsets.symmetric(horizontal: 16), height: 160, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(20))),
+                  ],
+                ),
+              ),
+            )
+          ],
+        ),
+      )
+      : Stack(
               children: [
                 
                 // LỚP 1: BẢN ĐỒ NỀN FULLSCREEN ĐẰNG SAU BẢNG ĐIỀU KHIỂN

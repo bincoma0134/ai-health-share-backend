@@ -423,6 +423,116 @@ def complete_svalue_task(payload: dict, current_user = Depends(verify_user_token
     finally:
         cur.close()
 
+@app.post("/user/checkin", tags=["User"])
+def user_daily_checkin(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """API điểm danh hàng ngày cộng điểm SValue"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        now_utc = datetime.utcnow()
+        now_vn = now_utc + timedelta(hours=7)
+        today_date = now_vn.date()
+        
+        cur.execute("SELECT balance, streak_count, last_checkin_at FROM user_svalue_wallet WHERE user_id = %s FOR UPDATE", (current_user.id,))
+        wallet = cur.fetchone()
+        
+        if not wallet:
+            cur.execute("INSERT INTO user_svalue_wallet (user_id, balance, streak_count) VALUES (%s, 0, 0) RETURNING balance, streak_count, last_checkin_at", (current_user.id,))
+            wallet = cur.fetchone()
+            
+        last_checkin_at = wallet.get('last_checkin_at')
+        current_streak = wallet.get('streak_count')
+        if current_streak is None:
+            current_streak = 0
+        
+        if last_checkin_at:
+            last_checkin_vn = (last_checkin_at + timedelta(hours=7)).date()
+            if last_checkin_vn == today_date:
+                raise HTTPException(status_code=400, detail="Bạn đã điểm danh hôm nay rồi.")
+            elif (today_date - last_checkin_vn).days > 1 or current_streak >= 7:
+                current_streak = 0
+                
+        new_streak = current_streak + 1
+        points_earned = 40 if new_streak in [3, 7] else 20
+        new_balance = wallet['balance'] + points_earned
+        
+        cur.execute("""
+            UPDATE user_svalue_wallet 
+            SET balance = %s, streak_count = %s, last_checkin_at = %s, updated_at = %s 
+            WHERE user_id = %s
+        """, (new_balance, new_streak, now_utc, now_utc, current_user.id))
+        
+        cur.execute("UPDATE users SET svalue_balance = %s WHERE id = %s", (new_balance, current_user.id))
+        
+        cur.execute("""
+            INSERT INTO svalue_transaction_logs (user_id, action_type, points_changed, reference_id) 
+            VALUES (%s, %s, %s, %s)
+        """, (current_user.id, "DAILY_CHECKIN", points_earned, "CHECKIN_SYSTEM"))
+        
+        conn.commit()
+        return {"status": "success", "data": {"new_streak": new_streak, "balance": new_balance, "points_earned": points_earned}}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+
+@app.post("/user/checkin", tags=["User"])
+def user_daily_checkin(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """API điểm danh hàng ngày cộng điểm SValue"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        now_utc = datetime.utcnow()
+        now_vn = now_utc + timedelta(hours=7)
+        today_date = now_vn.date()
+        
+        cur.execute("SELECT balance, streak_count, last_checkin_at FROM user_svalue_wallet WHERE user_id = %s FOR UPDATE", (current_user.id,))
+        wallet = cur.fetchone()
+        
+        if not wallet:
+            cur.execute("INSERT INTO user_svalue_wallet (user_id, balance, streak_count) VALUES (%s, 0, 0) RETURNING balance, streak_count, last_checkin_at", (current_user.id,))
+            wallet = cur.fetchone()
+            
+        last_checkin_at = wallet.get('last_checkin_at')
+        current_streak = wallet.get('streak_count') or 0
+        
+        if last_checkin_at:
+            last_checkin_vn = (last_checkin_at + timedelta(hours=7)).date()
+            if last_checkin_vn == today_date:
+                raise HTTPException(status_code=400, detail="Bạn đã điểm danh hôm nay rồi.")
+            elif (today_date - last_checkin_vn).days > 1 or current_streak >= 7:
+                current_streak = 0
+                
+        new_streak = current_streak + 1
+        points_earned = 40 if new_streak in [3, 7] else 20
+        new_balance = wallet['balance'] + points_earned
+        
+        cur.execute("""
+            UPDATE user_svalue_wallet 
+            SET balance = %s, streak_count = %s, last_checkin_at = %s, updated_at = %s 
+            WHERE user_id = %s
+        """, (new_balance, new_streak, now_utc, now_utc, current_user.id))
+        
+        cur.execute("UPDATE users SET svalue_balance = %s WHERE id = %s", (new_balance, current_user.id))
+        
+        cur.execute("""
+            INSERT INTO svalue_transaction_logs (user_id, action_type, points_changed, reference_id) 
+            VALUES (%s, %s, %s, %s)
+        """, (current_user.id, "DAILY_CHECKIN", points_earned, "CHECKIN_SYSTEM"))
+        
+        conn.commit()
+        return {"status": "success", "data": {"new_streak": new_streak, "balance": new_balance, "points_earned": points_earned}}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+
 @app.get("/user/missions", tags=["Missions"])
 def get_user_missions(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     """Lấy danh sách nhiệm vụ hệ thống kèm tiến trình real-time của người dùng"""

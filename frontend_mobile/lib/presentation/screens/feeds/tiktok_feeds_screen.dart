@@ -67,7 +67,10 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
     }
   }
 
+  bool _isFetchingLock = false;
   Future<void> _loadFeeds() async {
+    if (_isFetchingLock) return;
+    _isFetchingLock = true;
     try {
       // 1. Đọc trực tiếp UserID từ bộ nhớ RAM siêu tốc (AuthNotifier)
       final String? userId = AuthNotifier.instance.userId;
@@ -112,6 +115,8 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
       if (_videos.isNotEmpty) {
         _preloadNextVideos(0);
       }
+    } finally {
+      _isFetchingLock = false;
     }
   }
 

@@ -9,6 +9,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/booking_bottom_sheet.dart';
 import '../../widgets/auth_guard.dart';
+import '../../widgets/shimmer_wrapper.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String username;
@@ -40,22 +41,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   List<dynamic> _fetchedServices = [];
   List<dynamic> _fetchedVouchers = [];
 
+  bool _isFetchingLock = false;
   Future<void> _loadData() async {
-    final profileResult = await UserApiService.fetchPublicProfile(widget.username);
+    if (_isFetchingLock) return;
+    _isFetchingLock = true;
+    try {
+      final profileResult = await UserApiService.fetchPublicProfile(widget.username);
     if (profileResult != null && profileResult['profile'] != null) {
       final String userId = profileResult['profile']['id'] ?? '';
       
       // Kích hoạt song song các luồng dữ liệu độc lập theo API chuẩn hóa từ Web
-      final dataFutures = await Future.wait([
-        UserApiService.fetchUserServices(userId),
-        UserApiService.fetchUserFeeds(userId),
-      ]);
-
+      // [LAZY LOADING] Tạm hoãn tải Videos và Services, chỉ nạp Profile và Vouchers trước
       if (mounted) {
         setState(() {
           _data = profileResult;
-          _fetchedServices = dataFutures[0];
-          _fetchedVideos = dataFutures[1];
           _fetchedVouchers = profileResult['vouchers'] ?? [
             {
               'id': 'v1',
@@ -91,6 +90,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           }
           _isLoading = false;
         });
+
+        // [LAZY LOADING] Kích hoạt nạp dữ liệu ngầm cho Tab đang Active
+        _loadTabDataIfNeeded(_activeTab, userId);
       }
     } else {
       if (mounted) {
@@ -99,6 +101,34 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           _isLoading = false;
         });
       }
+    }
+    } finally {
+      _isFetchingLock = false;
+    }
+  }
+
+  // [LAZY LOADING ENGINE] Hàm nạp dữ liệu trễ chuyên dụng theo Tab
+  bool _isLazyFetching = false;
+  Future<void> _loadTabDataIfNeeded(String tab, String userId) async {
+    if (_isLazyFetching) return;
+    
+    bool needsFetch = false;
+    if (tab == 'services' && _fetchedServices.isEmpty) needsFetch = true;
+    if ((tab == 'videos' || tab == 'liked' || tab == 'saved' || tab == 'activities') && _fetchedVideos.isEmpty) needsFetch = true;
+    
+    if (!needsFetch) return;
+
+    _isLazyFetching = true;
+    try {
+      if (tab == 'services') {
+        final services = await UserApiService.fetchUserServices(userId);
+        if (mounted) setState(() => _fetchedServices = services);
+      } else {
+        final videos = await UserApiService.fetchUserFeeds(userId);
+        if (mounted) setState(() => _fetchedVideos = videos);
+      }
+    } finally {
+      _isLazyFetching = false;
     }
   }
 
@@ -151,7 +181,30 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(backgroundColor: Color(0xFFF4F7F6), body: Center(child: CircularProgressIndicator(color: Color(0xFF80BF84))));
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF4F7F6),
+        body: ShimmerWrapper(
+          child: SingleChildScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            child: Column(
+              children: [
+              Container(height: 280, color: const Color(0xFFE2ECEB)),
+              const SizedBox(height: 16),
+              Container(height: 26, width: 150, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(8))),
+              const SizedBox(height: 24),
+              Container(margin: const EdgeInsets.symmetric(horizontal: 24), height: 80, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24))),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(3, (index) => Container(margin: const EdgeInsets.symmetric(horizontal: 8), height: 36, width: 80, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(24)))),
+              ),
+            ],
+          ),
+        ),
+      ),
+      );
+    }
     if (_data == null) return const Scaffold(backgroundColor: Color(0xFFF4F7F6), body: Center(child: Text('NGƯỜI DÙNG KHÔNG TỒN TẠI', style: TextStyle(color: Colors.black87, fontSize: 18, fontWeight: FontWeight.w900))));
 
     final profile = _data!['profile'];
@@ -724,7 +777,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Widget _buildTabBtn(String label, IconData icon, String tabKey, Color primaryColor) {
     final isActive = _activeTab == tabKey;
     return GestureDetector(
-      onTap: () => setState(() => _activeTab = tabKey),
+      onTap: () {
+        setState(() => _activeTab = tabKey);
+        if (_data != null && _data!['profile'] != null) {
+          _loadTabDataIfNeeded(tabKey, _data!['profile']['id']);
+        }
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.fastOutSlowIn,

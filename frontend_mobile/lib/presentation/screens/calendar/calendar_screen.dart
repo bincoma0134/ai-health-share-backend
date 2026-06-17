@@ -11,6 +11,7 @@ import '../../../core/network/api_client.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/auth_bottom_sheet.dart';
 import '../../widgets/auth_guard.dart';
+import '../../widgets/shimmer_wrapper.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -153,8 +154,15 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
     }
   }
 
+  bool _isFetchingLock = false;
   Future<void> _loadData() async {
-    if (!mounted) return;
+    if (_isFetchingLock) return;
+    _isFetchingLock = true;
+    
+    if (!mounted) {
+      _isFetchingLock = false;
+      return;
+    }
     setState(() => _isLoading = true);
     
     try {
@@ -180,6 +188,8 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
       debugPrint("❌ LỖI TẢI TIẾN TRÌNH LỊCH HẸN: $e");
+    } finally {
+      _isFetchingLock = false;
     }
   }
 
@@ -388,7 +398,52 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
     return AuthGuardWidget(
       fallbackBuilder: (context) => _buildRequireLogin(),
       builder: (context, token, userId) {
-        if (_isLoading) return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator(color: Color(0xFF80BF84))));
+        if (_isLoading) {
+          return Scaffold(
+            backgroundColor: Colors.white,
+            body: SafeArea(
+              child: ShimmerWrapper(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Skeleton Header Tháng & Avatar
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(height: 30, width: 150, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(8))),
+                        Container(height: 32, width: 32, decoration: const BoxDecoration(color: Color(0xFFE2ECEB), shape: BoxShape.circle)),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    // Skeleton 4 Tabs Tiến Trình
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: List.generate(4, (index) => Container(height: 30, width: 75, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(12)))),
+                    ),
+                    const SizedBox(height: 24),
+                    // Skeleton Lưới Lịch 7 Ngày
+                    Container(height: 100, width: double.infinity, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(24))),
+                    const SizedBox(height: 24),
+                    // Skeleton Danh Sách Card Lịch Hẹn
+                    Expanded(
+                      child: ListView.builder(
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: 4,
+                        itemBuilder: (context, index) => Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          height: 130,
+                          decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(20)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ));
+        }
 
         return Scaffold(
       backgroundColor: Colors.white, // Ép cứng nền sáng phẳng (Light Mode Only) theo bản vẽ thiết kế mới

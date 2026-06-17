@@ -12,6 +12,7 @@ import '../../widgets/mini_video_player.dart';
 import '../../widgets/image_uploader.dart';
 import '../../widgets/video_uploader.dart';
 import '../../widgets/app_toast.dart';
+import '../../widgets/shimmer_wrapper.dart';
 
 class PartnerProfileScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -35,6 +36,10 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
   
   List<dynamic> _myServices = [];
   List<dynamic> _myVideos = [];
+  
+  bool _isFetchingLock = false;
+  bool _hasFetchedServices = false;
+  bool _hasFetchedVideos = false;
 
   // Controllers cho Form Hồ sơ
   final _nameCtrl = TextEditingController();
@@ -58,19 +63,49 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     _loadPartnerData();
   }
 
+  // [PHASE 2 & PHASE 4] Request Deduplication & Lazy Loading
   Future<void> _loadPartnerData() async {
-    setState(() => _isLoading = true);
-    final results = await Future.wait([
-      PartnerApiService.fetchMyServices(),
-      PartnerApiService.fetchMyVideos(),
-    ]);
+    if (_isFetchingLock) return;
+    _isFetchingLock = true;
+    try {
+      if (mounted) setState(() => _isLoading = true);
+      // Chỉ tải Tab mặc định ban đầu (Dịch vụ) để tăng tốc độ nạp trang tối đa
+      final services = await PartnerApiService.fetchMyServices();
+      
+      if (mounted) {
+        setState(() {
+          _myServices = services as List<dynamic>;
+          _hasFetchedServices = true;
+          _isLoading = false;
+        });
+      }
+    } finally {
+      _isFetchingLock = false;
+    }
+  }
 
-    if (mounted) {
-      setState(() {
-        _myServices = results[0] as List<dynamic>;
-        _myVideos = results[1] as List<dynamic>;
-        _isLoading = false;
-      });
+  // Khởi chạy ngầm tải Video khi user thật sự bấm vào Tab Studio
+  bool _isLazyFetching = false;
+  Future<void> _loadTabDataIfNeeded(String tab) async {
+    if (_isLazyFetching) return;
+    
+    bool needsFetch = false;
+    if (tab == 'services' && !_hasFetchedServices) needsFetch = true;
+    if (tab == 'studio' && !_hasFetchedVideos) needsFetch = true;
+    
+    if (!needsFetch) return;
+
+    _isLazyFetching = true;
+    try {
+      if (tab == 'services') {
+        final services = await PartnerApiService.fetchMyServices();
+        if (mounted) setState(() { _myServices = services as List<dynamic>; _hasFetchedServices = true; });
+      } else if (tab == 'studio') {
+        final videos = await PartnerApiService.fetchMyVideos();
+        if (mounted) setState(() { _myVideos = videos as List<dynamic>; _hasFetchedVideos = true; });
+      }
+    } finally {
+      _isLazyFetching = false;
     }
   }
 
@@ -840,7 +875,60 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
   // ==========================================
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return Scaffold(backgroundColor: const Color(0xFFF7FBF9), body: Center(child: CircularProgressIndicator(color: _bizPrimary)));
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF7FBF9),
+        body: ShimmerWrapper(
+          child: SingleChildScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            child: Column(
+              children: [
+                // Skeleton Khối Cover & Avatar
+                Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.bottomCenter,
+                  children: [
+                    Container(height: 220, width: double.infinity, color: const Color(0xFFE2ECEB)),
+                    Positioned(
+                      bottom: -50,
+                      child: Container(
+                        width: 110, height: 110,
+                        decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 4)),
+                        child: Container(decoration: const BoxDecoration(color: Color(0xFFE2ECEB), shape: BoxShape.circle)),
+                      ),
+                    )
+                  ],
+                ),
+                const SizedBox(height: 70),
+                // Skeleton Tiêu đề Doanh nghiệp
+                Container(height: 24, width: 180, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(8))),
+                const SizedBox(height: 8),
+                Container(height: 14, width: 100, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(6))),
+                const SizedBox(height: 24),
+                // Skeleton 3 Thẻ Stats Chỉ số
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    children: List.generate(3, (index) => Expanded(child: Container(margin: EdgeInsets.only(right: index < 2 ? 12 : 0), height: 60, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(20))))),
+                  ),
+                ),
+                const SizedBox(height: 40),
+                // Skeleton Bộ Menu Tabs Segmented
+                Container(margin: const EdgeInsets.symmetric(horizontal: 24), height: 50, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(24))),
+                const SizedBox(height: 24),
+                // Skeleton Khối Dịch vụ (Trải dọc)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    children: List.generate(2, (index) => Container(margin: const EdgeInsets.only(bottom: 16), height: 100, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(24)))),
+                  ),
+                )
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     // XỬ LÝ LỖI TRẮNG ẢNH (Kiểm tra chuỗi rỗng "" từ Backend)
     final String? rawCover = widget.profile['cover_url'];
@@ -1524,7 +1612,10 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     final isActive = _activeTab == tabKey;
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _activeTab = tabKey),
+        onTap: () {
+          setState(() => _activeTab = tabKey);
+          _loadTabDataIfNeeded(tabKey); // Kích hoạt nạp dữ liệu trễ chuyên dụng
+        },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
