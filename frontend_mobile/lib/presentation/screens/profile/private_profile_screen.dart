@@ -12,6 +12,7 @@ import 'creator_profile_screen.dart'; // IMPORT CREATOR
 import '../../widgets/auth_guard.dart';
 import '../../widgets/glass_wrapper.dart';
 import '../../widgets/app_toast.dart';
+import '../../../core/network/global_cache_engine.dart';
 
 class PrivateProfileScreen extends StatefulWidget {
   const PrivateProfileScreen({super.key});
@@ -491,7 +492,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                           width: double.infinity,
                           decoration: BoxDecoration(
                             color: const Color(0xFFE8F5E9),
-                            image: hasCover ? DecorationImage(image: NetworkImage(rawCover), fit: BoxFit.cover) : null,
+                            image: hasCover ? DecorationImage(image: GlobalCacheProvider.create(rawCover, maxWidth: 800, maxHeight: 600), fit: BoxFit.cover) : null,
                           ),
                           child: Container(
                             decoration: BoxDecoration(
@@ -539,7 +540,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 4),
                               boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.8), blurRadius: 24, offset: const Offset(0, 8))],
-                              image: DecorationImage(image: NetworkImage(avatarUrl), fit: BoxFit.cover),
+                              image: DecorationImage(image: GlobalCacheProvider.create(avatarUrl, maxWidth: 300, maxHeight: 300), fit: BoxFit.cover),
                             ),
                           ),
                           GestureDetector(
@@ -897,7 +898,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          CircleAvatar(radius: 8, backgroundImage: NetworkImage(avatarUrl)),
+                          CircleAvatar(radius: 8, backgroundImage: GlobalCacheProvider.create(avatarUrl, maxWidth: 100, maxHeight: 100)),
                           const SizedBox(width: 6),
                           Expanded(child: Text(authorName, style: const TextStyle(color: Color(0xFF617D79), fontSize: 13, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis)),
                         ],

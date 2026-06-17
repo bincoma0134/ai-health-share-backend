@@ -8,6 +8,7 @@ import '../../../core/network/api_client.dart'; // Trục kết nối mạng lõ
 import '../../widgets/booking_bottom_sheet.dart';
 import '../../../data/models/partner_map_model.dart';
 import '../../../data/services/map_api_service.dart';
+import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/auth_guard.dart';
 
@@ -18,7 +19,12 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixin {
+  
+  // 🚀 THUẬT TOÁN KEEPALIVE ENGINE: Chống reset Tab Map (Giữ nguyên tọa độ)
+  @override
+  bool get wantKeepAlive => true;
+
   final MapController _mapController = MapController();
   final DraggableScrollableController _sheetController = DraggableScrollableController();
   final TextEditingController _searchController = TextEditingController();
@@ -162,6 +168,7 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // BẮT BUỘC: Khởi động cơ chế KeepAlive
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
@@ -211,7 +218,12 @@ class _MapScreenState extends State<MapScreen> {
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(100),
                                       child: _userAvatarUrl != null
-                                          ? Image.network(_userAvatarUrl!, fit: BoxFit.cover)
+                                          ? GlobalCacheImage(
+                                              imageUrl: _userAvatarUrl!, 
+                                              fit: BoxFit.cover,
+                                              memCacheWidth: 100, // 🚀 Tối ưu RAM cho Marker Bản đồ
+                                              memCacheHeight: 100,
+                                            )
                                           : const Icon(Icons.person_pin_circle_rounded, color: Color(0xFF4C8D50), size: 28),
                                     ),
                                   ),
@@ -240,9 +252,11 @@ class _MapScreenState extends State<MapScreen> {
                                     ),
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(100),
-                                      child: Image.network(
-                                        partner.avatarUrl.isNotEmpty ? partner.avatarUrl : "https://ui-avatars.com/api/?name=${partner.username}&background=80BF84&color=fff",
+                                      child: GlobalCacheImage(
+                                        imageUrl: partner.avatarUrl.isNotEmpty ? partner.avatarUrl : "https://ui-avatars.com/api/?name=${partner.username}&background=80BF84&color=fff",
                                         fit: BoxFit.cover,
+                                        memCacheWidth: 150, // 🚀 Tối ưu RAM cho Marker Đối tác
+                                        memCacheHeight: 150,
                                       ),
                                     ),
                                   ),
@@ -605,8 +619,10 @@ class _MapScreenState extends State<MapScreen> {
                         color: Colors.grey.shade100,
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
                         image: DecorationImage(
-                          image: NetworkImage(
-                            partner.avatarUrl.isNotEmpty ? partner.avatarUrl : "https://picsum.photos/200/300"
+                          image: GlobalCacheProvider.create(
+                            partner.avatarUrl.isNotEmpty ? partner.avatarUrl : "https://picsum.photos/200/300",
+                            maxWidth: 280, // 🚀 Tối ưu RAM cho Thẻ gợi ý ngang
+                            maxHeight: 350,
                           ),
                           fit: BoxFit.cover,
                         ),
@@ -686,8 +702,10 @@ class _MapScreenState extends State<MapScreen> {
                       shape: BoxShape.circle,
                       border: Border.all(color: isHighlighted ? const Color(0xFF4C8D50) : Colors.white, width: isHighlighted ? 3 : 1.5),
                       image: DecorationImage(
-                        image: NetworkImage(
-                          partner.avatarUrl.isNotEmpty ? partner.avatarUrl : "https://ui-avatars.com/api/?name=${partner.username}&background=4C8D50&color=fff"
+                        image: GlobalCacheProvider.create(
+                          partner.avatarUrl.isNotEmpty ? partner.avatarUrl : "https://ui-avatars.com/api/?name=${partner.username}&background=4C8D50&color=fff",
+                          maxWidth: 160, // 🚀 Tối ưu RAM cho Thẻ chuyên gia dọc
+                          maxHeight: 160,
                         ),
                         fit: BoxFit.cover,
                       ),

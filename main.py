@@ -2,9 +2,10 @@ from fastapi import FastAPI, HTTPException, Depends, Security, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from database import get_db_connection
 import psycopg2
+from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
+import os
 from utils import send_notification, create_access_token, verify_password, get_password_hash
 from jose import JWTError, jwt
 import schemas
@@ -21,6 +22,40 @@ import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
+
+
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if DATABASE_URL:
+    db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, DATABASE_URL)
+else:
+    db_pool = None
+
+def get_db_connection():
+    if not db_pool:
+        from database import get_db_connection as fallback_db
+        yield from fallback_db()
+        return
+        
+    conn = db_pool.getconn()
+    try:
+        # 🚀 THUẬT TOÁN PING & SELF-HEALING: Kiểm tra sống/chết trước khi cấp phát
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            db_pool.putconn(conn, close=True)
+            conn = db_pool.getconn()
+            
+        yield conn
+    finally:
+        # Dọn dẹp rác giao dịch và trả về hồ chứa
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        db_pool.putconn(conn)
+
 
 # Khởi tạo Firebase Admin SDK
 PROJECT_ID = "vnshare-auth"

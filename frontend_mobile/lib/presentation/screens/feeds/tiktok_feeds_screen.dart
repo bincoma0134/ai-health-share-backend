@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart'; // Bổ sung GoRouter
 import '../../../data/models/video_model.dart'; 
 import '../../../data/services/feed_api_service.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/feed_video_player.dart';
 import '../../widgets/auth_bottom_sheet.dart';
 import '../../widgets/booking_bottom_sheet.dart';
@@ -27,7 +28,12 @@ class TikTokFeedsScreen extends StatefulWidget {
 }
 
 
-class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
+class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKeepAliveClientMixin {
+  
+  // 🚀 THUẬT TOÁN VIDEO RESUME ENGINE: Bảo lưu toàn bộ trạng thái UI và RAM khi chuyển Tab
+  @override
+  bool get wantKeepAlive => true;
+
   List<VideoModel> _videos = [];
   bool _isLoading = true;
   
@@ -88,6 +94,11 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
           _videos = fetchedVideos;
           _isLoading = false;
         });
+        
+        // Kích hoạt Preload ngay sau khi có dữ liệu
+        if (_videos.isNotEmpty) {
+          _preloadNextVideos(0);
+        }
       }
     } catch (e) {
       // Fallback an toàn
@@ -96,6 +107,29 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
         _videos = feeds;
         _isLoading = false;
       });
+      
+      // Kích hoạt Preload ngay sau khi có dữ liệu Fallback
+      if (_videos.isNotEmpty) {
+        _preloadNextVideos(0);
+      }
+    }
+  }
+
+  // 🚀 THUẬT TOÁN SMART PRELOAD
+  // Khởi tạo trước luồng mạng (Network stream) cho video kế tiếp (N+1, N+2)
+  // để đảm bảo phát ngay lập tức khi cuộn mà không cần chờ tải Frame đầu tiên.
+  void _preloadNextVideos(int index) {
+    for (int i = 1; i <= 2; i++) {
+      final nextIndex = index + i;
+      if (nextIndex < _videos.length) {
+        final url = _videos[nextIndex].videoUrl;
+        // Bắt đầu quá trình nạp Byte thầm lặng qua FeedVideoPool (Đã nâng cấp Async cho Disk Cache)
+        FeedVideoPool.getController(url).then((controller) {
+          if (!controller.value.isInitialized) {
+            controller.initialize();
+          }
+        });
+      }
     }
   }
 
@@ -177,6 +211,8 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // BẮT BUỘC: Khởi động cơ chế KeepAlive Engine
+    
     // Chuyển nền nạp trang mặc định của Hệ thống Feeds từ Đen sang Sáng trắng toàn cục
     if (_isLoading) return const Scaffold(backgroundColor: Color(0xFFFAFAFA), body: Center(child: CircularProgressIndicator(color: Color(0xFF80BF84))));
     if (_videos.isEmpty) return const Scaffold(backgroundColor: Color(0xFFFAFAFA), body: Center(child: Text('Không có video nào', style: TextStyle(color: Colors.black87))));
@@ -184,6 +220,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
       body: PageView.builder(
+        key: const PageStorageKey<String>('feed_video_position'), // 🚀 THUẬT TOÁN FEED POSITION ENGINE: Lưu giữ vị trí video hiện tại
         controller: _pageController, // Gán bộ điều khiển để hỗ trợ dịch chuyển index video khi chọn kết quả tìm kiếm
         scrollDirection: Axis.vertical,
         // Hiệu ứng lướt mượt, có độ nảy (Bounce) ở 2 đầu chuẩn UI/UX của iOS và TikTok
@@ -207,6 +244,9 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
           // Reset mốc thời gian bắt đầu cho video mới
           _videoStartTime = DateTime.now();
           setState(() => _currentIndex = index);
+          
+          // Kích hoạt nạp trước luồng video cho các trang tiếp theo
+          _preloadNextVideos(index);
         },
         itemBuilder: (context, index) {
           final video = _videos[index];
@@ -415,7 +455,11 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
                               ),
                               child: CircleAvatar(
                                 backgroundColor: const Color(0xFF161616),
-                                backgroundImage: NetworkImage(video.author['avatar_url'] ?? 'https://via.placeholder.com/150'),
+                                backgroundImage: GlobalCacheProvider.create(
+                                  video.author['avatar_url'] ?? 'https://via.placeholder.com/150',
+                                  maxWidth: 150, // 🚀 Tối ưu RAM: Ép giải mã ở kích thước nhỏ
+                                  maxHeight: 150,
+                                ),
                               ),
                             ),
                           ),
@@ -620,7 +664,11 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> {
                                           child: ListTile(
                                             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                                             leading: CircleAvatar(
-                                              backgroundImage: NetworkImage(video.author['avatar_url'] ?? 'https://via.placeholder.com/150'),
+                                              backgroundImage: GlobalCacheProvider.create(
+                                                video.author['avatar_url'] ?? 'https://via.placeholder.com/150',
+                                                maxWidth: 120, // 🚀 Tối ưu RAM: Ép giải mã kích thước nhỏ cho Overlay
+                                                maxHeight: 120,
+                                              ),
                                             ),
                                             title: Text(video.title, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
                                             subtitle: Text('@${video.author['username'] ?? 'user'} • ${video.categoryTag}', style: const TextStyle(color: Colors.white54, fontSize: 12)),

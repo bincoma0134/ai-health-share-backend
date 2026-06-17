@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:go_router/go_router.dart';
 import '../../../data/services/admin_api_service.dart';
 import '../../../data/services/user_api_service.dart';
+import '../../../core/network/global_cache_engine.dart';
 
 class ModeratorProfileScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -85,7 +86,7 @@ class _ModeratorProfileScreenState extends State<ModeratorProfileScreen> {
                       child: Stack(
                         alignment: Alignment.topRight,
                         children: [
-                          InteractiveViewer(child: Image.network(imageUrl, fit: BoxFit.contain, width: double.infinity, height: double.infinity)),
+                          InteractiveViewer(child: GlobalCacheImage(imageUrl: imageUrl, fit: BoxFit.contain, width: double.infinity, height: double.infinity, memCacheWidth: 1200)),
                           Padding(padding: const EdgeInsets.all(16.0), child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(context))),
                         ],
                       )
@@ -168,7 +169,7 @@ class _ModeratorProfileScreenState extends State<ModeratorProfileScreen> {
                         width: double.infinity,
                         decoration: BoxDecoration(
                           color: const Color(0xFF1E1B4B), // Nền tím đậm chờ load
-                          image: widget.profile['cover_url'] != null ? DecorationImage(image: NetworkImage(widget.profile['cover_url']), fit: BoxFit.cover) : null,
+                          image: widget.profile['cover_url'] != null ? DecorationImage(image: GlobalCacheProvider.create(widget.profile['cover_url'], maxWidth: 800, maxHeight: 600), fit: BoxFit.cover) : null,
                         ),
                         child: widget.profile['cover_url'] == null 
                           ? Center(child: Icon(Icons.shield, color: _modPrimary.withOpacity(0.3), size: 80))

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart'; // Đấu nối định tuyến nhanh Router 
 import '../../../data/models/partner_map_model.dart'; // Nạp mô hình đối tác sạch 
 import '../../../data/services/explore_api_service.dart'; // Nạp lớp dịch vụ 
+import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/mini_video_player.dart'; // Nạp trình phát video thực tế hệ thống
 import '../../widgets/booking_bottom_sheet.dart'; // Nạp bảng cấu hình đặt lịch chuẩn 404-resolved
 import '../../widgets/app_toast.dart'; // Bổ sung import AppToast để xử lý lỗi biên dịch
@@ -17,7 +18,12 @@ class ExploreScreen extends StatefulWidget {
   State<ExploreScreen> createState() => _ExploreScreenState();
 }
 
-class _ExploreScreenState extends State<ExploreScreen> {
+class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveClientMixin {
+  
+  // 🚀 THUẬT TOÁN KEEPALIVE ENGINE: Chống reset Tab Explore
+  @override
+  bool get wantKeepAlive => true;
+
   List<PartnerMapModel> _partners = []; // Chuẩn hóa kiểu dữ liệu mảng đối tượng 
   List<PartnerMapModel> _filteredPartners = []; // Bộ đệm lưu trữ dữ liệu sau khi lọc tìm kiếm
   
@@ -233,11 +239,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // BẮT BUỘC: Khởi động cơ chế KeepAlive
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9FA), // Nền xám nhạt làm bật các khối Card trắng 
       body: Stack(
         children: [
           CustomScrollView(
+        key: const PageStorageKey<String>('explore_scroll_position'), // 🚀 THUẬT TOÁN SCROLL POSITION ENGINE: Lưu giữ tọa độ cuộn trang
         controller: _scrollController,
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()), // 
         slivers: [
@@ -1045,10 +1053,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
                                 color: Colors.grey.shade200,
                                 borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                                 image: DecorationImage(
-                                  image: NetworkImage(
+                                  image: GlobalCacheProvider.create(
                                     partner.avatarUrl.isNotEmpty 
                                         ? partner.avatarUrl 
-                                        : "https://ui-avatars.com/api/?name=${partner.username}&background=80BF84&color=fff"
+                                        : "https://ui-avatars.com/api/?name=${partner.username}&background=80BF84&color=fff",
+                                    maxWidth: 320, // 🚀 Tối ưu RAM: Ép giải mã
+                                    maxHeight: 220,
                                   ), 
                                   fit: BoxFit.cover
                                 )

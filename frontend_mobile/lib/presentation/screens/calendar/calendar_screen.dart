@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Đã bổ sung: Phục vụ tương tác hệ thống Clipboard sao chép một chạm
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
@@ -1356,7 +1357,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                   Icon(Icons.person_outline_rounded, color: Colors.black26, size: 14),
                                   const SizedBox(width: 6),
                                   Text(
-                                    _isMyClient ? 'Khách: ${appt.customerName}' : 'Cơ sở: ${appt.partnerInfo['full_name'] ?? "AI Health Partner"}',
+                                    _isMyClient ? 'Khách: ${appt.customerName}' : 'Cơ sở: ${appt.partnerInfo['full_name'] ?? "VN Share"}',
                                     style: const TextStyle(color: Colors.black45, fontSize: 12),
                                   ),
                                 ],
@@ -1821,40 +1822,58 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: () async {
-                      Navigator.pop(dialogContext); // Đóng hóa đơn tạm tính
+                    Navigator.pop(dialogContext); // Đóng hóa đơn tạm tính
+                    
+                    BuildContext? loadContext;
+                    
+                    // 1. Hiển thị Overlay Loading chờ khởi tạo PayOS
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (loadCtx) {
+                        loadContext = loadCtx; // Khóa định danh chính xác context của Dialog Loading
+                        return const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)));
+                      },
+                    );
+                    
+                    try {
+                      // 2. Gọi trực tiếp API tạo thanh toán
+                      final res = await ApiClient.instance.post('/appointments/$id/pay');
                       
-                      // 1. Hiển thị Overlay Loading chờ khởi tạo PayOS
-                      showDialog(
-                        context: context,
-                        barrierDismissible: false,
-                        builder: (loadCtx) => const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84))),
-                      );
+                      // Giải phóng màn hình chờ bằng đúng định danh cô lập
+                      if (loadContext != null && Navigator.canPop(loadContext!)) {
+                        Navigator.pop(loadContext!);
+                      }
                       
-                      try {
-                        // 2. Gọi trực tiếp API tạo thanh toán
-                        final res = await ApiClient.instance.post('/appointments/$id/pay');
-                        Navigator.pop(context); // Tắt Overlay Loading
+                      if (res.statusCode == 200 && res.data != null) {
+                        // Bọc lót ép kiểu dữ liệu an toàn để tránh lỗi Type Cast Exception hệ thống
+                        final Map<String, dynamic> responseData = res.data is Map ? res.data : {};
                         
-                        if (res.statusCode == 200 && res.data['status'] == 'success') {
-                          final data = res.data;
-                          final inAppData = data['in_app_data'];
+                        if (responseData['status'] == 'success') {
+                          final inAppData = responseData['in_app_data'];
                           
                           if (inAppData != null && inAppData['qr_code'] != null) {
-                            // 3. THÀNH CÔNG: Hiển thị In-App QR Box
+                            // 3. THÀNH CÔNG: Hiển thị In-App QR Box lơ lửng
                             if (!mounted) return;
                             _showQrPaymentDialog(id, inAppData);
-                          } else if (data['checkout_url'] != null) {
-                            // 4. FALLBACK AN TOÀN: Nếu lỗi QR, vẫn mở Browser như cũ
-                            launchUrl(Uri.parse(data['checkout_url']), mode: LaunchMode.externalApplication);
+                          } else if (responseData['checkout_url'] != null) {
+                            // 4. FALLBACK AN TOÀN: Mở Browser nếu thiếu dữ liệu QR
+                            launchUrl(Uri.parse(responseData['checkout_url']), mode: LaunchMode.externalApplication);
                           }
                         } else {
                           if (mounted) AppToast.show(context: context, message: '❌ Lỗi khởi tạo thanh toán', isSuccess: false);
                         }
-                      } catch (e) {
-                        Navigator.pop(context); // Tắt Overlay nếu lỗi mạng
-                        if (mounted) AppToast.show(context: context, message: '❌ Lỗi kết nối hệ thống PayOS', isSuccess: false);
+                      } else {
+                        if (mounted) AppToast.show(context: context, message: '❌ Lỗi từ máy chủ thanh toán', isSuccess: false);
                       }
-                    },
+                    } catch (e) {
+                      // Bẫy lỗi giải phóng an toàn khi xảy ra sự cố sập mạng hoặc timeout
+                      if (loadContext != null && Navigator.canPop(loadContext!)) {
+                        Navigator.pop(loadContext!);
+                      }
+                      if (mounted) AppToast.show(context: context, message: '❌ Lỗi kết nối hệ thống PayOS', isSuccess: false);
+                    }
+                  },
                     child: const Text('XÁC NHẬN CHUYỂN KHOẢN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 )
@@ -1869,6 +1888,10 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
   void _showQrPaymentDialog(String appointmentId, Map<String, dynamic> inAppData) {
     bool isChecking = false;
     
+    // Tìm thông tin đối tác ứng với lịch hẹn để lấy avatar/tên bồi đắp cho Premium Header
+    final currentAppt = _appointments.firstWhere((a) => a.id == appointmentId, orElse: () => _appointments.first);
+    final String partnerName = currentAppt.partnerInfo['full_name'] ?? 'VN Share';
+    
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1876,99 +1899,274 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
         return StatefulBuilder(
           builder: (context, setState) {
             return Dialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
               backgroundColor: Colors.white,
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Thanh Toán Ký Gửi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF4C8D50))),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 20, color: Colors.black45),
-                          onPressed: () => Navigator.pop(qrContext),
+                        // --- SECTION 1: PREMIUM PAYMENT HEADER & CLOSE DOCK ---
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF3B82F6), // Màu xanh bảo chứng Escrow chuẩn Apple Pay
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'BẢO CHỨNG THANH TOÁN',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.black38,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 22, color: Colors.black38),
+                              onPressed: () => Navigator.pop(qrContext),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Center(
+                          child: Column(
+                            children: [
+                              Text(
+                                partnerName,
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.black87, letterSpacing: -0.3),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Cổng ký gửi an toàn thực hiện qua PayOS',
+                                style: TextStyle(fontSize: 11, color: Colors.black38, fontWeight: FontWeight.w500),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        
+                        // --- SECTION 3: DYNAMIC VIETQR CARD (LIQUID GLASS STYLE) ---
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: const Color(0xFFF4F7F6), width: 1.5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.03),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 8),
+                                )
+                              ],
+                            ),
+                            child: Image.network(
+                              'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${Uri.encodeComponent(inAppData['qr_code'] ?? '')}',
+                              width: 190,
+                              height: 190,
+                              fit: BoxFit.contain,
+                              loadingBuilder: (ctx, child, progress) => progress == null 
+                                  ? child 
+                                  : const SizedBox(width: 190, height: 190, child: Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)))),
+                              errorBuilder: (ctx, err, stack) => const SizedBox(
+                                width: 190, 
+                                height: 190, 
+                                child: Center(child: Icon(Icons.qr_code_scanner_rounded, size: 48, color: Colors.black12))
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // --- SECTION 3.2: CLICK-TO-COPY ACCOUNT DETAILS PILL ---
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF4F7F6),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Column(
+                            children: [
+                              _buildCopyableRow('Tài khoản ký gửi PayOS', inAppData['account_number']?.toString() ?? '', isMono: true),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 8),
+                                child: Divider(height: 1, color: Colors.black12),
+                              ),
+                              _buildCopyableRow('Số tiền chuyển khoản', _formatPrice((inAppData['amount'] ?? 0).toDouble()), customValueColor: const Color(0xFF4C8D50)),
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 8),
+                                child: Divider(height: 1, color: Colors.black12),
+                              ),
+                              _buildCopyableRow('Nội dung bắt buộc', inAppData['description']?.toString() ?? '', customValueColor: const Color(0xFF3B82F6)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // --- SECTION 4 & 5: STATUS INDICATOR & COUNTDOWN TIMELINE ---
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                const SizedBox(
+                                  width: 10,
+                                  height: 10,
+                                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFFF59E0B)),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Đang chờ giao dịch...',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber.shade700),
+                                ),
+                              ],
+                            ),
+                            const Row(
+                              children: [
+                                Icon(Icons.access_time_rounded, size: 14, color: Colors.black26),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '14:52',
+                                  style: TextStyle(fontSize: 12, color: Colors.black38, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()]),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        
+                        // --- SECTION 5.2: TRUST ACTION BUTTON ---
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF10B981), // Thiết kế Mint Green cao cấp chuẩn Apple Hub
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shadowColor: Colors.transparent,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            onPressed: isChecking ? null : () async {
+                              setState(() => isChecking = true);
+                              try {
+                                final res = await ApiClient.instance.get('/appointments/payment/verify?orderCode=${inAppData['order_code']}');
+                                if (res.statusCode == 200 && res.data['status'] == 'success') {
+                                  Navigator.pop(qrContext); // Giải phóng hộp thoại QR an toàn
+                                  if (mounted) AppToast.show(context: context, message: '🎉 Thanh toán hoàn tất bảo chứng!', isSuccess: true);
+                                  _loadData(); // Tải mới danh sách thời gian thực
+                                } else {
+                                  if (mounted) AppToast.show(context: context, message: '⏳ Chưa ghi nhận dòng tiền đến PayOS. Vui lòng đợi!', isSuccess: false);
+                                  setState(() => isChecking = false);
+                                }
+                              } catch (e) {
+                                if (mounted) AppToast.show(context: context, message: '❌ Lỗi đường truyền xác thực.', isSuccess: false);
+                                setState(() => isChecking = false);
+                              }
+                            },
+                            child: isChecking 
+                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : const Text('TÔI ĐÃ CHUYỂN KHOẢN', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.3)),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // --- SECTION 6: SECURITY TRUST INDICATORS ---
+                        const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.shield_outlined, size: 12, color: Colors.black26),
+                            SizedBox(width: 4),
+                            Text(
+                              'Giao dịch mã hóa SSL bọc thép bảo vệ quyền lợi 100%',
+                              style: TextStyle(fontSize: 10, color: Colors.black26, fontWeight: FontWeight.w500),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    // Rendering Mã VietQR động qua API mã nguồn mở (Tránh phụ thuộc package qr_flutter)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFF4F7F6), width: 2),
-                      ),
-                      child: Image.network(
-                        'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${Uri.encodeComponent(inAppData['qr_code'] ?? '')}',
-                        width: 200,
-                        height: 200,
-                        loadingBuilder: (ctx, child, progress) => progress == null ? child : const SizedBox(width: 200, height: 200, child: Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)))),
-                        errorBuilder: (ctx, err, stack) => const SizedBox(width: 200, height: 200, child: Center(child: Icon(Icons.qr_code_scanner, size: 64, color: Colors.black12))),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    // Thông tin tài khoản Click-to-Copy
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: const Color(0xFFF4F7F6), borderRadius: BorderRadius.circular(12)),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          const Text('Ngân hàng: PayOS', style: TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 4),
-                          Text('${inAppData['account_number'] ?? ''}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1)),
-                          Text('${inAppData['account_name'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 8),
-                          Text('Số tiền: ${_formatPrice((inAppData['amount'] ?? 0).toDouble())}', style: const TextStyle(fontSize: 14, color: Colors.red, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
-                          Text('Nội dung: ${inAppData['description'] ?? ''}', style: const TextStyle(fontSize: 14, color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    // Khối Callback Xác thực chủ động (Polling Button)
-                    SizedBox(
-                      width: double.infinity,
-                      height: 44,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF10B981),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        onPressed: isChecking ? null : () async {
-                          setState(() => isChecking = true);
-                          try {
-                            final res = await ApiClient.instance.get('/appointments/payment/verify?orderCode=${inAppData['order_code']}');
-                            if (res.statusCode == 200 && res.data['status'] == 'success') {
-                              Navigator.pop(qrContext); // Đóng Dialog QR
-                              if (mounted) AppToast.show(context: context, message: '🎉 Thanh toán thành công!', isSuccess: true);
-                              _loadData(); // Tải lại toàn bộ Lịch hẹn (Đổi màu sang Đã thanh toán)
-                            } else {
-                              if (mounted) AppToast.show(context: context, message: '⏳ Hệ thống chưa nhận được tiền. Vui lòng đợi giây lát!', isSuccess: false);
-                              setState(() => isChecking = false);
-                            }
-                          } catch (e) {
-                            if (mounted) AppToast.show(context: context, message: '❌ Không thể kết nối tới hệ thống xác thực', isSuccess: false);
-                            setState(() => isChecking = false);
-                          }
-                        },
-                        child: isChecking 
-                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : const Text('TÔI ĐÃ CHUYỂN KHOẢN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                      ),
-                    )
-                  ],
+                  ),
                 ),
               ),
             );
           },
         );
       },
+    );
+  }
+
+  // Hàm bổ trợ dựng dòng thông tin copyable cao cấp tinh sảo
+  Widget _buildCopyableRow(String title, String value, {bool isMono = false, Color? customValueColor}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start, // Giúp căn lề trên khi text xuống dòng
+      children: [
+        Text(title, style: const TextStyle(fontSize: 11, color: Colors.black45, fontWeight: FontWeight.w500)),
+        const SizedBox(width: 12), // Tạo khoảng cách để tránh text dính vào title
+        Expanded(
+          child: GestureDetector(
+            onTap: () {
+              ServicesBinding.instance.defaultBinaryMessenger.handlePlatformMessage(
+                'flutter/platform',
+                const JSONMessageCodec().encodeMessage({
+                  'method': 'Clipboard.setData',
+                  'args': {'text': value}
+                }),
+                null,
+              );
+              AppToast.show(context: context, message: '🎉 Đã sao chép: $value', isSuccess: true);
+            },
+            child: Container(
+              color: Colors.transparent,
+              alignment: Alignment.centerRight, // Căn lề phải cho giá trị
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Flexible(
+                    child: Text(
+                      value,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: customValueColor ?? Colors.black87,
+                        fontFamily: isMono ? 'monospace' : null,
+                        fontFeatures: isMono ? const [FontFeature.tabularFigures()] : null,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.copy_rounded, size: 12, color: Colors.black26),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

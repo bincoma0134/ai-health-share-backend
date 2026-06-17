@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../data/services/partner_api_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../data/services/user_api_service.dart';
+import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/mini_video_player.dart';
 import '../../widgets/image_uploader.dart';
 import '../../widgets/video_uploader.dart';
@@ -97,7 +98,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                 title: const Text('Xem ảnh lớn', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 onTap: () {
                   Navigator.pop(context);
-                  showDialog(context: context, builder: (_) => Dialog(backgroundColor: Colors.transparent, insetPadding: EdgeInsets.zero, child: Stack(alignment: Alignment.topRight, children: [InteractiveViewer(child: Image.network(imageUrl, fit: BoxFit.contain, width: double.infinity, height: double.infinity)), Padding(padding: const EdgeInsets.all(16.0), child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(context)))])));
+                  showDialog(context: context, builder: (_) => Dialog(backgroundColor: Colors.transparent, insetPadding: EdgeInsets.zero, child: Stack(alignment: Alignment.topRight, children: [InteractiveViewer(child: GlobalCacheImage(imageUrl: imageUrl, fit: BoxFit.contain, width: double.infinity, height: double.infinity, memCacheWidth: 1200)), Padding(padding: const EdgeInsets.all(16.0), child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(context)))])));
                 },
               ),
             ListTile(
@@ -868,7 +869,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                         width: double.infinity,
                         decoration: BoxDecoration(
                           color: const Color(0xFFE8F5E9),
-                          image: hasCover ? DecorationImage(image: NetworkImage(rawCover), fit: BoxFit.cover) : null,
+                          image: hasCover ? DecorationImage(image: GlobalCacheProvider.create(rawCover, maxWidth: 800, maxHeight: 600), fit: BoxFit.cover) : null,
                         ),
                         child: !hasCover 
                           ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.business, color: _bizPrimary.withOpacity(0.5), size: 60), const SizedBox(height: 8), Text('Tải ảnh bìa cơ sở', style: TextStyle(color: const Color(0xFF617D79), fontWeight: FontWeight.bold))]))
@@ -1082,7 +1083,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                   width: 80, height: 80,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16), 
-                    image: svc['image_url'] != null ? DecorationImage(image: NetworkImage(svc['image_url']), fit: BoxFit.cover) : null, 
+                    image: svc['image_url'] != null ? DecorationImage(image: GlobalCacheProvider.create(svc['image_url'], maxWidth: 300, maxHeight: 300), fit: BoxFit.cover) : null, 
                     color: const Color(0xFFF7FBF9),
                     border: Border.all(color: const Color(0xFFE2ECEB).withOpacity(0.5))
                   ),

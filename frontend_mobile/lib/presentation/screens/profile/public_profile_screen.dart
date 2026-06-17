@@ -6,6 +6,7 @@ import '../../../data/services/user_api_service.dart';
 import '../../widgets/mini_video_player.dart';
 import '../../widgets/app_toast.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/booking_bottom_sheet.dart';
 import '../../widgets/auth_guard.dart';
 
@@ -186,7 +187,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
-                      hasCover ? Image.network(rawCover, fit: BoxFit.cover) : Container(color: primaryColor.withOpacity(0.15)),
+                      hasCover ? GlobalCacheImage(imageUrl: rawCover, fit: BoxFit.cover, memCacheWidth: 800, memCacheHeight: 600) : Container(color: primaryColor.withOpacity(0.15)),
                       Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
@@ -216,7 +217,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                             child: Container(
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                image: DecorationImage(image: NetworkImage(hasAvatar ? rawAvatar : fallbackAvatar), fit: BoxFit.cover),
+                                image: DecorationImage(
+                                  image: GlobalCacheProvider.create(
+                                    hasAvatar ? rawAvatar : fallbackAvatar,
+                                    maxWidth: 350, // 🚀 Tối ưu RAM: Kích thước hiển thị vừa đủ cho Profile
+                                    maxHeight: 350,
+                                  ), 
+                                  fit: BoxFit.cover
+                                ),
                               ),
                             ),
                           ),
@@ -419,7 +427,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                             if (hasVideo)
                                               MiniVideoPlayer(videoUrl: svc['video_url'])
                                             else if (hasImage)
-                                              Image.network(svc['image_url'], fit: BoxFit.cover)
+                                              GlobalCacheImage(imageUrl: svc['image_url'], fit: BoxFit.cover, memCacheWidth: 400, memCacheHeight: 300)
                                             else
                                               Container(color: const Color(0xFFF4F7F6), child: const Icon(Icons.image, color: Colors.black12, size: 40)),
                                             

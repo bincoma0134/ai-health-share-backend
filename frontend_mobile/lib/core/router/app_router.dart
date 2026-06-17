@@ -22,6 +22,7 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final GoRouter appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
+  restorationScopeId: 'vnshare_router_scope', // 🚀 RESTORATION ĐIỀU HƯỚNG: Phục hồi chính xác Tab và Màn hình đang xem khi App bị OS Kill
   initialLocation: '/splash', // Đặt Splash làm trang chạy đầu tiên
   refreshListenable: AuthNotifier.instance, // Lắng nghe thay đổi Auth để tự động cập nhật Navigation
   routes: [

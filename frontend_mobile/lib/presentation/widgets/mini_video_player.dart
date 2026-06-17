@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import '../../core/network/video_cache_engine.dart';
 
 class MiniVideoPlayer extends StatefulWidget {
   final String videoUrl;
@@ -21,14 +23,20 @@ class _MiniVideoPlayerState extends State<MiniVideoPlayer> {
   }
 
   Future<void> _initializePlayer() async {
+    // 🚀 TÍCH HỢP CACHE ENGINE: Truy xuất File từ ổ cứng nếu có để khởi động 0ms
+    final optimalUrl = await VideoCacheEngine.getOptimalUrl(widget.videoUrl);
+
     // CẤU HÌNH TĂNG TỐC 1: Sử dụng VideoPlayerOptions để kiểm soát tài nguyên chạy ngầm của hệ điều hành
-    _controller = VideoPlayerController.networkUrl(
-      Uri.parse(widget.videoUrl),
-      videoPlayerOptions: VideoPlayerOptions(
-        mixWithOthers: true, // Cho phép chạy song song không làm gián đoạn nhạc nền hệ thống
-        allowBackgroundPlayback: false, // Tắt ngay lập tức khi ứng dụng xuống background để tiết kiệm pin
-      ),
-    );
+    // 🚀 HOTFIX: Đồng bộ cơ chế phân tích đường dẫn an toàn từ Engine chính
+    _controller = optimalUrl.startsWith('/') || optimalUrl.startsWith('file://')
+        ? VideoPlayerController.file(
+            File(optimalUrl.replaceFirst('file://', '')),
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true, allowBackgroundPlayback: false),
+          )
+        : VideoPlayerController.networkUrl(
+            Uri.parse(optimalUrl),
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true, allowBackgroundPlayback: false),
+          );
 
     try {
       // Kích hoạt nạp luồng không đồng bộ với cấu hình khởi tạo trước

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../data/services/creator_api_service.dart';
 import '../../../data/services/user_api_service.dart';
+import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/mini_video_player.dart';
 
 class CreatorProfileScreen extends StatefulWidget {
@@ -212,7 +213,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                   children: [
                     GestureDetector(
                       onTap: () => _showImageOptions(hasCover ? rawCover : null, 'cover'),
-                      child: Container(height: 220, width: double.infinity, decoration: BoxDecoration(color: const Color(0xFF4C1D95).withOpacity(0.3), image: hasCover ? DecorationImage(image: NetworkImage(rawCover), fit: BoxFit.cover) : null), child: !hasCover ? Center(child: Icon(Icons.auto_awesome, color: _crtPrimary.withOpacity(0.5), size: 60)) : Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, const Color(0xFF09090b).withOpacity(0.9)])))),
+                      child: Container(height: 220, width: double.infinity, decoration: BoxDecoration(color: const Color(0xFF4C1D95).withOpacity(0.3), image: hasCover ? DecorationImage(image: GlobalCacheProvider.create(rawCover, maxWidth: 800, maxHeight: 600), fit: BoxFit.cover) : null), child: !hasCover ? Center(child: Icon(Icons.auto_awesome, color: _crtPrimary.withOpacity(0.5), size: 60)) : Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, const Color(0xFF09090b).withOpacity(0.9)])))),
                     ),
                     Positioned(
                       top: MediaQuery.of(context).padding.top + 10, right: 16,
@@ -333,7 +334,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
             Row(children: [CircleAvatar(radius: 16, backgroundImage: NetworkImage(widget.profile['avatar_url'] ?? '')), const SizedBox(width: 8), const Text('Hôm nay', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold))]),
             const SizedBox(height: 12),
             Text(p['content'], style: const TextStyle(color: Colors.white)),
-            if (p['image_url'] != null) ...[const SizedBox(height: 12), ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(p['image_url']))]
+            if (p['image_url'] != null) ...[const SizedBox(height: 12), ClipRRect(borderRadius: BorderRadius.circular(12), child: GlobalCacheImage(imageUrl: p['image_url'], memCacheWidth: 600))]
           ]),
         ))
       ],

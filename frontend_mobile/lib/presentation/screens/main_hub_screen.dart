@@ -36,23 +36,13 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
   void _onTap(BuildContext context, int index) {
     void performNav() {
       if (index != widget.navigationShell.currentIndex) {
-        setState(() {
-          _isPageLoading = true;
-        });
-        
+        // 🚀 THUẬT TOÁN INDEXEDSTACK: Chuyển tab tức thì (Zero-latency)
+        // Xóa bỏ trạng thái _isPageLoading ảo để ngăn chặn việc Flutter tháo dỡ (unmount)
+        // toàn bộ NavigationShell khỏi cây Widget, bảo toàn 100% State của mọi màn hình.
         widget.navigationShell.goBranch(
           index,
           initialLocation: index == widget.navigationShell.currentIndex,
         );
-
-        // Tạo một khoảng trễ cực ngắn để hiển thị bộ xương skeleton mượt mà trước khi nạp trang mới hoàn tất
-        Future.delayed(const Duration(milliseconds: 350), () {
-          if (mounted) {
-            setState(() {
-              _isPageLoading = false;
-            });
-          }
-        });
       } else {
         widget.navigationShell.goBranch(
           index,

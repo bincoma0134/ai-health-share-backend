@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../data/services/admin_api_service.dart';
 import '../../../data/services/user_api_service.dart';
+import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/mini_video_player.dart';
 import 'package:go_router/go_router.dart';
 class SuperAdminProfileScreen extends StatefulWidget {
@@ -91,7 +92,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
                       child: Stack(
                         alignment: Alignment.topRight,
                         children: [
-                          InteractiveViewer(child: Image.network(imageUrl, fit: BoxFit.contain, width: double.infinity, height: double.infinity)),
+                          InteractiveViewer(child: GlobalCacheImage(imageUrl: imageUrl, fit: BoxFit.contain, width: double.infinity, height: double.infinity, memCacheWidth: 1200)),
                           Padding(padding: const EdgeInsets.all(16.0), child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(context))),
                         ],
                       )
@@ -337,7 +338,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
                         width: double.infinity,
                         decoration: BoxDecoration(
                           color: Colors.blueGrey.shade900,
-                          image: widget.profile['cover_url'] != null ? DecorationImage(image: NetworkImage(widget.profile['cover_url']), fit: BoxFit.cover) : null,
+                          image: widget.profile['cover_url'] != null ? DecorationImage(image: GlobalCacheProvider.create(widget.profile['cover_url'], maxWidth: 800, maxHeight: 600), fit: BoxFit.cover) : null,
                         ),
                         child: Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, const Color(0xFF09090b).withOpacity(0.9)]))),
                       ),
@@ -575,7 +576,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
               Text(p['content'], style: const TextStyle(color: Colors.white)),
               if (p['image_url'] != null) ...[
                 const SizedBox(height: 12),
-                ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.network(p['image_url'])),
+                ClipRRect(borderRadius: BorderRadius.circular(12), child: GlobalCacheImage(imageUrl: p['image_url'], memCacheWidth: 600)),
               ]
             ],
           ),

@@ -1,9 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
+import 'dart:io';
 import 'package:flutter/services.dart';
 import 'auth_guard.dart';
+import '../../core/network/video_cache_engine.dart';
 
+// 🚀 THUẬT TOÁN CONTROLLER POOL (LRU CACHE) + DISK CACHE
+// Quản lý tối đa 5 VideoPlayerController đồng thời để tái sử dụng, 
+// chống tràn RAM và ngăn crash Codec phần cứng.
+class FeedVideoPool {
+  static final Map<String, VideoPlayerController> _pool = {};
+  static final List<String> _lru = [];
+  static const int maxPoolSize = 5;
+
+  static Future<VideoPlayerController> getController(String url) async {
+    // Tái sử dụng Controller nếu đã tồn tại trong Pool
+    if (_pool.containsKey(url)) {
+      _lru.remove(url);
+      _lru.add(url); // Đẩy lên vị trí sử dụng gần nhất
+      return _pool[url]!;
+    }
+
+    // Nếu Pool đầy, giải phóng Controller cũ nhất (Least Recently Used)
+    if (_pool.length >= maxPoolSize) {
+      final oldestUrl = _lru.removeAt(0);
+      _pool[oldestUrl]?.dispose();
+      _pool.remove(oldestUrl);
+    }
+
+    // 🚀 LÕI VIDEO CACHE: Lấy URL tối ưu (File nội bộ nếu đã Cache, hoặc Network gốc)
+    final optimalUrl = await VideoCacheEngine.getOptimalUrl(url);
+
+    // Khởi tạo Controller dựa trên nguồn File hoặc Network
+    // 🚀 HOTFIX: Nhận diện đường dẫn tuyệt đối (bắt đầu bằng '/' hoặc 'file://') và khởi tạo File an toàn
+    final controller = optimalUrl.startsWith('/') || optimalUrl.startsWith('file://')
+        ? VideoPlayerController.file(File(optimalUrl.replaceFirst('file://', '')))
+        : VideoPlayerController.networkUrl(Uri.parse(optimalUrl));
+
+    _pool[url] = controller;
+    _lru.add(url);
+    return controller;
+  }
+}
 
 class FeedVideoPlayer extends StatefulWidget {
   final String videoUrl;
@@ -28,12 +67,12 @@ class FeedVideoPlayer extends StatefulWidget {
 // Bổ sung AutomaticKeepAliveClientMixin để chống khai tử Video
 class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingObserver, TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   
-  // 🚀 THUẬT TOÁN BẢO LƯU RAM CHỐNG TRÀN BỘ NHỚ
-  // Chỉ giữ sống Video nếu khoảng cách giữa nó và video đang xem <= 1
+  // 🚀 THUẬT TOÁN WINDOW CACHE: BẢO LƯU RAM CHỐNG TRÀN BỘ NHỚ
+  // Chỉ giữ sống Video trong phạm vi Cửa sổ: N-2, N-1, N, N+1, N+2 (khoảng cách <= 2)
   @override
-  bool get wantKeepAlive => (widget.videoIndex - widget.currentIndex).abs() <= 1;
+  bool get wantKeepAlive => (widget.videoIndex - widget.currentIndex).abs() <= 2;
 
-  late VideoPlayerController _controller;
+  VideoPlayerController? _controller; // Cho phép Null trong lúc chờ Disk Cache Engine phản hồi
   bool _isInitialized = false;
   bool _isUserPaused = false; 
   
@@ -46,53 +85,70 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
   Offset _lastTapPosition = Offset.zero;
 
 
+  // Tách hàm Lắng nghe riêng để dễ dàng gỡ bỏ chống rò rỉ bộ nhớ (Memory Leak)
+  void _videoListener() {
+    if (mounted && _controller != null && _controller!.value.isInitialized && _controller!.value.duration.inMilliseconds > 0) {
+      final double currentPos = _controller!.value.position.inMilliseconds.toDouble();
+      final double totalDuration = _controller!.value.duration.inMilliseconds.toDouble();
+      setState(() {
+        _progress = (currentPos / totalDuration).clamp(0.0, 1.0);
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
-      ..initialize().then((_) {
-        if (mounted) {
-          setState(() => _isInitialized = true);
-          _controller.setLooping(true);
-          
-          // Đăng ký bộ lắng nghe tính toán tiến trình phát video real-time mượt mà
-          _controller.addListener(() {
-            if (mounted && _controller.value.duration.inMilliseconds > 0) {
-              final double currentPos = _controller.value.position.inMilliseconds.toDouble();
-              final double totalDuration = _controller.value.duration.inMilliseconds.toDouble();
-              setState(() {
-                _progress = (currentPos / totalDuration).clamp(0.0, 1.0);
-              });
-            }
-          });
+    // Lấy Controller từ Pool (Hỗ trợ Async Disk Cache)
+    FeedVideoPool.getController(widget.videoUrl).then((controller) {
+      if (!mounted) return;
+      _controller = controller;
+      _controller!.addListener(_videoListener);
 
-          if (widget.isActive) _controller.play();
-        }
-      });
+      if (!_controller!.value.isInitialized) {
+        _controller!.initialize().then((_) {
+          if (mounted) {
+            setState(() => _isInitialized = true);
+            _controller!.setLooping(true);
+            if (widget.isActive) _controller!.play();
+          }
+        });
+      } else {
+        setState(() => _isInitialized = true);
+        if (widget.isActive) _controller!.play();
+      }
+    });
   }
 
   // CHỈ GIỮ LẠI 1 HÀM didUpdateWidget DUY NHẤT Ở ĐÂY
   @override
   void didUpdateWidget(covariant FeedVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_isInitialized) {
+    
+    // Đánh giá lại trạng thái bảo lưu bộ nhớ khi luồng vuốt thay đổi (Window Cache)
+    if (oldWidget.currentIndex != widget.currentIndex) {
+      updateKeepAlive();
+    }
+
+    if (_isInitialized && _controller != null) {
       if (widget.isActive && !_isUserPaused) {
-        _controller.play();
+        _controller!.play();
       } else {
-        _controller.pause();
+        _controller!.pause();
       }
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_controller == null) return;
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      _controller.pause();
+      _controller!.pause();
     } else if (state == AppLifecycleState.resumed) {
       if (widget.isActive && !_isUserPaused) {
-        _controller.play();
+        _controller!.play();
       }
     }
   }
@@ -100,18 +156,24 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _controller.dispose(); 
+    
+    // Gỡ bỏ Listener cũ để tránh rò rỉ (Memory Leak) khi Controller được Widget khác mượn lại
+    _controller?.removeListener(_videoListener);
+    
+    // KHÔNG GỌI _controller.dispose() Ở ĐÂY.
+    // Việc giải phóng tài nguyên hiện tại do lớp FeedVideoPool tự động quản lý.
+    
     super.dispose();
   }
 
   void _togglePlayPause() {
-    if (!_isInitialized) return;
+    if (!_isInitialized || _controller == null) return;
     setState(() {
-      if (_controller.value.isPlaying) {
-        _controller.pause();
+      if (_controller!.value.isPlaying) {
+        _controller!.pause();
         _isUserPaused = true;
       } else {
-        _controller.play();
+        _controller!.play();
         _isUserPaused = false;
       }
     });
@@ -143,7 +205,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
   @override
   Widget build(BuildContext context) {
     super.build(context); // BẮT BUỘC phải gọi để kích hoạt thuật toán KeepAlive
-    if (!_isInitialized) {
+    if (!_isInitialized || _controller == null) {
       return const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)));
     }
 
@@ -151,9 +213,9 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
       key: Key(widget.videoUrl),
       onVisibilityChanged: (info) {
         if (info.visibleFraction == 0) {
-          _controller.pause();
+          _controller!.pause();
         } else if (info.visibleFraction == 1.0 && widget.isActive && !_isUserPaused) {
-          _controller.play();
+          _controller!.play();
         }
       },
       child: GestureDetector(
@@ -169,9 +231,9 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
               child: FittedBox(
                 fit: BoxFit.cover,
                 child: SizedBox(
-                  width: _controller.value.size.width,
-                  height: _controller.value.size.height,
-                  child: VideoPlayer(_controller),
+                  width: _controller!.value.size.width,
+                  height: _controller!.value.size.height,
+                  child: VideoPlayer(_controller!),
                 ),
               ),
             ),
@@ -188,7 +250,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
             ),
             
             // Lớp báo hiệu Đang Đệm (Buffering Indicator) chống giật
-            if (_controller.value.isBuffering)
+            if (_controller!.value.isBuffering)
                const CircularProgressIndicator(color: Color(0xFF80BF84), strokeWidth: 3),
 
             // MỚI: Thanh tiến trình video (Progress Bar) - Chuyển sang Tone màu sáng (Nền tối nhẹ, chạy màu thương hiệu xanh đậm)
@@ -220,7 +282,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
             // Lớp Phủ Tim Nổi Đa Điểm TikTok (Multi-Tap Dynamic Position)
 
             // MỚI: Lớp phủ Báo lỗi luồng phát mạng (Network / Stream Error Overlay) - Chuyển sang Tone màu Sáng toàn diện
-            if (_controller.value.hasError)
+            if (_controller!.value.hasError)
               Container(
                 color: const Color(0xFFFAFAFA), // Nền xám trắng Light Mode sạch sẽ
                 child: Center(
@@ -239,10 +301,10 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
                           setState(() {
                             _isInitialized = false;
                           });
-                          _controller.initialize().then((_) {
+                          _controller!.initialize().then((_) {
                             if (mounted) {
                               setState(() => _isInitialized = true);
-                              _controller.play();
+                              _controller!.play();
                             }
                           });
                         },
