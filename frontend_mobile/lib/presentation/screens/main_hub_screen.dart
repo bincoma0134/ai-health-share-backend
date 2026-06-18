@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../widgets/liquid_glass/liquid_glass_panel.dart';
 import '../widgets/auth_guard.dart';
+import '../widgets/notification_notifier.dart';
 
 class MainHubScreen extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -63,9 +64,54 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        child: _isPageLoading ? _buildSkeletonLayout() : widget.navigationShell,
+      body: Stack(
+        children: [
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: _isPageLoading ? _buildSkeletonLayout() : widget.navigationShell,
+          ),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            right: 16,
+            child: ListenableBuilder(
+              listenable: NotificationNotifier.instance,
+              builder: (context, child) {
+                final unread = NotificationNotifier.instance.unreadCount;
+                return GestureDetector(
+                  onTap: () => context.push('/notifications'),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.8),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2))
+                      ]
+                    ),
+                    child: Stack(
+                      children: [
+                        const Icon(Icons.notifications_none, color: Color(0xFF27272A), size: 24),
+                        if (unread > 0)
+                          Positioned(
+                            right: 0,
+                            top: 0,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF10B981),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: Padding(
           padding: EdgeInsets.only(

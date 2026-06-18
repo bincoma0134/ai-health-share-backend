@@ -14,12 +14,29 @@ if not SECRET_KEY:
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 ngày
 
-async def send_notification(*args, **kwargs):
+def send_notification(conn, user_id: str, category: str, title: str, message: str, sender_id: str = None):
     """
-    Hàm gửi thông báo hệ thống (Đã được khôi phục để phục vụ main.py)
+    Hàm gửi thông báo hệ thống (Proxy kết nối sang NotificationService tĩnh)
+    Đồng bộ thay vì async để không làm kẹt luồng main.py hiện tại.
     """
-    print(f"[Notification] Triggered notification with args: {args}, kwargs: {kwargs}")
-    return True
+    try:
+        from notification_service import NotificationService
+        metadata = {
+            "category": category,
+            "title": title,
+            "message": message
+        }
+        return NotificationService.dispatch_event(
+            conn=conn, 
+            user_id=user_id, 
+            event_type="LEGACY", 
+            reference_id="", 
+            metadata=metadata, 
+            sender_id=sender_id
+        )
+    except Exception as e:
+        print(f"[Notification Proxy Error] Đã cách ly lỗi: {e}")
+        return False
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """

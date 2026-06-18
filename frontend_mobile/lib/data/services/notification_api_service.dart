@@ -1,0 +1,39 @@
+import 'package:dio/dio.dart';
+import '../../core/network/api_client.dart';
+
+class NotificationApiService {
+  static final Dio _dio = ApiClient.instance;
+
+  // Lấy danh sách thông báo từ Server
+  static Future<List<dynamic>> fetchNotifications({int limit = 50}) async {
+    try {
+      final res = await _dio.get('/notifications', queryParameters: {'limit': limit});
+      if (res.statusCode == 200 && res.data['status'] == 'success') {
+        return List<dynamic>.from(res.data['data'] ?? []);
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // Đồng bộ trạng thái đã đọc của một thông báo
+  static Future<bool> markAsRead(String notificationId) async {
+    try {
+      final res = await _dio.patch('/notifications/$notificationId/read');
+      return res.statusCode == 200 && res.data['status'] == 'success';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Đồng bộ trạng thái đã đọc toàn bộ
+  static Future<bool> markAllAsRead() async {
+    try {
+      final res = await _dio.patch('/notifications/read-all');
+      return res.statusCode == 200 && res.data['status'] == 'success';
+    } catch (e) {
+      return false;
+    }
+  }
+}

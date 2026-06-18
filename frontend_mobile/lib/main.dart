@@ -3,7 +3,10 @@ import 'package:firebase_core/firebase_core.dart'; // Bổ sung thư viện
 import 'core/router/app_router.dart';
 import 'presentation/widgets/auth_guard.dart';
 import 'core/network/global_cache_engine.dart'; // Nạp Engine để xả RAM toàn cục
-
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'presentation/widgets/notification_notifier.dart';
+import 'core/router/deep_link_engine.dart';
+import 'core/router/app_router.dart';
 
 void main() async { // Đổi thành hàm async
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +16,11 @@ void main() async { // Đổi thành hàm async
   
   // BẮT BUỘC: Nạp phiên đăng nhập vào RAM trước khi dựng UI
   await AuthNotifier.instance.initialize();
+  
+  // KHỞI TẠO LỚP TIẾP NHẬN THÔNG BÁO (RECEIVE LAYER)
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    NotificationNotifier.instance.handleForegroundMessage(message);
+  });
   
   runApp(const VNShareApp());
 }
@@ -31,6 +39,23 @@ class _VNShareAppState extends State<VNShareApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this); // Đăng ký lắng nghe Hệ điều hành
+    
+    // 1. Xử lý chạm thông báo khi App đang chạy nền (Background)
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      if (message.data['payload'] != null) {
+        DeepLinkEngine.instance.handleNotificationTap(rootNavigatorKey.currentContext, message.data['payload']);
+      }
+    });
+
+    // 2. Xử lý chạm thông báo khi App bị tắt hoàn toàn (Terminated / Cold Start)
+    FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
+      if (message != null && message.data['payload'] != null) {
+        // Đợi Flutter dựng xong khung Widget (Frame đầu tiên) rồi mới kích hoạt Router
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          DeepLinkEngine.instance.handleNotificationTap(rootNavigatorKey.currentContext, message.data['payload']);
+        });
+      }
+    });
   }
 
   @override

@@ -34,6 +34,8 @@ dependencies:
   video_compress: ^3.1.2
   flutter_cache_manager: ^3.4.0
   cached_network_image: ^3.4.0
+  firebase_messaging: ^15.2.10
+
 
 
 dev_dependencies:

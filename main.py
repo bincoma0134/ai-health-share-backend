@@ -84,8 +84,15 @@ PAYOS_API_KEY = os.environ.get("PAYOS_API_KEY", "c685a770-5b64-48bc-858f-071f54a
 PAYOS_CHECKSUM_KEY = os.environ.get("PAYOS_CHECKSUM_KEY", "30f7892af9f9d37ae84681b60878483e049f6e7c3287be6bdf28aa0f485973be")
 payos_client = PayOS(client_id=PAYOS_CLIENT_ID, api_key=PAYOS_API_KEY, checksum_key=PAYOS_CHECKSUM_KEY)
 
+from notification_scheduler import start_scheduler
+import asyncio
+
 app = FastAPI(title="AI Health Share API", version="5.2.1")
 security = HTTPBearer()
+
+@app.on_event("startup")
+async def startup_event():
+    start_scheduler()
 
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
 if not SECRET_KEY:
@@ -940,6 +947,8 @@ def complete_booking_escrow(booking_id: str, current_user = Depends(verify_user_
         else:
             cur.execute("INSERT INTO wallets (user_id, balance, total_earned) VALUES (%s, %s, %s)", (current_user.id, partner_rev, partner_rev))
         
+        from notification_service import NotificationService
+        NotificationService.dispatch_event(conn, user_id=current_user.id, event_type="REVENUE_DISBURSED", reference_id=booking_id, sender_id=booking["user_id"])
         conn.commit()
         return {"status": "success", "message": "Hoàn tất!"}
     except Exception as e:
@@ -960,6 +969,8 @@ def create_withdrawal_request(payload: schemas.WithdrawalRequest, current_user =
         cur.execute("INSERT INTO withdrawal_requests (user_id, amount, status, payout_info) VALUES (%s, %s, 'PENDING', %s)", (current_user.id, payload.amount, payout_info))
         cur.execute("UPDATE wallets SET balance = balance - %s WHERE user_id = %s", (payload.amount, current_user.id))
         
+        from notification_service import NotificationService
+        NotificationService.dispatch_event(conn, user_id=current_user.id, event_type="LEGACY", reference_id="", metadata={"category": "FINANCIAL", "title": "Yêu cầu rút tiền", "message": f"Yêu cầu rút tiền số tiền {payload.amount:,.0f}đ đang chờ hệ thống xử lý."})
         conn.commit()
         return {"status": "success", "message": "Đã gửi yêu cầu!"}
     except Exception as e:
@@ -1402,6 +1413,8 @@ def process_withdrawal(w_id: str, payload: schemas.WithdrawalUpdate, current_use
 
         cur.execute("UPDATE withdrawal_requests SET status = %s, admin_note = %s, processed_by = %s, updated_at = now() WHERE id = %s",
                     (payload.status, payload.admin_note or "", current_user.id, w_id))
+        from notification_service import NotificationService
+        NotificationService.dispatch_event(conn, user_id=req["user_id"], event_type="LEGACY", reference_id=w_id, metadata={"category": "FINANCIAL", "title": f"Lệnh rút tiền {payload.status}", "message": f"Yêu cầu rút tiền của bạn đã được cập nhật trạng thái sang {payload.status}. Ghi chú: {payload.admin_note or ''}"}, sender_id=current_user.id)
         conn.commit()
         return {"status": "success", "message": f"Đã xử lý: {payload.status}"}
     except Exception as e:
@@ -1632,6 +1645,8 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
         """, (current_user.id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, applied_uv_id))
         
         new_appt = cur.fetchone()
+        from notification_service import NotificationService
+        NotificationService.dispatch_event(conn, user_id=partner_id, event_type="APPOINTMENT_REQUESTED", reference_id=str(new_appt['id']), sender_id=current_user.id)
         conn.commit()
         return {"status": "success", "message": "Yêu cầu đã được gửi! Vui lòng theo dõi tại tab 'Lịch hẹn'.", "data": new_appt}
     except Exception as e:
@@ -1664,8 +1679,11 @@ def respond_appointment(appointment_id: str, payload: schemas.PartnerResponse, c
         cur.execute(f"UPDATE appointments SET {', '.join(updates)} WHERE id = %s RETURNING *", tuple(values))
         updated = cur.fetchone()
         
-        status_msg = "đã CHẤP NHẬN" if payload.action == "ACCEPT" else f"đã TỪ CHỐI. Lý do: {payload.reason}"
-        send_notification(conn, appt["user_id"], "BOOKING", "Cập nhật Lịch hẹn", f"Cơ sở {status_msg}", sender_id=current_user.id)
+        from notification_service import NotificationService
+        if payload.action == "ACCEPT":
+            NotificationService.dispatch_event(conn, user_id=appt["user_id"], event_type="APPOINTMENT_ACCEPTED", reference_id=appointment_id, sender_id=current_user.id)
+        else:
+            NotificationService.dispatch_event(conn, user_id=appt["user_id"], event_type="LEGACY", reference_id=appointment_id, metadata={"category": "BOOKING", "title": "Cập nhật Lịch hẹn", "message": f"Cơ sở đã từ chối. Lý do: {payload.reason}"}, sender_id=current_user.id)
         
         conn.commit()
         return jsonable_encoder({"status": "success", "data": updated})
@@ -1874,7 +1892,8 @@ def verify_appointment_payment(orderCode: int, current_user = Depends(verify_use
         appt = cur.fetchone()
         
         if appt:
-            send_notification(conn, appt["partner_id"], "ESCROW", "Thanh toán thành công", f"Khách hàng {appt['customer_name']} đã thanh toán {booking['total_amount']:,.0f}đ.", sender_id=appt["user_id"])
+            from notification_service import NotificationService
+            NotificationService.dispatch_event(conn, user_id=appt["partner_id"], event_type="LEGACY", reference_id=str(booking["id"]), metadata={"category": "ESCROW", "title": "Thanh toán thành công", "message": f"Khách hàng {appt['customer_name']} đã thanh toán {booking['total_amount']:,.0f}đ."}, sender_id=appt["user_id"])
         conn.commit()
         return {"status": "success"}
     except Exception as e:
@@ -1892,6 +1911,8 @@ def check_in_appointment(appointment_id: str, payload: schemas.AppointmentCheckI
         if appt["status"] != "CONFIRMED" or appt.get("check_in_code") != payload.check_in_code: raise HTTPException(status_code=400, detail="Sai mã hoặc sai trạng thái!")
 
         cur.execute("UPDATE appointments SET status = 'SERVED', partner_notes = %s WHERE id = %s", (payload.partner_notes, appointment_id))
+        from notification_service import NotificationService
+        NotificationService.dispatch_event(conn, user_id=appt["user_id"], event_type="LEGACY", reference_id=appointment_id, metadata={"category": "BOOKING", "title": "Xác nhận Check-in thành công", "message": "Bạn đã check-in thành công tại cơ sở dịch vụ. Chúc bạn có trải nghiệm tuyệt vời!"}, sender_id=current_user.id)
         conn.commit()
         return {"status": "success", "message": "Check-in thành công."}
     except Exception as e:
@@ -1935,7 +1956,8 @@ def confirm_appointment(appointment_id: str, payload: schemas.AppointmentConfirm
                     cur.execute("INSERT INTO wallets (user_id, balance, total_earned) VALUES (%s, %s, %s)", (appt["partner_id"], partner_rev, partner_rev))
 
         cur.execute("UPDATE appointments SET status = 'COMPLETED', user_confirmed = True WHERE id = %s", (appointment_id,))
-        send_notification(conn, appt["partner_id"], "ESCROW", "Đã nhận Doanh thu", f"{partner_rev:,.0f}đ đã chuyển vào Ví.", sender_id=current_user.id)
+        from notification_service import NotificationService
+        NotificationService.dispatch_event(conn, user_id=appt["partner_id"], event_type="REVENUE_DISBURSED", reference_id=appointment_id, sender_id=current_user.id)
         
         conn.commit()
         return {"status": "success", "message": "Giải ngân thành công."}
@@ -1962,6 +1984,8 @@ def cancel_appointment(appointment_id: str, current_user = Depends(verify_user_t
                 cur.execute("UPDATE user_vouchers SET status = 'USED' WHERE id = %s", (appt["applied_user_voucher_id"],))
 
         cur.execute("UPDATE appointments SET status = 'CANCELLED', rejection_reason = 'Người dùng tự hủy' WHERE id = %s", (appointment_id,))
+        from notification_service import NotificationService
+        NotificationService.dispatch_event(conn, user_id=appt["partner_id"], event_type="LEGACY", reference_id=appointment_id, metadata={"category": "BOOKING", "title": "Khách hàng hủy lịch", "message": "Lịch hẹn mã số xử lý tự động đã bị hủy bỏ bởi khách hàng."}, sender_id=current_user.id)
         conn.commit()
         return {"status": "success", "message": "Đã hủy."}
     except Exception as e:
@@ -2129,7 +2153,8 @@ async def payos_webhook(request: Request, conn=Depends(get_db_connection)):
                 cur.execute("UPDATE appointments SET status = 'CONFIRMED' WHERE booking_id = %s RETURNING partner_id, customer_name, user_id", (booking["id"],))
                 appt = cur.fetchone()
                 if appt:
-                    send_notification(conn, appt["partner_id"], "ESCROW", "Thanh toán thành công", f"Khách hàng {appt.get('customer_name')} đã thanh toán.", sender_id=appt["user_id"])
+                    from notification_service import NotificationService
+                    NotificationService.dispatch_event(conn, user_id=appt["partner_id"], event_type="LEGACY", reference_id=str(booking["id"]), metadata={"category": "ESCROW", "title": "Thanh toán thành công", "message": f"Khách hàng {appt.get('customer_name')} đã thanh toán."}, sender_id=appt["user_id"])
                 conn.commit()
         return {"success": True}
     except Exception:

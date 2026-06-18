@@ -383,17 +383,18 @@ class _LoginScreenState extends State<LoginScreen> {
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: Colors.black.withOpacity(0.4), fontWeight: FontWeight.w500),
-        prefixIcon: Icon(icon, color: primaryGreen.withOpacity(0.8), size: 22),
+        prefixIcon: Icon(icon, color: primaryGreen.withOpacity(0.6), size: 22),
         filled: true,
-        fillColor: const Color(0xFFF7FBF8), // Nền xanh mint cực kỳ nhạt
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: primaryGreen.withOpacity(0.3), width: 1.5)),
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade200, width: 0.5)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade200, width: 0.5)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: primaryGreen.withOpacity(0.5), width: 1.0)),
       ),
     );
   }
 
-  Widget _buildSocialButton(IconData icon, VoidCallback onTap, {Color? color, double size = 32}) {
+  Widget _buildSocialButton(IconData icon, VoidCallback onTap, {Color? color, double size = 28}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -403,7 +404,10 @@ class _LoginScreenState extends State<LoginScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade200),
+          border: Border.all(color: Colors.grey.shade200, width: 0.5),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
+          ]
         ),
         child: Icon(icon, size: size, color: color ?? Colors.black87),
       ),

@@ -404,6 +404,9 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
             message: '🎉 Điểm danh thành công! Bạn nhận được +${data['points_earned']} điểm SValue.',
             isSuccess: true,
           );
+          
+          // Kích hoạt đồng bộ State toàn cục để các màn hình khác (như Wallet) tự động cập nhật số dư mới
+          AuthNotifier.instance.refresh();
         }
       } catch (e) {
         if (mounted) {
