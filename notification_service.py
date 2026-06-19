@@ -15,7 +15,13 @@ class NotificationService:
             
             category = mapping.get("category", "SYSTEM")
             title = mapping.get("title", "Thông báo")
-            message = mapping.get("message", "")
+            
+            # 🚀 BỌC THÉP PAYLOAD: Ép kiểu cưỡng chế, tuyệt đối không để chuỗi rỗng lọt vào Firebase SDK
+            raw_message = mapping.get("message") or mapping.get("short_message") or ""
+            message = str(raw_message).strip()
+            if not message:
+                message = "Bạn có một thông báo mới từ hệ thống."
+                
             deep_link = {
                 "screen": mapping.get("screen", "home"),
                 "reference_id": reference_id,
@@ -61,8 +67,9 @@ class NotificationService:
             return {
                 "category": metadata.get("category", "SYSTEM"),
                 "title": metadata.get("title", "Thông báo"),
-                "message": metadata.get("message", ""),
-                "screen": "home"
+                "message": metadata.get("message", "Bạn có một thông báo mới từ hệ thống."),
+                # 🚀 HOTFIX: Mở khóa định tuyến động cho luồng Booking thay vì fix cứng "home"
+                "screen": metadata.get("screen", "home") 
             }
         
         # Ma trận Event bọc thép (Mở rộng cho Beta)

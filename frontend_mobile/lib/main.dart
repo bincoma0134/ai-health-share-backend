@@ -7,27 +7,35 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'presentation/widgets/notification_notifier.dart';
 import 'core/router/deep_link_engine.dart';
 import 'core/router/app_router.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // 🚀 Bổ sung thư viện hiển thị nội bộ
+
+// Cấu hình Kênh thông báo độ ưu tiên cao khớp hoàn toàn với định danh của Backend
+const AndroidNotificationChannel channel = AndroidNotificationChannel(
+  'high_importance_channel', // id khớp với Backend push_service
+  'High Importance Notifications', // title hiển thị trong cài đặt OS
+  description: 'This channel is used for important notifications.', // description
+  importance: Importance.high,
+  playSound: true,
+);
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
 // Handler độc lập cho trạng thái Background/Terminated
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  // Không cập nhật UI ở đây, để OS tự vẽ System Banner dựa vào message.notification
 }
 
-void main() async { // Đổi thành hàm async
+void main() async { 
   WidgetsFlutterBinding.ensureInitialized();
   
-  // BẮT BUỘC: Khởi tạo Firebase trước khi chạy App
+  // Khởi tạo hạ tầng cốt lõi an toàn
   await Firebase.initializeApp();
-  
-  // BẮT BUỘC: Nạp phiên đăng nhập vào RAM trước khi dựng UI
   await AuthNotifier.instance.initialize();
   
-  // ĐĂNG KÝ BACKGROUND HANDLER ĐỂ NHẬN TIN KHI APP BỊ TẮT
+  // Đăng ký các cổng tiếp nhận tín hiệu từ Firebase Messaging
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   
-  // KHỞI TẠO LỚP TIẾP NHẬN THÔNG BÁO (RECEIVE LAYER) DÀNH CHO FOREGROUND
   FirebaseMessaging.onMessage.listen((RemoteMessage message) {
     NotificationNotifier.instance.handleForegroundMessage(message);
   });
