@@ -1672,9 +1672,15 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
         """, (current_user.id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, applied_uv_id))
         
         new_appt = cur.fetchone()
+        conn.commit() # BỌC THÉP: Chốt hạ giao dịch Booking thành công vào DB trước để bảo toàn dữ liệu
+        
         from notification_service import NotificationService
         NotificationService.dispatch_event(conn, user_id=partner_id, event_type="APPOINTMENT_REQUESTED", reference_id=str(new_appt['id']), sender_id=current_user.id)
-        conn.commit()
+        
+        try: 
+            conn.commit() # Thử chốt giao dịch của Notification Layer
+        except Exception: 
+            conn.rollback() # Tự chữa lành: Xóa trạng thái InFailedSqlTransaction để trả kết nối sạch về Pooler
         return {"status": "success", "message": "Yêu cầu đã được gửi! Vui lòng theo dõi tại tab 'Lịch hẹn'.", "data": new_appt}
     except Exception as e:
         conn.rollback()
