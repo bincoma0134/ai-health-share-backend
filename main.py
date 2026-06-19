@@ -95,6 +95,26 @@ security = HTTPBearer()
 @app.on_event("startup")
 async def startup_event():
     start_scheduler()
+    # Khởi tạo bảng user_fcm_tokens bọc thép (Auto-Migration)
+    if db_pool:
+        conn = db_pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS user_fcm_tokens (
+                        id SERIAL PRIMARY KEY,
+                        user_id UUID NOT NULL,
+                        token TEXT UNIQUE NOT NULL,
+                        device_id VARCHAR(255),
+                        platform VARCHAR(50),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+            conn.commit()
+        except Exception as e:
+            print(f"Lỗi khởi tạo bảng user_fcm_tokens: {e}")
+        finally:
+            db_pool.putconn(conn)
 
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
 if not SECRET_KEY:
@@ -2222,6 +2242,26 @@ def mark_all_notifications_read(current_user = Depends(verify_user_token), conn=
         cur.execute("UPDATE notifications SET is_read = True WHERE user_id = %s AND is_read = False", (current_user.id,))
         conn.commit()
         return {"status": "success"}
+    finally: cur.close()
+
+@app.post("/notifications/token", tags=["Notifications"])
+def update_fcm_token(payload: schemas.FCMTokenUpdate, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Lưu trữ FCM Token của thiết bị. Sử dụng UPSERT để tránh Crash khi trùng Token"""
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO user_fcm_tokens (user_id, token, device_id, platform)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (token) DO UPDATE 
+            SET user_id = EXCLUDED.user_id, 
+                device_id = EXCLUDED.device_id, 
+                platform = EXCLUDED.platform
+        """, (current_user.id, payload.token, payload.device_id, payload.platform))
+        conn.commit()
+        return {"status": "success", "message": "Token đồng bộ thành công"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally: cur.close()
 
 # ==========================================
