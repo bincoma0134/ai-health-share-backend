@@ -15,9 +15,16 @@ class PushService:
             if not firebase_admin._apps:
                 return False
 
-            # 2. Truy vấn danh sách Token thiết bị
-            cur.execute("SELECT token FROM user_fcm_tokens WHERE user_id = %s", (user_id,))
-            tokens = [row[0] for row in cur.fetchall()]
+            # 2. Truy vấn danh sách Token thiết bị an toàn qua SAVEPOINT
+            cur.execute("SAVEPOINT push_read_sp")
+            try:
+                cur.execute("SELECT token FROM user_fcm_tokens WHERE user_id = %s", (user_id,))
+                tokens = [row[0] for row in cur.fetchall()]
+                cur.execute("RELEASE SAVEPOINT push_read_sp")
+            except Exception as db_err:
+                cur.execute("ROLLBACK TO SAVEPOINT push_read_sp")
+                print(f"[PushService DB Error] Lỗi truy vấn Token: {db_err}")
+                return False
             
             if not tokens:
                 return False
@@ -57,14 +64,16 @@ class PushService:
 
     @staticmethod
     def _clean_invalid_tokens(conn, invalid_tokens: list):
-        """Xóa vật lý các Token đã hết hạn/rác khỏi Database"""
+        """Xóa vật lý các Token đã hết hạn/rác khỏi Database an toàn"""
         if not invalid_tokens:
             return
         cur = conn.cursor()
         try:
+            cur.execute("SAVEPOINT push_clean_sp")
             cur.execute("DELETE FROM user_fcm_tokens WHERE token = ANY(%s)", (invalid_tokens,))
-            # Transaction sẽ được đóng băng và commit ở cuối luồng chính của main.py
+            cur.execute("RELEASE SAVEPOINT push_clean_sp")
         except Exception as e:
-            print(f"[PushService Cleanup Error] {e}")
+            cur.execute("ROLLBACK TO SAVEPOINT push_clean_sp")
+            print(f"[PushService Cleanup Error] Đã cô lập lỗi dọn rác: {e}")
         finally:
             cur.close()

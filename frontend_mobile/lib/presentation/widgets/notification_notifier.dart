@@ -16,9 +16,16 @@ class NotificationNotifier extends ChangeNotifier {
   // Tính toán Badge ngầm từ mảng RAM
   int get unreadCount => _notifications.where((n) => n['is_read'] == false).length;
 
+  // 🚀 BỌC THÉP TRẠNG THÁI: Chỉ khóa cờ khi Database đã ghi nhận thành công
+  bool _hasSyncedToken = false;
+  bool _isSyncingToken = false;
+
   // 0. Xin quyền hệ thống (Chạy ngầm sau Đăng nhập)
   Future<void> requestPermission() async {
+    if (_hasSyncedToken || _isSyncingToken) return;
+    
     try {
+      _isSyncingToken = true;
       final settings = await FirebaseMessaging.instance.requestPermission(
         alert: true,
         announcement: false,
@@ -34,11 +41,16 @@ class NotificationNotifier extends ChangeNotifier {
           settings.authorizationStatus == AuthorizationStatus.provisional) {
         final String? token = await FirebaseMessaging.instance.getToken();
         if (token != null) {
-          await NotificationApiService.updateFcmToken(token);
+          final success = await NotificationApiService.updateFcmToken(token);
+          if (success) {
+            _hasSyncedToken = true; // Chốt cờ thành công tuyệt đối
+          }
         }
       }
     } catch (e) {
       debugPrint('[Notification Permission Error] $e');
+    } finally {
+      _isSyncingToken = false;
     }
   }
 

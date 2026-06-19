@@ -128,15 +128,18 @@ class NotificationService:
     def _create_and_save_record(conn, user_id, category, title, message, deep_link, sender_id):
         cur = conn.cursor()
         try:
+            cur.execute("SAVEPOINT notif_insert_sp")
             cur.execute("""
                 INSERT INTO notifications (user_id, sender_id, category, title, short_message, deep_link_payload)
                 VALUES (%s, %s, %s, %s, %s, %s::jsonb)
                 RETURNING id
             """, (user_id, sender_id, category, title, message, json.dumps(deep_link)))
             record = cur.fetchone()
+            cur.execute("RELEASE SAVEPOINT notif_insert_sp")
             return str(record[0]) if record else None
         except Exception as e:
-            print(f"[Notification DB Error] {e}")
+            cur.execute("ROLLBACK TO SAVEPOINT notif_insert_sp")
+            print(f"[Notification DB Error] Lỗi ghi DB đã được cô lập: {e}")
             return None
         finally:
             cur.close()

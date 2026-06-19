@@ -23,20 +23,17 @@ import '../../presentation/widgets/notification_notifier.dart';
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 
-// Biến cờ cục bộ giúp kiểm soát việc chỉ xin quyền 1 lần duy nhất trong vòng đời App
-bool _hasRequestedNotificationPermission = false;
-
 final GoRouter appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
   restorationScopeId: 'vnshare_router_scope', // 🚀 RESTORATION ĐIỀU HƯỚNG: Phục hồi chính xác Tab và Màn hình đang xem khi App bị OS Kill
   initialLocation: '/splash', // Đặt Splash làm trang chạy đầu tiên
   refreshListenable: AuthNotifier.instance, // Lắng nghe thay đổi Auth để tự động cập nhật Navigation
   redirect: (context, state) {
-    // Sử dụng Route Path để xác định user đã vào App thay vì gọi trực tiếp biến của AuthNotifier
     final isAuthRoute = state.uri.path == '/splash' || state.uri.path == '/login' || state.uri.path == '/onboarding';
     
-    if (!isAuthRoute && !_hasRequestedNotificationPermission) {
-      _hasRequestedNotificationPermission = true;
+    // 🚀 BÀN GIAO TRÁCH NHIỆM: Kích hoạt luồng thông báo an toàn. 
+    // Notifier sẽ tự động chặn lặp và tự thử lại nếu mạng lỗi.
+    if (!isAuthRoute) {
       NotificationNotifier.instance.requestPermission();
     }
     return null; // Không can thiệp vào luồng điều hướng UI, chỉ mượn chu kỳ chạy ngầm
