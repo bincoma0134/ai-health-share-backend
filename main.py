@@ -95,7 +95,8 @@ security = HTTPBearer()
 @app.on_event("startup")
 async def startup_event():
     start_scheduler()
-    # Khởi tạo bảng user_fcm_tokens bọc thép (Auto-Migration)
+    
+    # 🚀 TỰ ĐỘNG KHỞI TẠO TẦNG LƯU TRỮ TOKEN (AUTO-MIGRATION)
     if db_pool:
         conn = db_pool.getconn()
         try:
@@ -108,11 +109,15 @@ async def startup_event():
                         device_id VARCHAR(255),
                         platform VARCHAR(50),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
+                    );
+                    
+                    -- Khởi tạo Index tăng tốc độ truy vấn định tuyến từ O(N) về O(log N)
+                    CREATE INDEX IF NOT EXISTS idx_user_fcm_tokens_user_id 
+                    ON user_fcm_tokens(user_id);
                 """)
             conn.commit()
         except Exception as e:
-            print(f"Lỗi khởi tạo bảng user_fcm_tokens: {e}")
+            print(f"[Database Hotfix Error] Không thể tạo bảng user_fcm_tokens: {e}")
         finally:
             db_pool.putconn(conn)
 
