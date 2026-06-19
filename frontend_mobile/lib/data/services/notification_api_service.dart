@@ -4,6 +4,16 @@ import '../../core/network/api_client.dart';
 class NotificationApiService {
   static final Dio _dio = ApiClient.instance;
 
+  // Cập nhật FCM Token lên Server
+  static Future<bool> updateFcmToken(String token) async {
+    try {
+      final res = await _dio.post('/notifications/token', data: {'token': token});
+      return res.statusCode == 200 && res.data['status'] == 'success';
+    } catch (e) {
+      return false;
+    }
+  }
+
   // Lấy danh sách thông báo từ Server
   static Future<List<dynamic>> fetchNotifications({int limit = 50}) async {
     try {

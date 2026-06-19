@@ -8,6 +8,13 @@ import 'presentation/widgets/notification_notifier.dart';
 import 'core/router/deep_link_engine.dart';
 import 'core/router/app_router.dart';
 
+// Handler độc lập cho trạng thái Background/Terminated
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  // Không cập nhật UI ở đây, để OS tự vẽ System Banner dựa vào message.notification
+}
+
 void main() async { // Đổi thành hàm async
   WidgetsFlutterBinding.ensureInitialized();
   
@@ -17,7 +24,10 @@ void main() async { // Đổi thành hàm async
   // BẮT BUỘC: Nạp phiên đăng nhập vào RAM trước khi dựng UI
   await AuthNotifier.instance.initialize();
   
-  // KHỞI TẠO LỚP TIẾP NHẬN THÔNG BÁO (RECEIVE LAYER)
+  // ĐĂNG KÝ BACKGROUND HANDLER ĐỂ NHẬN TIN KHI APP BỊ TẮT
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  
+  // KHỞI TẠO LỚP TIẾP NHẬN THÔNG BÁO (RECEIVE LAYER) DÀNH CHO FOREGROUND
   FirebaseMessaging.onMessage.listen((RemoteMessage message) {
     NotificationNotifier.instance.handleForegroundMessage(message);
   });
@@ -42,18 +52,22 @@ class _VNShareAppState extends State<VNShareApp> with WidgetsBindingObserver {
     
     // 1. Xử lý chạm thông báo khi App đang chạy nền (Background)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      if (message.data['payload'] != null) {
-        DeepLinkEngine.instance.handleNotificationTap(rootNavigatorKey.currentContext, message.data['payload']);
+      final payload = message.data['payload'] ?? message.data;
+      if (payload != null) {
+        DeepLinkEngine.instance.handleNotificationTap(rootNavigatorKey.currentContext, payload);
       }
     });
 
     // 2. Xử lý chạm thông báo khi App bị tắt hoàn toàn (Terminated / Cold Start)
     FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
-      if (message != null && message.data['payload'] != null) {
-        // Đợi Flutter dựng xong khung Widget (Frame đầu tiên) rồi mới kích hoạt Router
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          DeepLinkEngine.instance.handleNotificationTap(rootNavigatorKey.currentContext, message.data['payload']);
-        });
+      if (message != null) {
+        final payload = message.data['payload'] ?? message.data;
+        if (payload != null) {
+          // Đợi Flutter dựng xong khung Widget (Frame đầu tiên) rồi mới kích hoạt Router
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            DeepLinkEngine.instance.handleNotificationTap(rootNavigatorKey.currentContext, payload);
+          });
+        }
       }
     });
   }

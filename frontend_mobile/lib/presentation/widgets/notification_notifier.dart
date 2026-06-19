@@ -19,7 +19,7 @@ class NotificationNotifier extends ChangeNotifier {
   // 0. Xin quyền hệ thống (Chạy ngầm sau Đăng nhập)
   Future<void> requestPermission() async {
     try {
-      await FirebaseMessaging.instance.requestPermission(
+      final settings = await FirebaseMessaging.instance.requestPermission(
         alert: true,
         announcement: false,
         badge: true,
@@ -28,6 +28,15 @@ class NotificationNotifier extends ChangeNotifier {
         provisional: false,
         sound: true,
       );
+      
+      // Chỉ lấy và đồng bộ Token nếu người dùng cấp quyền (hoặc provisional)
+      if (settings.authorizationStatus == AuthorizationStatus.authorized || 
+          settings.authorizationStatus == AuthorizationStatus.provisional) {
+        final String? token = await FirebaseMessaging.instance.getToken();
+        if (token != null) {
+          await NotificationApiService.updateFcmToken(token);
+        }
+      }
     } catch (e) {
       debugPrint('[Notification Permission Error] $e');
     }

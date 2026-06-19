@@ -27,7 +27,8 @@ from typing import List
 from pydantic import BaseModel
 
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+# 🚀 HOTFIX: Đồng bộ từ khóa biến môi trường với hạ tầng Neon / Render
+DATABASE_URL = os.environ.get("NEON_DATABASE_URL") or os.environ.get("DATABASE_URL")
 if DATABASE_URL:
     db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, DATABASE_URL)
 else:

@@ -182,3 +182,9 @@ class WithdrawalHistory(BaseModel):
     amount: float
     status: str # 'PENDING', 'COMPLETED', 'REJECTED'
     created_at: datetime
+
+# --- 13. FCM TOKEN STRATEGY ---
+class FCMTokenUpdate(BaseModel):
+    token: str
+    device_id: Optional[str] = None
+    platform: Optional[str] = None
