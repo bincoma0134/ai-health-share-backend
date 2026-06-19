@@ -6,6 +6,8 @@ import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 import os
+from dotenv import load_dotenv
+load_dotenv()
 from utils import send_notification, create_access_token, verify_password, get_password_hash
 from jose import JWTError, jwt
 import schemas
