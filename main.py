@@ -2254,14 +2254,8 @@ def mark_all_notifications_read(current_user = Depends(verify_user_token), conn=
         return {"status": "success"}
     finally: cur.close()
 
-# Khai báo trực tiếp Model để bọc thép chống lỗi đồng bộ dòng giữa các file trên Render
-class FCMTokenUpdate(BaseModel):
-    token: str
-    device_id: Optional[str] = None
-    platform: Optional[str] = None
-
 @app.post("/notifications/token", tags=["Notifications"])
-def update_fcm_token(payload: FCMTokenUpdate, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+def update_fcm_token(payload: schemas.FCMTokenUpdate, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     """Lưu trữ FCM Token của thiết bị. Sử dụng UPSERT để tránh Crash khi trùng Token"""
     cur = conn.cursor()
     try:
