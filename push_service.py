@@ -27,8 +27,8 @@ class PushService:
                     cur.execute("RELEASE SAVEPOINT top_push_sp")
                     return False
                 
-                print(f"[TOKEN FOUND] Đã tìm thấy {len(tokens)} token cho User {user_id}")
-                print(f"[FCM SEND START] Chuẩn bị gửi Push tới {len(tokens)} token(s) - User: {user_id}")
+                print(f"[PUSH DEBUG] TOKEN FOUND: {len(tokens)} token(s) for user_id {user_id}")
+                print(f"[PUSH DEBUG] FCM SEND START: Chuẩn bị gửi payload tới {len(tokens)} thiết bị")
 
                 # 3. Đóng gói Payload Multicast FCM (Bổ sung Cấu hình OS ưu tiên cao)
                 msg = messaging.MulticastMessage(
@@ -51,20 +51,20 @@ class PushService:
                 
                 # 4. Gửi qua Firebase SDK
                 response = messaging.send_each_for_multicast(msg)
-                print(f"[FCM RESPONSE] Thành công: {response.success_count}, Thất bại: {response.failure_count}")
                 
                 # 5. Phân tích lỗi & Tự chữa lành (Self-Healing) nội bộ
-                if response.failure_count > 0:
-                    invalid_tokens = []
-                    for idx, resp in enumerate(response.responses):
-                        if not resp.success:
-                            print(f"[FCM ERROR] Token {tokens[idx][-10:]} lỗi: {resp.exception}")
-                            if getattr(resp.exception, 'code', '') in ['NOT_FOUND', 'INVALID_ARGUMENT', 'UNREGISTERED'] or 'UNREGISTERED' in str(resp.exception).upper():
-                                invalid_tokens.append(tokens[idx])
+                invalid_tokens = []
+                for idx, resp in enumerate(response.responses):
+                    if resp.success:
+                        print(f"[PUSH DEBUG] FCM MESSAGE ID: {resp.message_id}")
+                    else:
+                        print(f"[PUSH DEBUG] FCM ERROR: {resp.exception}")
+                        if getattr(resp.exception, 'code', '') in ['NOT_FOUND', 'INVALID_ARGUMENT', 'UNREGISTERED'] or 'UNREGISTERED' in str(resp.exception).upper():
+                            invalid_tokens.append(tokens[idx])
                                 
-                    if invalid_tokens:
-                        # Thực thi xóa trực tiếp trong cùng Savepoint để tối ưu hóa hiệu năng và cô lập lỗi
-                        cur.execute("DELETE FROM user_fcm_tokens WHERE token = ANY(%s)", (invalid_tokens,))
+                if invalid_tokens:
+                    # Thực thi xóa trực tiếp trong cùng Savepoint để tối ưu hóa hiệu năng và cô lập lỗi
+                    cur.execute("DELETE FROM user_fcm_tokens WHERE token = ANY(%s)", (invalid_tokens,))
 
                 cur.execute("RELEASE SAVEPOINT top_push_sp")
                 return True
