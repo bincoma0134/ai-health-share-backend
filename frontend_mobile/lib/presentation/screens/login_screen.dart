@@ -207,7 +207,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Khám phá không gian sức khỏe và chia sẻ giá trị sống đích thực cùng mạng lưới chuyên gia AI Health.',
+                'Khám phá không gian sức khỏe và chia sẻ giá trị sống đích thực cùng mạng lưới chuyên gia VN SHARE.',
                 style: TextStyle(fontSize: 15, color: primaryGreen.withOpacity(0.8), height: 1.5, fontWeight: FontWeight.w500),
               ),
               const Spacer(),
@@ -428,4 +428,4 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-}
+} 

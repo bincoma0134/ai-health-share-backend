@@ -50,7 +50,8 @@ async def _scheduler_loop():
 
 def _execute_triggers(events):
     """Mở một connection độc lập hoàn toàn để không cướp pool của main api"""
-    DATABASE_URL = os.environ.get("DATABASE_URL")
+    # 🚀 HOTFIX: Đồng bộ biến môi trường NEON_DATABASE_URL cho tiến trình chạy ngầm
+    DATABASE_URL = os.environ.get("NEON_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not DATABASE_URL:
         return
     

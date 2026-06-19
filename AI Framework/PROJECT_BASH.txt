@@ -36,4 +36,24 @@ uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 
 
 --------------
- Hãy rà soát thật kỹ từng file. Hãy thể hiện sự ưu việt của mình và chủ động thay đổi chỉnh sửa (lưu ý rằng chúng ta đổi màu sắc nhận diện giao diện). Tuân thủ tuyệt đối nguyên tắc Ctrl + H (gửi các cụm Find, Replace thật chuẩn xác để tôi Ctrl + H với môi trường của Cursor, 1 lần là xong), đặc biệt không được để làm đứt gãy các luồng logic, phải thông suốt, đúng như bản website.
+# 1. Di chuyển vào thư mục dự án Backend và kiểm tra trạng thái thay đổi
+
+git status
+
+
+
+# 2. Thêm file main.py đã được rollback dọn dẹp mã nguồn thừa vào vùng chờ (Staging Area)
+
+git add .
+
+
+
+# 3. Đóng gói commit bọc thép với thông điệp chuẩn hóa phân lớp kiến trúc độc lập
+
+git commit -m "build(architecture): rollback duplicate handling codes in main.py to achieve absolute overlay isolation layer"
+
+
+
+# 4. Đẩy mã nguồn an toàn lên nhánh chính để Render tự động cập nhật bản phát hành sạch
+
+git push origin main
