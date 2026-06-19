@@ -24,7 +24,7 @@ import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
-
+from pydantic import BaseModel
 
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
