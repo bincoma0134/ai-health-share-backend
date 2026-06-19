@@ -1441,15 +1441,11 @@ def process_withdrawal(w_id: str, payload: schemas.WithdrawalUpdate, current_use
 
         cur.execute("UPDATE withdrawal_requests SET status = %s, admin_note = %s, processed_by = %s, updated_at = now() WHERE id = %s",
                     (payload.status, payload.admin_note or "", current_user.id, w_id))
-        conn.commit() # BỌC THÉP: Chốt hạ trạng thái rút tiền vào DB trước để bảo vệ ví
         
         from notification_service import NotificationService
         NotificationService.dispatch_event(conn, user_id=req["user_id"], event_type="LEGACY", reference_id=w_id, metadata={"category": "FINANCIAL", "title": f"Lệnh rút tiền {payload.status}", "message": f"Yêu cầu rút tiền của bạn đã được cập nhật trạng thái sang {payload.status}. Ghi chú: {payload.admin_note or ''}"}, sender_id=current_user.id)
         
-        try:
-            conn.commit() # Thử chốt giao dịch của Notification Layer
-        except Exception:
-            conn.rollback() # Tự chữa lành
+        conn.commit()
         return {"status": "success", "message": f"Đã xử lý: {payload.status}"}
     except Exception as e:
         conn.rollback()
@@ -1679,15 +1675,11 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
         """, (current_user.id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, applied_uv_id))
         
         new_appt = cur.fetchone()
-        conn.commit() # BỌC THÉP: Chốt hạ giao dịch Booking thành công vào DB trước để bảo toàn dữ liệu
         
         from notification_service import NotificationService
         NotificationService.dispatch_event(conn, user_id=partner_id, event_type="APPOINTMENT_REQUESTED", reference_id=str(new_appt['id']), sender_id=current_user.id)
         
-        try: 
-            conn.commit() # Thử chốt giao dịch của Notification Layer
-        except Exception: 
-            conn.rollback() # Tự chữa lành: Xóa trạng thái InFailedSqlTransaction để trả kết nối sạch về Pooler
+        conn.commit()
         return {"status": "success", "message": "Yêu cầu đã được gửi! Vui lòng theo dõi tại tab 'Lịch hẹn'.", "data": new_appt}
     except Exception as e:
         conn.rollback()
@@ -1719,18 +1711,13 @@ def respond_appointment(appointment_id: str, payload: schemas.PartnerResponse, c
         cur.execute(f"UPDATE appointments SET {', '.join(updates)} WHERE id = %s RETURNING *", tuple(values))
         updated = cur.fetchone()
         
-        conn.commit() # BỌC THÉP: Chốt hạ giao dịch Booking thành công vào DB trước để bảo toàn dữ liệu
-        
         from notification_service import NotificationService
         if payload.action == "ACCEPT":
             NotificationService.dispatch_event(conn, user_id=appt["user_id"], event_type="APPOINTMENT_ACCEPTED", reference_id=appointment_id, sender_id=current_user.id)
         else:
             NotificationService.dispatch_event(conn, user_id=appt["user_id"], event_type="LEGACY", reference_id=appointment_id, metadata={"category": "BOOKING", "title": "Cập nhật Lịch hẹn", "message": f"Cơ sở đã từ chối. Lý do: {payload.reason}"}, sender_id=current_user.id)
         
-        try:
-            conn.commit() # Thử chốt giao dịch của Notification Layer
-        except Exception:
-            conn.rollback() # Tự chữa lành: Xóa trạng thái InFailedSqlTransaction để trả kết nối sạch về Pooler
+        conn.commit()
         return jsonable_encoder({"status": "success", "data": updated})
     except Exception as e:
         conn.rollback()
