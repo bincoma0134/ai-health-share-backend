@@ -9,6 +9,9 @@ class NotificationService:
     @staticmethod
     def dispatch_event(conn, user_id: str, event_type: str, reference_id: str, metadata: dict = None, sender_id: str = None):
         try:
+            # 🚀 [NOTIFY DEBUG][CREATE START]
+            print("[NOTIFY DEBUG][CREATE START]")
+            
             mapping = NotificationService._get_event_mapping(event_type, metadata or {})
             if not mapping:
                 return False
@@ -33,8 +36,14 @@ class NotificationService:
                 conn, user_id, category, title, message, deep_link, sender_id
             )
             
+            # 🚀 [NOTIFY DEBUG][DB CREATED]
+            print(f"[NOTIFY DEBUG][DB CREATED]\nnotification_id={notif_id}\nreceiver_id={user_id}")
+            
             # 2. Send Push Notification qua FCM
             if notif_id:
+                # 🚀 [NOTIFY DEBUG][PUSH START]
+                print(f"[NOTIFY DEBUG][PUSH START]\ntarget_user={user_id}")
+                
                 PushService.send_push_to_user(
                     conn, user_id, title, message, deep_link
                 )

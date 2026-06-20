@@ -1676,6 +1676,9 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
         
         new_appt = cur.fetchone()
         
+        # 🚀 [NOTIFY DEBUG][EVENT]
+        print(f"[NOTIFY DEBUG][EVENT]\nuser_id={current_user.id}\npartner_id={partner_id}\nevent_type=APPOINTMENT_REQUESTED\nbooking_id={new_appt['id']}")
+        
         from notification_service import NotificationService
         NotificationService.dispatch_event(conn, user_id=partner_id, event_type="APPOINTMENT_REQUESTED", reference_id=str(new_appt['id']), sender_id=current_user.id)
         

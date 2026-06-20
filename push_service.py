@@ -23,6 +23,9 @@ class PushService:
                 cur.execute("SELECT token FROM user_fcm_tokens WHERE user_id = %s", (user_id,))
                 tokens = [row[0] for row in cur.fetchall()]
                 
+                # 🚀 [NOTIFY DEBUG][TOKEN QUERY]
+                print(f"[NOTIFY DEBUG][TOKEN QUERY]\nuser_id={user_id}\ntoken_count={len(tokens)}")
+                
                 if not tokens:
                     cur.execute("RELEASE SAVEPOINT top_push_sp")
                     return False
@@ -57,6 +60,8 @@ class PushService:
                 for idx, resp in enumerate(response.responses):
                     if resp.success:
                         print(f"[PUSH DEBUG] FCM MESSAGE ID: {resp.message_id}")
+                        # 🚀 [NOTIFY DEBUG][FCM RESULT]
+                        print(f"[NOTIFY DEBUG][FCM RESULT]\nmessage_id={resp.message_id}")
                     else:
                         print(f"[PUSH DEBUG] FCM ERROR: {resp.exception}")
                         if getattr(resp.exception, 'code', '') in ['NOT_FOUND', 'INVALID_ARGUMENT', 'UNREGISTERED'] or 'UNREGISTERED' in str(resp.exception).upper():
