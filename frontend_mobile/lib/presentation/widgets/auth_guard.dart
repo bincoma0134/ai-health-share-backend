@@ -19,8 +19,30 @@ class AuthNotifier extends ChangeNotifier {
   String? _name;
   bool _isInitialized = false;
 
-  // Getters công khai bảo bọc dữ liệu nội bộ
-  bool get isAuthenticated => _token != null && _token!.isNotEmpty;
+  // 🚀 KIỂM TRA HẠN SỬ DỤNG TOKEN (JWT Expiration Decoder)
+  bool _isTokenExpired(String? tokenStr) {
+    if (tokenStr == null || tokenStr.isEmpty) return true;
+    try {
+      final parts = tokenStr.split('.');
+      if (parts.length != 3) return true;
+      final String normalizedPayload = base64Url.normalize(parts[1]);
+      final String decodedString = utf8.decode(base64Url.decode(normalizedPayload));
+      final Map<String, dynamic> payload = json.decode(decodedString);
+      
+      if (!payload.containsKey('exp')) return false; // Token không cấu hình hạn thì coi như sống vĩnh viễn
+      
+      final expTimeSec = payload['exp'] is int ? payload['exp'] as int : int.parse(payload['exp'].toString());
+      final currentTimeSec = DateTime.now().millisecondsSinceEpoch / 1000;
+      
+      // Chặn trước 30 giây để đảm bảo an toàn tuyệt đối khi gửi Request lên Server
+      return currentTimeSec >= (expTimeSec - 30);
+    } catch (_) {
+      return true; // Trả về true (Đã hết hạn) nếu chuỗi token bị biến dạng
+    }
+  }
+
+  // Getters công khai bảo bọc dữ liệu nội bộ (Bọc thép thêm điều kiện !_isTokenExpired)
+  bool get isAuthenticated => _token != null && _token!.isNotEmpty && !_isTokenExpired(_token);
   String? get token => _token;
   String? get userId => _userId;
   String? get role => _role;
@@ -61,6 +83,16 @@ class AuthNotifier extends ChangeNotifier {
       if (savedToken == null || savedToken.isEmpty) {
         const fallbackStorage = FlutterSecureStorage();
         savedToken = await fallbackStorage.read(key: 'ai-health-token');
+      }
+
+      // 🚀 BỌC THÉP TẦNG 2: Auto-Logout ngầm nếu Token bị phát hiện đã hết hạn khi người dùng mở lại App
+      if (_isTokenExpired(savedToken)) {
+        await SecureStorageService.clearSession(); // Quét sạch tàn dư phiên làm việc cũ
+        _token = null;
+        _userId = null;
+        _role = null;
+        _name = null;
+        return;
       }
 
       _token = savedToken;

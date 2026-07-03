@@ -10,6 +10,7 @@ import '../../../data/models/chat_message_model.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/auth_guard.dart';
 import '../../widgets/guest_profile_view.dart';
+import '../../widgets/notification_notifier.dart'; // 🚀 Bổ sung thư viện quản lý State thông báo
 
 class AiChatScreen extends StatefulWidget {
   const AiChatScreen({super.key});
@@ -91,7 +92,7 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
         ChatMessageModel(
           id: 'welcome',
           role: 'bot',
-          content: 'Xin chào! Tôi là Trợ lý AI Đẳng cấp của bạn. Hệ thống y tế thông minh đã sẵn sàng hỗ trợ bạn chẩn đoán triệu chứng, lên thực đơn và tìm kiếm phòng khám ưu đãi tối ưu nhất.',
+          content: 'Xin chào! Tôi là Trợ lý VN Share. Hệ thống y tế thông minh đã sẵn sàng hỗ trợ bạn chẩn đoán triệu chứng, lên thực đơn và tìm kiếm phòng khám ưu đãi tốt nhất.',
           timestamp: DateTime.now(),
         )
       ];
@@ -307,6 +308,37 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
             ],
           ),
           const Spacer(),
+          // 🚀 NÚT THÔNG BÁO TÍCH HỢP GÓC PHẢI
+          ListenableBuilder(
+            listenable: NotificationNotifier.instance,
+            builder: (context, child) {
+              final unread = NotificationNotifier.instance.unreadCount;
+              return IconButton(
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.notifications_none_rounded, color: Colors.black54),
+                    if (unread > 0)
+                      Positioned(
+                        right: -2,
+                        top: -2,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFE2C55), // Badge đỏ cảnh báo chuẩn
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 1.5), // Viền trắng tạo hiệu ứng cut-out với nền trắng của Header
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                onPressed: () => context.push('/notifications'),
+              );
+            },
+          ),
+          // Nút Lịch sử giữ nguyên bên cạnh
           IconButton(
             icon: const Icon(Icons.history_rounded, color: Colors.black54),
             onPressed: () {

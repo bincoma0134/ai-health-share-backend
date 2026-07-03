@@ -8,6 +8,7 @@ import '../../presentation/screens/ai/ai_chat_screen.dart';
 import '../../presentation/screens/promo/promo_screen.dart';
 import '../../presentation/screens/calendar/calendar_screen.dart';
 import '../../presentation/screens/profile/private_profile_screen.dart';
+import '../../presentation/screens/wallet_screen.dart'; // Bổ sung Import Ví điện tử
 import '../../presentation/screens/admin/admin_dashboard_screen.dart';
 import '../../presentation/screens/admin/moderator_dashboard_screen.dart';
 import '../../presentation/screens/profile/public_profile_screen.dart';
@@ -15,6 +16,7 @@ import '../../presentation/screens/admin/partner_dashboard_screen.dart';
 import '../../presentation/screens/admin/creator_dashboard_screen.dart'; // IMPORT CREATOR DASHBOARD
 import '../../presentation/screens/notification_center_screen.dart';
 import '../../presentation/screens/splash_screen.dart'; // Đổi đường dẫn nếu bạn lưu ở thư mục khác
+import '../../presentation/screens/feeds/dedicated_upload_screen.dart'; // Import Studio sáng tạo dùng chung toàn màn hình
 import '../../presentation/screens/auth/onboarding_screen.dart';
 import '../../presentation/screens/login_screen.dart';
 import '../../presentation/widgets/auth_guard.dart';
@@ -60,16 +62,31 @@ final GoRouter appRouter = GoRouter(
         return MainHubScreen(navigationShell: navigationShell);
       },
       branches: [
-        StatefulShellBranch(routes: [GoRoute(path: '/', builder: (context, state) => TikTokFeedsScreen(filter: state.uri.queryParameters['filter']))]),
-        StatefulShellBranch(routes: [GoRoute(path: '/explore', builder: (context, state) => const ExploreScreen())]),
-        StatefulShellBranch(routes: [GoRoute(path: '/promo', builder: (context, state) => const PromoScreen())]),
-        StatefulShellBranch(routes: [GoRoute(path: '/ai', builder: (context, state) => const AiChatScreen())]),
-        StatefulShellBranch(routes: [GoRoute(path: '/map', builder: (context, state) => const MapScreen())]),
-        StatefulShellBranch(routes: [GoRoute(path: '/calendar', builder: (context, state) => const CalendarScreen())]),
-        StatefulShellBranch(routes: [GoRoute(path: '/profile', builder: (context, state) => const PrivateProfileScreen())]),
+        StatefulShellBranch(routes: [GoRoute(path: '/', builder: (context, state) => TikTokFeedsScreen(filter: state.uri.queryParameters['filter']))]), // Index 0: Home
+        StatefulShellBranch(routes: [GoRoute(path: '/explore', builder: (context, state) => const ExploreScreen())]), // Index 1: Explore
+        StatefulShellBranch(routes: [GoRoute(path: '/ai', builder: (context, state) => const AiChatScreen())]), // Index 2: AI Assistant
+        StatefulShellBranch(routes: [GoRoute(path: '/map', builder: (context, state) => const MapScreen())]), // Index 3: Map
+        StatefulShellBranch(routes: [GoRoute(path: '/profile', builder: (context, state) => const PrivateProfileScreen())]), // Index 4: Profile Hub
       ],
     ),
     
+    // CÁC TUYẾN ĐƯỜNG VỆ TINH (Được tách khỏi Bottom Nav, gọi trực tiếp từ Profile)
+    GoRoute(
+      path: '/promo',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) => const PromoScreen(),
+    ),
+    GoRoute(
+      path: '/calendar',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) => const CalendarScreen(),
+    ),
+    GoRoute(
+      path: '/wallet',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) => const WalletScreen(),
+    ),
+
     // Tuyến đường Dashboard Admin nằm độc lập
     GoRoute(
       path: '/admin-dashboard',
@@ -101,6 +118,12 @@ final GoRouter appRouter = GoRouter(
       path: '/notifications',
       parentNavigatorKey: rootNavigatorKey, 
       builder: (context, state) => const NotificationCenterScreen(),
+    ),
+    // Tuyến đường độc lập bọc AuthGuard phục vụ Creative Studio của Affiliate / Partner / Creator
+    GoRoute(
+      path: '/upload-studio',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) => const DedicatedUploadScreen(),
     ),
   ],
 );

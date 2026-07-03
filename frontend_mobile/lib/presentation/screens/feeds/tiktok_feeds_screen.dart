@@ -17,6 +17,12 @@ import '../../widgets/booking_bottom_sheet.dart';
 import '../../widgets/comment_bottom_sheet.dart';
 import '../../widgets/app_toast.dart'; // Tích hợp thông báo đặc sắc của hệ thống
 import '../../widgets/auth_guard.dart';
+import '../../widgets/notification_notifier.dart'; // 🚀 Bổ sung thư viện quản lý State thông báo
+import '../../widgets/animated_premium_like_button.dart'; // Tích hợp nút thả tim hệ hạt động
+import 'package:flutter/services.dart'; // 🚀 Bổ sung HapticFeedback để tạo rung vi chạm
+import 'package:visibility_detector/visibility_detector.dart'; // Giải quyết dứt điểm lỗi phát nhạc dưới nền
+import '../../../core/manager/audio_focus_manager.dart';
+
 
 
 class TikTokFeedsScreen extends StatefulWidget {
@@ -215,6 +221,15 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
   }
 
   @override
+  @override
+  void dispose() {
+    // 🚀 ĐỒNG BỘ HÓA GIẢI PHÓNG: Tránh rò rỉ tài nguyên bằng cách ngắt trực tiếp tiêu điểm qua Trọng tài tập trung
+    try {
+      AudioFocusManager.instance.requestMode(AppAudioMode.mutedAll);
+    } catch (_) {}
+    super.dispose();
+  }
+
   Widget build(BuildContext context) {
     super.build(context); // BẮT BUỘC: Khởi động cơ chế KeepAlive Engine
     
@@ -257,28 +272,41 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
           final video = _videos[index];
           return Stack(
             children: [
-              FeedVideoPlayer(
-                videoUrl: video.videoUrl,
-                isActive: index == _currentIndex,
-                videoIndex: index,            // Truyền vị trí để tính toán khoảng cách
-                currentIndex: _currentIndex,  // Truyền vị trí đang xem để so sánh
-                onDoubleTap: () {
-                  // Chuẩn TikTok: Double Tap chỉ để thả tim (Like), nếu đã tim rồi thì không thu hồi (Unlike)
-                  if (!video.isLiked) {
-                    _toggleInteraction(index, 'like');
+              VisibilityDetector(
+                key: Key('feed_video_${video.id}_$index'),
+                onVisibilityChanged: (visibilityInfo) {
+                  // Trả về luồng xử lý nhẹ để tối ưu tài nguyên tầng danh sách cha
+                  if (visibilityInfo.visibleFraction < 0.1 && index == _currentIndex) {
+                    FeedVideoPool.getController(video.videoUrl).then((c) => c.pause());
                   }
                 },
+                child: FeedVideoPlayer(
+                  videoUrl: video.videoUrl,
+                  isActive: index == _currentIndex,
+                  videoIndex: index,            // Truyền vị trí để tính toán khoảng cách
+                  currentIndex: _currentIndex,  // Truyền vị trí đang xem để so sánh
+                  onDoubleTap: () {
+                    // Chuẩn TikTok: Double Tap chỉ để thả tim (Like), nếu đã tim rồi thì không thu hồi (Unlike)
+                    if (!video.isLiked) {
+                      _toggleInteraction(index, 'like');
+                    }
+                  },
+                ),
               ),
               
              
-              // BỌC IGNORE POINTER ĐỂ LỚP ĐỔ BÓNG KHÔNG CHẶN SỰ KIỆN CHẠM (Chuyển dải mờ sang tone sáng trắng tinh sảo)
+              // BỌC IGNORE POINTER ĐỂ LỚP ĐỔ BÓNG KHÔNG CHẶN SỰ KIỆN CHẠM (Sửa lỗi hắt sáng: Chuyển dải mờ sang đen phủ mịn để tăng tương phản chữ trắng)
               IgnorePointer(
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter, 
                       end: Alignment.bottomCenter, 
-                      colors: [Colors.transparent, Colors.white.withOpacity(0.35)] // Đổ mờ trắng giữ độ căng cho text
+                      colors: [
+                        Colors.transparent, 
+                        Colors.black.withOpacity(0.55), // Bóng tối chuẩn mịn màng giúp đọc caption chữ trắng dễ chịu, bám khối chắc chắn
+                      ],
+                      stops: const [0.6, 1.0], // Thiết lập điểm dừng thông minh, chỉ tập trung phủ tối ở 40% phần đáy màn hình nhằm giữ độ căng cho video nền
                     )
                   )
                 ),
@@ -291,6 +319,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      // Nút Quay lại
                       GestureDetector(
                         onTap: () => context.pop(),
                         child: Container(
@@ -304,17 +333,63 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                         ),
                       ),
                       
-                      GestureDetector(
-                        onTap: () => setState(() => _isSearchOpen = true),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.6),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.black12, width: 0.5),
+                      // Cụm nút bên phải: Tìm kiếm & Thông báo
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: () => setState(() => _isSearchOpen = true),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.6),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.black12, width: 0.5),
+                              ),
+                              child: const Icon(Icons.search_rounded, color: Colors.black87, size: 20),
+                            ),
                           ),
-                          child: const Icon(Icons.search_rounded, color: Colors.black87, size: 20),
-                        ),
+                          const SizedBox(width: 12), // Khoảng cách giữa 2 nút
+                          
+                          // 🚀 NÚT THÔNG BÁO MỚI ĐƯỢC CHÈN VÀO ĐÂY ĐỒNG BỘ CHẤT LIỆU KÍNH
+                          ListenableBuilder(
+                            listenable: NotificationNotifier.instance,
+                            builder: (context, child) {
+                              final unread = NotificationNotifier.instance.unreadCount;
+                              return GestureDetector(
+                                onTap: () => context.push('/notifications'),
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.6),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.black12, width: 0.5),
+                                  ),
+                                  child: Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      const Icon(Icons.notifications_none_rounded, color: Colors.black87, size: 20),
+                                      if (unread > 0)
+                                        Positioned(
+                                          right: -2,
+                                          top: -2,
+                                          child: Container(
+                                            width: 10,
+                                            height: 10,
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFFE2C55), // Dùng màu đỏ hồng để Badge cảnh báo nổi bật hơn
+                                              shape: BoxShape.circle,
+                                              border: Border.all(color: Colors.white, width: 1.5), // Viền trắng bóc tách khối
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -538,12 +613,11 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                     ),
                     const SizedBox(height: 14), // Spacing nén chặt lại theo chuẩn UI hiện đại
                     
-                    // 2. Nút Thả Tim - Trả về màu Trắng/Màu Hồng mọng phối bóng đổ sâu chuyên nghiệp
-                    _buildInteractButton(
-                      Icons.favorite_rounded, 
-                      video.likesCount.toString(), 
-                      () => _toggleInteraction(index, 'like'),
-                      color: video.isLiked ? const Color(0xFFFE2C55) : Colors.white,
+                    // 2. Nút Thả Tim Động (Premium Particle Animation)
+                    AnimatedPremiumLikeButton(
+                      isLiked: video.isLiked,
+                      likeCount: video.likesCount.toString(),
+                      onTap: () => _toggleInteraction(index, 'like'),
                     ),
                     const SizedBox(height: 14),
                     

@@ -38,8 +38,6 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
     void performNav() {
       if (index != widget.navigationShell.currentIndex) {
         // 🚀 THUẬT TOÁN INDEXEDSTACK: Chuyển tab tức thì (Zero-latency)
-        // Xóa bỏ trạng thái _isPageLoading ảo để ngăn chặn việc Flutter tháo dỡ (unmount)
-        // toàn bộ NavigationShell khỏi cây Widget, bảo toàn 100% State của mọi màn hình.
         widget.navigationShell.goBranch(
           index,
           initialLocation: index == widget.navigationShell.currentIndex,
@@ -52,8 +50,8 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
       }
     }
 
-    // Chặn điều hướng trực tiếp bằng AuthGuard nếu là Tab AI (3) hoặc Lịch (5)
-    if (index == 3 || index == 5) {
+    // Chặn điều hướng trực tiếp bằng AuthGuard đối với Tab AI Trợ lý (Index 2)
+    if (index == 2) {
       AuthGuard.run(context, action: performNav);
     } else {
       performNav();
@@ -69,47 +67,6 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
             child: _isPageLoading ? _buildSkeletonLayout() : widget.navigationShell,
-          ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            right: 16,
-            child: ListenableBuilder(
-              listenable: NotificationNotifier.instance,
-              builder: (context, child) {
-                final unread = NotificationNotifier.instance.unreadCount;
-                return GestureDetector(
-                  onTap: () => context.push('/notifications'),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.8),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2))
-                      ]
-                    ),
-                    child: Stack(
-                      children: [
-                        const Icon(Icons.notifications_none, color: Color(0xFF27272A), size: 24),
-                        if (unread > 0)
-                          Positioned(
-                            right: 0,
-                            top: 0,
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF10B981),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
           ),
         ],
       ),
@@ -142,18 +99,16 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Nhóm 3 tab trái (Bỏ qua nhãn label để UI tối giản)
-                      Expanded(child: _buildNavItem(0, Icons.home_filled, Icons.home_outlined, context)),
-                      Expanded(child: _buildNavItem(1, Icons.explore, Icons.explore_outlined, context)),
-                      Expanded(child: _buildNavItem(2, Icons.local_offer, Icons.local_offer_outlined, context)),
+                      // Nhóm 2 tab trái: Chuyển đổi sang bộ Icon bo tròn mềm mại và bổ sung Label tương ứng
+                      Expanded(child: _buildNavItem(0, Icons.home_rounded, Icons.home_outlined, 'Trang chủ', context)),
+                      Expanded(child: _buildNavItem(1, Icons.explore_rounded, Icons.explore_outlined, 'Khám phá', context)),
                       
-                      // Khoảng trống trung tâm cho nút AI
+                      // Khoảng trống trung tâm cho nút AI (Index 2)
                       const SizedBox(width: 55), 
                       
-                      // Nhóm 3 tab phải
-                      Expanded(child: _buildNavItem(4, Icons.map, Icons.map_outlined, context)),
-                      Expanded(child: _buildNavItem(5, Icons.calendar_month, Icons.calendar_today_outlined, context)),
-                      Expanded(child: _buildNavItem(6, Icons.person, Icons.person_outline, context)),
+                      // Nhóm 2 tab phải: Đồng bộ nhãn Cá nhân khớp với Profile User mới
+                      Expanded(child: _buildNavItem(3, Icons.map_rounded, Icons.map_outlined, 'Bản đồ', context)),
+                      Expanded(child: _buildNavItem(4, Icons.person_rounded, Icons.person_outline, 'Cá nhân', context)),
                     ],
                   ),
                 ),
@@ -163,7 +118,7 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
               // 2. NÚT AI TRỢ LÝ NỔI CHẤT LIỆU ĐẶC SẮC CHỈNH SỬA BIỂU TƯỢNG CHIẾC LÁ
                 Positioned(
                   top: 0,
-                  child: _buildAiButton(3, context),
+                  child: _buildAiButton(2, context),
                 ),
               ],
             ),
@@ -264,47 +219,64 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
     );
   }
 
-  // --- WIDGET CON: Nút chức năng thường (Đã tối giản, loại bỏ Text) ---
-  Widget _buildNavItem(int index, IconData activeIcon, IconData icon, BuildContext context) {
+  // --- WIDGET CON: Phân bổ trục dọc phẳng tích hợp lớp nền lót mỏng sinh học Premium chống mờ thị giác ---
+  Widget _buildNavItem(int index, IconData activeIcon, IconData icon, String label, BuildContext context) {
     final isActive = widget.navigationShell.currentIndex == index;
     return GestureDetector(
       onTap: () => _onTap(context, index),
-      behavior: HitTestBehavior.opaque, // Bắt sự kiện chạm trên toàn bộ vùng Expanded
+      behavior: HitTestBehavior.opaque,
       child: Container(
-        height: double.infinity, // Kéo dãn vùng chạm lấp đầy chiều cao thanh Nav
-        alignment: Alignment.center, // Ép toàn bộ khối bọc nội dung vào tâm tuyệt đối của Tab
+        height: double.infinity,
+        alignment: Alignment.center,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          width: 64,  // Khóa cố định chiều rộng viên kén để ôm trọn tâm đối xứng hoàn hảo quanh Icon
-          height: 38, // Khóa chiều cao kén dẹt dài cân đối theo cấu trúc Apple
-          alignment: Alignment.center, // Đảm bảo Icon nằm chính giữa lòng kén
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutQuad,
+          // Khóa cứng kích thước đối xứng tuyệt đối (chiều rộng 76px, chiều cao 54px) giúp triệt tiêu lỗi kén to kén nhỏ
+          width: 76,
+          height: 54,
+          alignment: Alignment.center, // Ép trục dọc Column vào tâm khối lót cố định
           decoration: BoxDecoration(
-            // Sử dụng màu trắng hệ thống siêu mờ để làm bừng sáng nhẹ vùng kính nền phía dưới
-            color: isActive ? AppTheme.zinc50.withOpacity(0.12) : Colors.transparent,
-            borderRadius: BorderRadius.circular(99), // Bo tròn viên thuốc tuyệt đối dạng Stadium
-            border: isActive ? Border.all(color: AppTheme.zinc50.withOpacity(0.18), width: 0.5) : null,
+            // Lót vệt sáng Mint mờ nhẹ tương thích cao với nền Liquid Glass mờ
+            color: isActive ? const Color(0xFF10B981).withOpacity(0.08) : Colors.transparent,
+            // Đồng bộ hoàn hảo với thông số bo tròn tuyệt đối (35px) của thanh điều hướng Liquid Glass bên ngoài
+            borderRadius: BorderRadius.circular(35), 
           ),
-          // Giả lập ma trận lọc màu tăng cường độ bão hòa (Saturation) của chất liệu Clear iOS
-          child: ColorFiltered(
-            colorFilter: isActive 
-                ? const ColorFilter.matrix([
-                    1.4, 0,   0,   0,   0, // Kênh Red (Kích màu tươi 140%)
-                    0,   1.4, 0,   0,   0, // Kênh Green
-                    0,   0,   1.4, 0,   0, // Kênh Blue
-                    0,   0,   0,   1,   0, // Kênh Alpha
-                  ])
-                : const ColorFilter.mode(Colors.transparent, BlendMode.dst),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
-              child: Icon(
-                isActive ? activeIcon : icon, 
-                key: ValueKey<bool>(isActive),
-                // Đồng bộ màu Xanh Lục (Emerald) nhận diện thương hiệu mới
-                color: isActive ? const Color(0xFF10B981) : AppTheme.zinc400, 
-                size: 24, // Định vị Icon chuẩn xác cân đối với kích cỡ thấu kính kén mới
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ColorFiltered(
+                colorFilter: isActive 
+                    ? const ColorFilter.matrix([
+                        1.2, 0,   0,   0,   0,
+                        0,   1.2, 0,   0,   0,
+                        0,   0,   1.2, 0,   0,
+                        0,   0,   0,   1,   0,
+                      ])
+                    : const ColorFilter.mode(Colors.transparent, BlendMode.dst),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
+                  child: Icon(
+                    isActive ? activeIcon : icon, 
+                    key: ValueKey<bool>(isActive),
+                    color: isActive ? const Color(0xFF10B981) : AppTheme.zinc400, 
+                    size: 26, // Cân đối lại kích cỡ thấu kính Icon lồng trong khối lót
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(height: 3),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 180),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: isActive ? FontWeight.w800 : FontWeight.w500,
+                  color: isActive ? const Color(0xFF10B981) : AppTheme.zinc400,
+                  letterSpacing: -0.1,
+                ),
+                child: Text(label),
+              ),
+            ],
           ),
         ),
       ),

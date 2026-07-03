@@ -9,9 +9,13 @@ class MapApiService {
   static Future<List<PartnerMapModel>> fetchMapPartners() async {
     try {
       final response = await _dio.get('/map/partners');
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        final List<dynamic> data = response.data['data'];
-        return data.map((json) => PartnerMapModel.fromJson(json)).toList();
+      if (response.statusCode == 200 && response.data != null) {
+        // Đồng bộ hóa với Swagger: FastAPI trả về mảng trực tiếp hoặc data object trực tiếp
+        final dynamic rawData = response.data;
+        final List<dynamic> dataList = (rawData is Map && rawData.containsKey('data')) 
+            ? rawData['data'] 
+            : (rawData is List ? rawData : []);
+        return dataList.map((json) => PartnerMapModel.fromJson(json)).toList();
       }
       return [];
     } catch (e) {

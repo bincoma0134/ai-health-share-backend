@@ -1,8 +1,19 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // 🚀 HOTFIX: Thêm thư viện để kích hoạt hàm chạy đa luồng compute()
 import 'package:image_picker/image_picker.dart';
 import 'package:video_compress/video_compress.dart';
 import '../../../data/services/user_api_service.dart';
+import 'package:video_player/video_player.dart';
+import 'feed_video_player.dart'; // 🚀 HOTFIX 1: Thêm import để định nghĩa lớp điều khiển tĩnh FeedVideoPool
+
+// 🚀 WORKER ISOLATE: Hàm tĩnh phải nằm ngoài hoàn toàn cấu trúc Class để chạy đa luồng Isolate chuẩn xác
+Future<Map<String, double>> _isolateExtractMetadata(String path) async {
+  final MediaInfo mediaInfoData = await VideoCompress.getMediaInfo(path);
+  final double duration = (mediaInfoData.duration ?? 0) / 1000;
+  final double size = (mediaInfoData.filesize ?? File(path).lengthSync()) / (1024 * 1024);
+  return {'duration': duration, 'size': size};
+}
 
 class VideoUploader extends StatefulWidget {
   final Function(String) onUploadSuccess;
@@ -25,41 +36,62 @@ class VideoUploader extends StatefulWidget {
 }
 
 class _VideoUploaderState extends State<VideoUploader> {
-  final ImagePicker _picker = ImagePicker();
+  final ImagePicker _picker = _pickerInstance ?? ImagePicker();
+  static final ImagePicker _pickerInstance = ImagePicker();
   bool _isUploading = false;
   bool _isUploadSuccess = false;
   double _progress = 0.0;
 
   Future<void> _pickAndUpload() async {
-    // 1. Validation: Giới hạn độ dài Video ngay khi pick
-    final XFile? video = await _picker.pickVideo(
-      source: ImageSource.gallery,
-      maxDuration: const Duration(minutes: 3),
-    );
-
+    final XFile? video = await _picker.pickVideo(source: ImageSource.gallery);
     if (video == null) return;
 
-    final file = File(video.path);
-    
-    // Kiểm tra dung lượng (Chặn > 500MB)
-    final double fileSizeInMB = file.lengthSync() / (1024 * 1024);
-    if (fileSizeInMB > 500) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dung lượng video vượt quá 500MB'), backgroundColor: Colors.orange));
-      return;
-    }
-
+    // Kích hoạt trạng thái tải, giao diện vẫn nhận click tương tác bình thường
     setState(() {
       _isUploading = true;
-      _isUploadSuccess = false;
       _progress = 0.0;
     });
 
+    // Ép luồng Feeds chính tạm thời dừng mọi hoạt động phát tiếng
+    FeedVideoPool.isGlobalMutedForUpload = true;
+
     try {
-      // 2. THUẬT TOÁN NÉN TỐI ƯU: Nén video tại Local trước khi tải lên để giảm 70-80% dung lượng
-      File fileToUpload = file;
+      // 🚀 KHẮC PHỤC TRIỆT ĐỂ TREO UI: Ủy thác tác vụ quét file nặng cho Worker Thread phụ qua compute()
+      final Map<String, double> metadata = await compute(_isolateExtractMetadata, video.path);
+      final double durationInSeconds = metadata['duration'] ?? 0;
+      final double fileSizeInMB = metadata['size'] ?? 0;
+
+      if (durationInSeconds > 180 || fileSizeInMB > 500) {
+        setState(() {
+          _isUploading = false;
+        });
+        FeedVideoPool.isGlobalMutedForUpload = false; // Trả tự do cho âm thanh Feeds
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(durationInSeconds > 180 
+                ? 'Từ chối: Video dài ${durationInSeconds.toInt()} giây (Vượt quá giới hạn 3 phút)!' 
+                : 'Từ chối: Dung lượng file đạt ${fileSizeInMB.toInt()}MB (Vượt quá giới hạn 500MB)!'), 
+              backgroundColor: Colors.redAccent
+            ),
+          );
+        }
+        return; 
+      }
+    } catch (e) {
+      setState(() => _isUploading = false);
+      FeedVideoPool.isGlobalMutedForUpload = false;
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Không thể đọc cấu trúc tệp video!'), backgroundColor: Colors.redAccent));
+      return;
+    }
+
+    try {
+      // 2. THUẬT TOÁN NÉN TỐI ƯU: Ánh xạ chuẩn xác tệp vật lý từ đường dẫn cục bộ (video.path)
+      final File localFile = File(video.path);
+      File fileToUpload = localFile;
       try {
         final MediaInfo? mediaInfo = await VideoCompress.compressVideo(
-          file.path,
+          localFile.path,
           quality: VideoQuality.MediumQuality, // Cân bằng hoàn hảo giữa dung lượng và chất lượng
           deleteOrigin: false, // Giữ nguyên file gốc trong máy người dùng
         );
@@ -189,6 +221,8 @@ class _VideoUploaderState extends State<VideoUploader> {
                   onTap: () {
                     setState(() => _isUploadSuccess = false);
                     widget.onUploadSuccess(""); // Xóa URL
+                    // 🚀 ĐỒNG BỘ: Trả tự do cho âm thanh Feeds khi gỡ tệp từ Widget con
+                    FeedVideoPool.isGlobalMutedForUpload = false;
                   },
                   child: Container(
                     padding: const EdgeInsets.all(4),

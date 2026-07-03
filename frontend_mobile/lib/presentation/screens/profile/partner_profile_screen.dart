@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:dio/dio.dart';
 import '../../../data/services/partner_api_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../data/services/user_api_service.dart';
@@ -13,6 +14,8 @@ import '../../widgets/image_uploader.dart';
 import '../../widgets/video_uploader.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/shimmer_wrapper.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 class PartnerProfileScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -46,6 +49,9 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
   final _usernameCtrl = TextEditingController();
   final _bioCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
+  final _addressCtrl = TextEditingController();
+  double? _latitude;
+  double? _longitude;
   bool _isUpdatingProfile = false;
 
   final ImagePicker _picker = ImagePicker();
@@ -60,6 +66,9 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     _usernameCtrl.text = widget.profile['username'] ?? '';
     _bioCtrl.text = widget.profile['bio'] ?? '';
     _phoneCtrl.text = widget.profile['phone'] ?? '';
+    _addressCtrl.text = widget.profile['physical_address'] ?? '';
+    _latitude = widget.profile['latitude'] != null ? double.tryParse(widget.profile['latitude'].toString()) : null;
+    _longitude = widget.profile['longitude'] != null ? double.tryParse(widget.profile['longitude'].toString()) : null;
     _loadPartnerData();
   }
 
@@ -173,6 +182,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     final name = _nameCtrl.text.trim();
     final uname = _usernameCtrl.text.trim();
     final phone = _phoneCtrl.text.trim();
+    final address = _addressCtrl.text.trim();
 
     if (name.isEmpty || uname.isEmpty || phone.isEmpty) {
       AppToast.show(context: context, message: 'Tên, Username và SĐT không được để trống!', isSuccess: false);
@@ -180,13 +190,24 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     }
 
     setState(() => _isUpdatingProfile = true);
-    final success = await UserApiService.updateProfile({
+
+    final Map<String, dynamic> payload = {
       'username': uname,
       'full_name': name,
       'bio': _bioCtrl.text.trim(),
       'phone': phone,
-    });
+      'physical_address': address,
+    };
+    
+    // Sử dụng tọa độ an toàn, chuẩn hóa chính xác 6 chữ số thập phân (chuẩn định vị GPS) để tránh lỗi parse Backend
+    if (_latitude != null && _longitude != null) {
+      payload['latitude'] = double.parse(_latitude!.toStringAsFixed(6));
+      payload['longitude'] = double.parse(_longitude!.toStringAsFixed(6));
+    }
+
+    final success = await UserApiService.updateProfile(payload);
     setState(() => _isUpdatingProfile = false);
+    
     if (success && mounted) {
       widget.onRefresh();
       AppToast.show(context: context, message: 'Đã cập nhật hồ sơ doanh nghiệp!', isSuccess: true);
@@ -1419,90 +1440,356 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     );
   }
 
+  void _showLocationPickerBottomSheet() async {
+    final query = _addressCtrl.text.trim();
+    if (query.isEmpty) {
+      AppToast.show(context: context, message: 'Vui lòng nhập địa chỉ trước khi ghim!', isSuccess: false);
+      return;
+    }
+
+    LatLng center = _latitude != null && _longitude != null 
+        ? LatLng(_latitude!, _longitude!) 
+        : const LatLng(21.028511, 105.804817);
+    
+    bool isMapLoading = true;
+    List<dynamic> suggestions = [];
+    bool hasSearched = false;
+    final MapController innerMapController = MapController();
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          // Thực hiện quét tìm kiếm khoanh vùng nâng cao (Tối đa 5 kết quả tốt nhất)
+          if (isMapLoading && !hasSearched) {
+            hasSearched = true;
+            
+            // 1. CẤU HÌNH THUẬT TOÁN BIAS: Ưu tiên lãnh thổ VN và vùng lân cận
+            final Map<String, dynamic> geoParams = {
+              'q': query, 
+              'format': 'json', 
+              'limit': 5,
+              'countrycodes': 'vn', // Khóa cứng lãnh thổ Việt Nam, loại bỏ kết quả nhiễu nước ngoài
+            };
+            
+            // Nếu có tọa độ cũ, tạo Viewbox (~50km) để ưu tiên kết quả cùng Tỉnh/Thành phố
+            if (_latitude != null && _longitude != null) {
+              geoParams['viewbox'] = '${_longitude! - 0.5},${_latitude! + 0.5},${_longitude! + 0.5},${_latitude! - 0.5}';
+              geoParams['bounded'] = 0; // Ưu tiên (không bắt buộc tuyệt đối)
+            }
+
+            // 2. BẢO MẬT API BÊN THỨ 3: Dùng Dio độc lập (Clean Client), tránh gửi Auth Token của hệ thống 
+            // sang OpenStreetMap gây lỗi 403 Forbidden. Thêm User-Agent chuẩn để tuân thủ luật tường lửa Nominatim.
+            Dio().get(
+              'https://nominatim.openstreetmap.org/search',
+              queryParameters: geoParams,
+              options: Options(headers: {'User-Agent': 'AIHealthPartnerApp/1.0'}),
+            ).then((res) {
+              if (res.statusCode == 200 && res.data is List && (res.data as List).isNotEmpty) {
+                final List<dynamic> list = res.data;
+                final double? lat = double.tryParse(list[0]['lat'].toString());
+                final double? lon = double.tryParse(list[0]['lon'].toString());
+                
+                if (mounted) {
+                  setModalState(() {
+                    suggestions = list;
+                    if (lat != null && lon != null) {
+                      center = LatLng(lat, lon);
+                    }
+                    isMapLoading = false;
+                  });
+                  
+                  if (lat != null && lon != null) {
+                    Future.delayed(const Duration(milliseconds: 300), () {
+                      if (mounted) innerMapController.move(LatLng(lat, lon), 16.0);
+                    });
+                  }
+                }
+              } else {
+                // Xử lý báo lỗi hiển thị rõ ràng khi địa chỉ quá ngóc ngách, OpenStreetMap không tìm thấy
+                if (mounted) {
+                  setModalState(() => isMapLoading = false);
+                  AppToast.show(context: context, message: 'Địa chỉ quá chi tiết hoặc chưa có mặt trên bản đồ vệ tinh. Vui lòng rê điểm ghim thủ công!', isSuccess: false);
+                }
+              }
+            }).catchError((e) {
+              // Bắt lỗi kết nối mạng hoặc bị chặn IP
+              debugPrint('❌ OpenStreetMap API Error: $e');
+              if (mounted) {
+                setModalState(() => isMapLoading = false);
+                AppToast.show(context: context, message: 'Lỗi định vị vị trí tự động. Vui lòng rê điểm ghim thủ công!', isSuccess: false);
+              }
+            });
+          }
+
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.85,
+            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(width: 48, height: 5, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10))),
+                const SizedBox(height: 16),
+                const Text('Xác nhận Vị trí', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 20, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 4),
+                const Text('Chọn địa chỉ chính xác và tinh chỉnh tâm ghim', style: TextStyle(color: Color(0xFF617D79), fontSize: 13)),
+                const SizedBox(height: 12),
+                
+                // HỘP THOẠI CHỌN ĐỊA CHỈ PHÂN VÙNG GỢI Ý (STYLE SHOPEE)
+                if (!isMapLoading && suggestions.isNotEmpty)
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 120),
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF7FBF9),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2ECEB)),
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                      itemCount: suggestions.length,
+                      separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFE2ECEB)),
+                      itemBuilder: (context, index) {
+                        final item = suggestions[index];
+                        final displayName = item['display_name'] ?? '';
+                        return InkWell(
+                          onTap: () {
+                            final double? lat = double.tryParse(item['lat'].toString());
+                            final double? lon = double.tryParse(item['lon'].toString());
+                            if (lat != null && lon != null) {
+                              setModalState(() {
+                                center = LatLng(lat, lon);
+                                // Điều hướng dịch chuyển ống kính bản đồ đến tọa độ được chọn lập tức
+                                innerMapController.move(center, 16.0);
+                              });
+                            }
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.location_on_rounded, size: 16, color: Color(0xFF48C9B0)),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    displayName,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 12, color: Color(0xFF1A3A35), fontWeight: FontWeight.w500),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: isMapLoading 
+                    ? const Center(child: CircularProgressIndicator(color: Color(0xFF48C9B0)))
+                    : Stack(
+                        children: [
+                          FlutterMap(
+                            mapController: innerMapController,
+                            options: MapOptions(
+                              initialCenter: center,
+                              initialZoom: 16.0,
+                              onPositionChanged: (position, hasGesture) {
+                                // Bỏ điều kiện hasGesture để đồng bộ biến center 
+                                // trong mọi trường hợp camera di chuyển (rê tay hoặc chọn gợi ý)
+                                if (position.center != null) {
+                                  center = position.center!;
+                                }
+                              },
+                            ),
+                            children: [
+                              TileLayer(
+                                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                userAgentPackageName: 'com.aihealth.partner',
+                              ),
+                            ],
+                          ),
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.only(bottom: 40),
+                              child: Icon(Icons.location_on, size: 40, color: Color(0xFFE63946)),
+                            ),
+                          ),
+                        ],
+                      ),
+                ),
+                
+                // GIA CỐ HẠ TẦNG PADDING: Tự động co giãn theo độ dày của thanh điều hướng hệ thống
+                Padding(
+                  padding: EdgeInsets.only(
+                    left: 24,
+                    right: 24,
+                    top: 24,
+                    bottom: 24 + MediaQuery.paddingOf(context).bottom,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            side: const BorderSide(color: Color(0xFFE2ECEB)),
+                          ),
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Hủy', style: TextStyle(color: Color(0xFF617D79), fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1A3A35),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _latitude = center.latitude;
+                              _longitude = center.longitude;
+                            });
+                            Navigator.pop(context);
+                            AppToast.show(context: context, message: 'Đã xác nhận điểm ghim!', isSuccess: true);
+                          },
+                          child: const Text('LƯU ĐIỂM GHIM', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildSaaSField({
     required TextEditingController controller,
     required String label,
     int maxLines = 1,
     TextInputType keyboardType = TextInputType.text,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(label, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 14, fontWeight: FontWeight.w500)),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE2ECEB), width: 1),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+    // 🚀 ĐỒNG BỘ MAP ICON: Tự động nhận diện ngữ cảnh tiêu đề để gán Icon Line-art cao cấp phù hợp
+    IconData prefixIcon = Icons.edit_note_rounded;
+    if (label.contains('Tên doanh nghiệp')) prefixIcon = Icons.business_rounded;
+    else if (label.contains('Username')) prefixIcon = Icons.alternate_email_rounded;
+    else if (label.contains('Điện thoại')) prefixIcon = Icons.phone_iphone_rounded;
+    else if (label.contains('Địa chỉ')) prefixIcon = Icons.location_on_rounded;
+    else if (label.contains('Tiểu sử')) prefixIcon = Icons.auto_stories_rounded;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1A3A35).withOpacity(0.04), // Bóng đổ Neumorphic khuếch tán đa tầng mịn màng
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+            spreadRadius: -2,
           ),
-          child: TextField(
-            controller: controller,
-            maxLines: maxLines,
-            keyboardType: keyboardType,
-            textAlign: TextAlign.left,
-            style: const TextStyle(color: Color(0xFF1C1C1E), fontSize: 16, fontWeight: FontWeight.w400),
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              isDense: true,
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            ),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 15, fontWeight: FontWeight.w600),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500),
+          floatingLabelStyle: const TextStyle(color: Color(0xFF48C9B0), fontSize: 13, fontWeight: FontWeight.bold),
+          prefixIcon: Icon(prefixIcon, color: const Color(0xFF94A3B8), size: 18),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5), // Kích hoạt đổi màu viền khi tương tác gõ chữ
           ),
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildSaaSLockedField({required String label, required String value, required String badgeText}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(label, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 14, fontWeight: FontWeight.w500)),
-        ),
-        InkWell(
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Trường dữ liệu này đã được hệ thống bảo vệ.'), backgroundColor: Colors.orange)
-            );
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF2F2F7),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE2ECEB), width: 1),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    value.isEmpty ? 'Trống' : value,
-                    textAlign: TextAlign.left,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 16, fontWeight: FontWeight.w400),
-                  ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC), // Tone màu nền xám mờ bảo vệ dữ liệu khóa
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+      ),
+      child: InkWell(
+        onTap: () {
+          // Đồng bộ SnackBar thô sơ cũ sang kiến trúc AppToast cao cấp
+          AppToast.show(
+            context: context,
+            message: 'Trường thông tin xác thực mật định đã được hệ thống mã hóa bảo vệ an toàn.',
+            isSuccess: false,
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              const Icon(Icons.lock_outline_rounded, color: Color(0xFF94A3B8), size: 18),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 2),
+                    Text(
+                      value.isEmpty ? 'Chưa cập nhật dữ liệu' : value,
+                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 14, fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFE2ECEB), width: 1),
-                  ),
-                  child: Text(badgeText, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 12, fontWeight: FontWeight.w600)),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
                 ),
-              ],
-            ),
+                child: Text(badgeText, style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -1527,7 +1814,58 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
           const SizedBox(height: 20),
           _buildSaaSLockedField(label: 'Email xác thực', value: email, badgeText: 'Bảo mật'),
           const SizedBox(height: 20),
-          _buildSaaSField(controller: _bioCtrl, label: 'Tiểu sử & Giới thiệu', maxLines: 4),
+          // Khu vực UX: Tách biệt luồng Nhập văn bản & Xác thực bản đồ
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSaaSField(controller: _addressCtrl, label: 'Địa chỉ hoạt động', maxLines: 2),
+              const SizedBox(height: 12),
+              SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF48C9B0),
+                        backgroundColor: const Color(0xFF48C9B0).withOpacity(0.05),
+                        side: const BorderSide(color: Color(0xFF48C9B0), width: 1.5),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: _showLocationPickerBottomSheet,
+                      icon: const Icon(Icons.location_on_rounded, size: 20),
+                      label: Text(
+                        _latitude != null ? 'Sửa điểm ghim trên bản đồ' : 'Xác nhận vị trí trên bản đồ', 
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Nhắc nhở Business Logic: Cần có Dịch vụ được duyệt để lên Bản đồ khám phá
+                  if (_latitude != null)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF8E1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.info_outline_rounded, color: Colors.orange, size: 18),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Đã có tọa độ. Để cơ sở xuất hiện trên Bản đồ khám phá, hãy đảm bảo bạn có ít nhất 1 Dịch vụ ở trạng thái Đã duyệt.',
+                              style: TextStyle(color: Color(0xFFD97706), fontSize: 12, height: 1.4),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              _buildSaaSField(controller: _bioCtrl, label: 'Tiểu sử & Giới thiệu', maxLines: 4),
           const SizedBox(height: 32),
           SizedBox(
             width: double.infinity, height: 52,

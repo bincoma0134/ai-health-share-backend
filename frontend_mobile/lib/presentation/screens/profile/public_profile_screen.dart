@@ -332,14 +332,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                           Flexible(child: Text(profile['full_name'] ?? 'Vô danh', style: const TextStyle(color: const Color(0xFF1E293B), fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5, height: 1.1), maxLines: 1, overflow: TextOverflow.ellipsis)),
                           if (role != 'USER') ...[
                             const SizedBox(width: 6),
-                            Icon(Icons.verified_rounded, color: isPartner ? Colors.blue : primaryColor, size: 24),
+                            Icon(Icons.verified_rounded, color: primaryColor, size: 24),
                           ]
                         ],
                       ),
                       const SizedBox(height: 6),
 
-                      // Thẻ Xác thực Y tế (Trust Badge)
-                      if (isPartner)
+                      // Thẻ Xác thực Vai trò (Trust Badge động theo Role)
+                      if (role != 'USER')
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
@@ -350,22 +350,45 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.health_and_safety_rounded, size: 12, color: primaryColor),
+                              Icon(_getRoleIcon(role), size: 12, color: primaryColor),
                               const SizedBox(width: 4),
-                              Text('Xác thực bởi VN Share', style: TextStyle(color: primaryColor, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.2)),
+                              Text(
+                                role == 'SUPER_ADMIN' || role == 'ADMIN' ? 'Quản trị viên hệ thống' :
+                                role == 'MODERATOR' ? 'Kiểm duyệt viên' :
+                                role == 'CREATOR' ? 'Nhà sáng tạo nội dung' :
+                                'Đối tác Y tế Chính thức',
+                                style: TextStyle(color: primaryColor, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.2)
+                              ),
                             ],
                           ),
                         ),
                       const SizedBox(height: 8),
                       
                       // Địa điểm
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.location_on_rounded, size: 14, color: Colors.black45),
-                          const SizedBox(width: 4),
-                          Text(profile['physical_address'] ?? 'Đối tác Y tế Chính thức', style: const TextStyle(color: Colors.black54, fontSize: 12, fontWeight: FontWeight.w600)),
-                        ],
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.only(top: 2),
+                              child: Icon(Icons.location_on_rounded, size: 14, color: Colors.black45),
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                profile['physical_address'] != null && profile['physical_address'].toString().trim().isNotEmpty 
+                                    ? profile['physical_address'] 
+                                    : (isPartner ? 'Chưa cập nhật địa chỉ cơ sở' : 'Thành viên cộng đồng AI Health'), 
+                                style: const TextStyle(color: Colors.black54, fontSize: 12, fontWeight: FontWeight.w600, height: 1.4),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 24),
 

@@ -11,6 +11,9 @@ import '../../widgets/booking_bottom_sheet.dart'; // Nạp bảng cấu hình đ
 import '../../widgets/app_toast.dart'; // Bổ sung import AppToast để xử lý lỗi biên dịch
 import '../../widgets/auth_guard.dart';
 import '../../widgets/shimmer_wrapper.dart';
+import '../../widgets/notification_notifier.dart'; // 🚀 Bổ sung thư viện quản lý State thông báo
+import '../../../core/network/api_client.dart'; // Đảm bảo nạp ApiClient bọc thép
+import '../../widgets/auth_bottom_sheet.dart'; // Phục vụ luồng AuthGuard
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -19,7 +22,7 @@ class ExploreScreen extends StatefulWidget {
   State<ExploreScreen> createState() => _ExploreScreenState();
 }
 
-class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveClientMixin {
+class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   
   // 🚀 THUẬT TOÁN KEEPALIVE ENGINE: Chống reset Tab Explore
   @override
@@ -28,9 +31,25 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
   List<PartnerMapModel> _partners = []; // Chuẩn hóa kiểu dữ liệu mảng đối tượng 
   List<PartnerMapModel> _filteredPartners = []; // Bộ đệm lưu trữ dữ liệu sau khi lọc tìm kiếm
   
+  // --- GAMIFICATION INTEGRATED STATES ---
+  int _svalueBalance = 0;
+  int _currentStreakDay = 0;
+  bool _isTodayCheckedIn = false;
+  bool _isCheckingIn = false;
+  bool _isProfileSyncing = true;
+  
+  // Voucher & Mission States (Tích hợp thêm Ví mã cá nhân để đối chiếu trạng thái thực tế)
+  List<dynamic> _publicVouchers = [];
+  List<dynamic> _myVouchers = [];
+  List<dynamic> _missions = [];
+  bool _isLoadingMissions = true;
+  bool _isClaimingVoucher = false;
+  bool _isClaimingMission = false;
+  
   // Các mảng trạng thái lưu trữ danh sách gói dịch vụ lẻ đồng bộ từ Web
   List<dynamic> _services = [];
   List<dynamic> _filteredServices = [];
+  int _servicesDisplayLimit = 10; // Khởi tạo hạn mức phân trang hiển thị 10 dịch vụ 1 lần
   
   // Quản lý trạng thái Pop-up xem trước video lơ lửng công nghệ cao
   String? _activePreviewVideoUrl;
@@ -128,35 +147,88 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
   }
 
   bool _isFetchingLock = false;
-  // --- ĐỒNG BỘ ĐƯỜNG ỐNG NẠP DỮ LIỆU SẠCH ---
+  // --- ĐỒNG BỘ ĐƯỜNG ỐNG NẠP DỮ LIỆU SẠCH LIÊN THÔNG REWARDS ---
   Future<void> _fetchExploreData() async {
     if (_isFetchingLock) return;
     _isFetchingLock = true;
     try {
-      // Nạp song song cả danh sách đối tác bản đồ và mảng gói dịch vụ lẻ chuẩn Web
+      setState(() => _isLoading = true);
       final results = await Future.wait([
         ExploreApiService.fetchExplorePartners(),
         ExploreApiService.fetchAllServices(),
+        fromApiClientGet('/user/profile'),
+        fromApiClientGet('/user/missions'),
+        fromApiClientGet('/vouchers/public'),
+        fromApiClientGet('/vouchers/me'), // Nạp thêm ví ưu đãi cá nhân đồng bộ thời gian thực
       ]);
       
       if (mounted) {
         setState(() {
-          _partners = results[0] as List<PartnerMapModel>; // 
-          _filteredPartners = results[0] as List<PartnerMapModel>; // Khởi tạo dữ liệu bộ đệm ban đầu trùng với dữ liệu gốc
+          _partners = results[0] as List<PartnerMapModel> ?? [];
+          _filteredPartners = results[0] as List<PartnerMapModel> ?? [];
+          _services = results[1] as List<dynamic> ?? [];
+          _filteredServices = results[1] as List<dynamic> ?? [];
           
-          _services = results[1] as List<dynamic>;
-          _filteredServices = results[1] as List<dynamic>;
+          // Bóc tách dữ liệu Profile & Tính toán trạng thái Điểm danh theo múi giờ UTC+7
+          final profileRes = results[2];
+          if (profileRes != null && profileRes.data != null && profileRes.data['data'] != null) {
+            final pData = profileRes.data['data']['profile'] ?? {};
+            _svalueBalance = pData['svalue_balance'] ?? 0;
+            _currentStreakDay = pData['streak_count'] ?? 0;
+            if (pData['last_checkin_at'] != null) {
+              final lastCheckIn = DateTime.parse(pData['last_checkin_at']).toUtc().add(const Duration(hours: 7));
+              final nowVN = DateTime.now().toUtc().add(const Duration(hours: 7));
+              _isTodayCheckedIn = lastCheckIn.year == nowVN.year && lastCheckIn.month == nowVN.month && lastCheckIn.day == nowVN.day;
+            }
+          }
           
-          _isLoading = false; // 
+          // Bóc tách dữ liệu Nhiệm vụ và Voucher
+          final missionRes = results[3];
+          if (missionRes != null && missionRes.data != null && missionRes.data['data'] != null) {
+            _missions = missionRes.data['data'] ?? [];
+          }
+          
+          final voucherRes = BenedictVoucherWrapper(results[4]);
+          if (voucherRes != null) {
+            _publicVouchers = voucherRes;
+          }
+
+          final myVoucherRes = BenedictVoucherWrapper(results[5]);
+          if (myVoucherRes != null) {
+            _myVouchers = myVoucherRes;
+          }
+          
+          _isProfileSyncing = false;
+          _isLoadingMissions = false;
+          _isLoading = false;
         });
-        _applyFilters(); // Kích hoạt bộ lọc tổng hợp đồng bộ cả 2 kho dữ liệu
+        _applyFilters();
       }
     } catch (e) {
-      debugPrint("Lỗi nạp dữ liệu Explore UI: $e"); // 
-      if (mounted) setState(() => _isLoading = false); // 
+      debugPrint("Lỗi nạp dữ liệu Explore UI tổng hợp: $e");
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isProfileSyncing = false;
+          _isLoadingMissions = false;
+        });
+      }
     } finally {
       _isFetchingLock = false;
     }
+  }
+
+  // Hàm bảo vệ an toàn bọc mảng dữ liệu voucher
+  List<dynamic> BenedictVoucherWrapper(dynamic res) {
+    if (res != null && res.data != null && res.data['data'] != null) {
+      return res.data['data'] as List<dynamic>;
+    }
+    return [];
+  }
+
+  // Hàm bổ trợ bọc thép gọi HTTP an toàn tránh sập luồng Future.wait
+  Future<dynamic> fromApiClientGet(String path) async {
+    try { return await ApiClient.instance.get(path); } catch (_) { return null; }
   }
 
   // --- LOGIC ÁP DỤNG BỘ LỌC TỔNG HỢP (TỪ KHÓA & LOẠI HÌNH) ---
@@ -164,6 +236,7 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
     final String query = _searchController.text.toLowerCase();
     
     setState(() {
+      _servicesDisplayLimit = 10; // Reset giới hạn phân trang về 10 khi người dùng thay đổi bộ lọc
       _filteredPartners = _partners.where((partner) {
         // 1. Kiểm tra điều kiện từ khóa tìm kiếm
         bool matchesSearch = true;
@@ -245,6 +318,79 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
     _applyFilters();
   }
 
+  // --- HÀM XỬ LÝ ĐIỂM DANH ĐỘNG TẠI BANNER DOCK ---
+  Future<void> _executeDailyCheckIn() async {
+    AuthGuard.run(context, action: () async {
+      if (_isTodayCheckedIn || _isCheckingIn) return;
+      setState(() => _isCheckingIn = true);
+      try {
+        final response = await ApiClient.instance.post('/user/checkin');
+        if (response.statusCode == 200 && mounted) {
+          final data = response.data['data'];
+          setState(() {
+            _isTodayCheckedIn = true;
+            _currentStreakDay = data['new_streak'] ?? _currentStreakDay;
+            _svalueBalance = data['balance'] ?? _svalueBalance;
+          });
+          AppToast.show(context: context, message: '🎉 Điểm danh thành công! Bạn nhận được +${data['points_earned']} điểm SValue.', isSuccess: true);
+          AuthNotifier.instance.refresh(); // Phát tín hiệu đồng bộ số dư sang tab Profile cá nhân
+        }
+      } catch (_) {
+        AppToast.show(context: context, message: 'Hệ thống ghi nhận bạn đã điểm danh hôm nay.', isSuccess: false);
+      } finally {
+        if (mounted) setState(() => _isCheckingIn = false);
+      }
+    });
+  }
+
+  // --- HÀM LƯU VOUCHER MỘT CHẠM TẠI FEED RIBBON ---
+  Future<void> _claimExploreVoucher(String code) async {
+    AuthGuard.run(context, action: () async {
+      if (_isClaimingVoucher) return;
+      setState(() => _isClaimingVoucher = true);
+      try {
+        final response = await ApiClient.instance.post('/vouchers/$code/claim');
+        if (response.statusCode == 200 && mounted) {
+          AppToast.show(context: context, message: '🎉 Lưu thành công! Mã giảm giá đã được chuyển thẳng vào Ví của bạn.', isSuccess: true);
+          // Cập nhật trạng thái cụ bộ tức thì để đổi nhãn nút sang "ÁP DỤNG"
+          setState(() {
+            for (var v in _publicVouchers) {
+              if (v['code'].toString().toUpperCase() == code.toUpperCase()) {
+                v['isClaimedLocal'] = true;
+              }
+            }
+          });
+        }
+      } catch (_) {
+        AppToast.show(context: context, message: 'Mã ưu đãi này đã có trong ví hoặc đã hết lượt.', isSuccess: false);
+      } finally {
+        if (mounted) setState(() => _isClaimingVoucher = false);
+      }
+    });
+  }
+
+  // --- HÀM NHẬN THƯỞNG NHIỆM VỤ IN-FEED COMPONENT ---
+  Future<void> _claimMissionReward(String code) async {
+    if (_isClaimingMission) return;
+    setState(() => _isClaimingMission = true);
+    try {
+      final response = await ApiClient.instance.post('/user/missions/$code/claim');
+      if (response.statusCode == 200 && mounted) {
+        setState(() {
+          _svalueBalance = response.data['balance'] ?? _svalueBalance;
+          final idx = _missions.indexWhere((m) => m['code'] == code);
+          if (idx != -1) _missions[idx]['status'] = 'COMPLETED';
+        });
+        AppToast.show(context: context, message: response.data['message'] ?? 'Nhận thưởng thành công!', isSuccess: true);
+        AuthNotifier.instance.refresh();
+      }
+    } catch (_) {
+      AppToast.show(context: context, message: 'Nhận thưởng thất bại. Vui lòng thử lại!', isSuccess: false);
+    } finally {
+      if (mounted) setState(() => _isClaimingMission = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context); // BẮT BUỘC: Khởi động cơ chế KeepAlive
@@ -257,28 +403,99 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
         controller: _scrollController,
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()), // 
         slivers: [
-          // 1. THANH TÌM KIẾM LƠ LỬNG (Floating Search Bar) 
+          // 1. THANH TÌM KIẾM LƠ LỬNG VÀ NÚT THÔNG BÁO (Floating Top Bar)
           SliverAppBar(
             floating: true,
             snap: true,
             elevation: 0,
             backgroundColor: Colors.transparent,
-            surfaceTintColor: Colors.transparent, // 
-            title: _buildFloatingSearchBar(),
+            surfaceTintColor: Colors.transparent,
+            title: Row(
+              children: [
+                // Thanh tìm kiếm chiếm không gian chính
+                Expanded(child: _buildFloatingSearchBar()),
+                const SizedBox(width: 12),
+                
+                // 🚀 NÚT THÔNG BÁO (Đồng bộ phong cách Shadow nổi với thanh tìm kiếm)
+                ListenableBuilder(
+                  listenable: NotificationNotifier.instance,
+                  builder: (context, child) {
+                    final unread = NotificationNotifier.instance.unreadCount;
+                    return GestureDetector(
+                      onTap: () => context.push('/notifications'),
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 8), // Căn ngang chuẩn xác với SearchBar
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.06),
+                              blurRadius: 15,
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            const Icon(Icons.notifications_none_rounded, color: Colors.black54, size: 24),
+                            if (unread > 0)
+                              Positioned(
+                                right: -2,
+                                top: -2,
+                                child: Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFE2C55), // Badge đỏ chuẩn iOS
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 1.5),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
             bottom: const PreferredSize(
               preferredSize: Size.fromHeight(10),
-              child: SizedBox(), // 
+              child: SizedBox(),
             ),
           ),
 
-          // 2. BANNER QUẢNG CÁO / SỰ KIỆN CO-BRANDING 
+          // 2. TẦNG ĐỘT PHÁ CHỒNG LỚP: BANNER MATRIX LỒNG GHÈM KHAY ĐIỂM DANH KÍNH MỜ LIQUID STREAK
           SliverToBoxAdapter(
-            child: _buildBannerCarousel(), // 
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Stack(
+                alignment: Alignment.bottomCenter,
+                children: [
+                  Column(
+                    children: [
+                      _buildBannerCarousel(),
+                      const SizedBox(height: 25), // Không gian thở đệm cho khay lơ lửng đè chân
+                    ],
+                  ),
+                  _buildMatrixLiquidStreakDock(),
+                ],
+              ),
+            ),
           ),
 
-          // 3. KHỐI DỊCH VỤ CHÍNH (Tương đương Đặt xe / Đặt đồ ăn) 
+          // 3. THE PREMIUM TICKET VAULT & LIVE VALUE SNAPSHOT DOCK FLUID
           SliverToBoxAdapter(
-            child: _buildPrimaryServices(), // 
+            child: Column(
+              children: [
+                _buildLiveValueSnapshotBar(),
+                _buildPremiumTicketVaultTheater(), // Đấu nối phân khu kịch nghệ săn Voucher 35px cao cấp
+              ],
+            ),
           ),
 
           // 4. DANH SÁCH GỢI Ý ĐỐI TÁC (Tích hợp dữ liệu thật từ R2 & DB) 
@@ -287,41 +504,49 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
           ),
 
           // 5. LƯỚI DANH MỤC CHUYÊN KHOA 
+          // 5. WELLNESS CATEGORY EXPANSION: Dải kén tròn sinh học cuộn ngang một hàng độc nhất vô nhị
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 16, top: 24, bottom: 12), // 
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-              "Dịch vụ y tế khác",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.black87), // 
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(left: 16, top: 24, bottom: 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Chuyên khoa sinh học",
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.black87),
+                      ),
+                      if (_selectedCategoryFilter != 'ALL')
+                        GestureDetector(
+                          onTap: () {
+                            setState(() => _selectedCategoryFilter = 'ALL');
+                            _applyFilters();
+                          },
+                          child: const Padding(
+                            // 🚀 BẢN VÁ BỌC THÉP: Trả padding về đúng Widget Padding để triệt tiêu hoàn toàn lỗi compile
+                            padding: EdgeInsets.only(right: 16),
+                            child: Text("Đặt lại ✕", style: TextStyle(color: Color(0xFF5B9E5F), fontSize: 12, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                _buildHorizontalCategoryRibbon(),
+              ],
             ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _selectedCategoryFilter = 'ALL';
-                });
-                _applyFilters();
-              }, // 
-              child: Text(
-                "Xem tất cả", 
-                style: TextStyle(
-                  color: _selectedCategoryFilter == 'ALL' ? const Color(0xFF80BF84) : Colors.grey, 
-                  fontWeight: FontWeight.bold
-                )
-              ), // 
-            ),
-                ],
-              ),
-            ),
+          ), 
+
+          // IN-FEED MISSION GAMIFICATION: Nhiệm vụ lồng dòng tin kích thích lướt sâu
+          SliverToBoxAdapter(
+            child: _buildInFeedMissionCard(),
           ),
-          _buildCategoryGrid(), // 
 
           // --- BỔ SUNG KHU VỰC LƯỚI GÓI DỊCH VỤ Y TẾ LẺ ĐỒNG BỘ LOGIC WEB ---
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.only(left: 16, top: 32, bottom: 16),
+              padding: const EdgeInsets.only(left: 16, top: 24, bottom: 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -340,6 +565,11 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
           ),
           
           _buildServiceGrid(), // Khởi chạy lưới ô dịch vụ co giãn
+          
+          // 🚀 PHÂN KHU TÍCH HỢP MỚI: Nút bấm phân trang "Hiển thị thêm" mượt mà phẳng SaaS chuẩn UX
+          SliverToBoxAdapter(
+            child: _buildLoadMoreServicesButton(),
+          ),
 
           // Spacer an toàn chống lẹm tiêu chuẩn vào thanh Nav Bar lơ lửng 
           const SliverToBoxAdapter(
@@ -501,7 +731,6 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
   }
 
   // --- WIDGET LƯỚI DỊCH VỤ LẺ ĐỒNG BỘ THEO MẪU GIAO DIỆN WEB ---
-  // --- WIDGET LƯỚI DỊCH VỤ LẺ ĐỒNG BỘ THEO MẪU GIAO DIỆN WEB ---
   Widget _buildServiceGrid() {
     if (_isLoading) {
       return SliverPadding(
@@ -511,44 +740,51 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
             crossAxisCount: 2, mainAxisSpacing: 16, crossAxisSpacing: 16, childAspectRatio: 0.65,
           ),
           delegate: SliverChildBuilderDelegate(
-          (context, index) => ShimmerWrapper(
-            child: Container(
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.black.withOpacity(0.05))),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AspectRatio(aspectRatio: 4 / 3, child: Container(decoration: const BoxDecoration(color: Color(0xFFE2ECEB), borderRadius: BorderRadius.vertical(top: Radius.circular(19))))),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(height: 10, width: 60, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(4))),
-                              const SizedBox(height: 8),
-                              Container(height: 14, width: double.infinity, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(4))),
-                            ],
-                          ),
-                          Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(height: 16, width: 50, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(4))),
-                          Container(height: 24, width: 24, decoration: const BoxDecoration(color: Color(0xFFE2ECEB), shape: BoxShape.circle)),
-                        ],
-                      ),
-                    ],
-                  ),
+            (context, index) => ShimmerWrapper(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white, 
+                  borderRadius: BorderRadius.circular(20), 
+                  border: Border.all(color: Colors.black.withOpacity(0.05)),
                 ),
-              )
-            ],
-          ),
-        ),
-      ),
-      childCount: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AspectRatio(
+                      aspectRatio: 4 / 3, 
+                      child: Container(decoration: const BoxDecoration(color: Color(0xFFE2ECEB), borderRadius: BorderRadius.vertical(top: Radius.circular(19)))),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(height: 10, width: 60, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(4))),
+                                const SizedBox(height: 8),
+                                Container(height: 14, width: double.infinity, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(4))),
+                              ],
+                            ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Container(height: 16, width: 50, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(4))),
+                                Container(height: 24, width: 24, decoration: const BoxDecoration(color: Color(0xFFE2ECEB), shape: BoxShape.circle)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            childCount: 4,
           ),
         ),
       );
@@ -565,9 +801,9 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
       sliver: SliverGrid(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
-          mainAxisSpacing: 16, // Tăng khoảng trống thở dọc chuẩn UX
-          crossAxisSpacing: 16, // Tăng khoảng trống thở ngang chuẩn UX
-          childAspectRatio: 0.65, // Tối ưu chiều cao hộp thẻ để không gian text rộng rãi, chống tràn
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 16,
+          childAspectRatio: 0.65,
         ),
         delegate: SliverChildBuilderDelegate(
           (context, index) {
@@ -580,10 +816,11 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
             final Map<String, dynamic> userData = service['users'] ?? {};
             final String partnerName = (userData['full_name'] ?? 'Cơ sở chuyên khoa').toString();
 
+            // 🚀 BẢN VÁ BỌC THÉP: Loại bỏ hoàn toàn dấu đóng ngoặc thừa ); để trả về Widget Container chuẩn chỉ
             return Container(
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(20), // Tinh chỉnh bo góc mềm mại, cao cấp
+                borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.04), 
@@ -596,7 +833,6 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. Khung Media tỉ lệ vàng di động 4:3 thay vì tỉ lệ vuông bóp nghẹt diện tích
                   ClipRRect(
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(19)),
                     child: AspectRatio(
@@ -622,14 +858,12 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
                       ),
                     ),
                   ),
-                  
-                  // 2. Khu vực thông tin phân bổ khoa học, thông thoáng bằng Expanded Layout
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween, // Đã sửa lỗi: Sử dụng spaceBetween chuẩn Flutter
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -649,8 +883,6 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
                               ),
                             ],
                           ),
-                          
-                          // Khối thông tin tài chính và nút shortcut đặt lịch công thái học dạng hàng ngang
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -664,12 +896,12 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
                               GestureDetector(
                                 onTap: () {
                                   AuthGuard.run(context, action: () {
-                                  showModalBottomSheet(
-                                    context: context,
-                                    isScrollControlled: true,
-                                    backgroundColor: Colors.transparent,
-                                    builder: (context) => BookingBottomSheet(video: service),
-                                  );
+                                    showModalBottomSheet(
+                                      context: context,
+                                      isScrollControlled: true,
+                                      backgroundColor: Colors.transparent,
+                                      builder: (context) => BookingBottomSheet(video: service),
+                                    );
                                   });
                                 },
                                 child: Container(
@@ -691,7 +923,8 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
               ),
             );
           },
-          childCount: _filteredServices.length,
+          // 🚀 BẢN VÁ PHÂN TRANG: Khóa cứng số lượng render tối đa theo hạn mức display limit cục bộ
+          childCount: _filteredServices.length > _servicesDisplayLimit ? _servicesDisplayLimit : _filteredServices.length,
         ),
       ),
     );
@@ -1262,6 +1495,438 @@ class _ExploreScreenState extends State<ExploreScreen> with AutomaticKeepAliveCl
             );
           },
           childCount: categories.length,
+        ),
+      ),
+    );
+  }
+
+// --- CẤU TRÚC HỆ THỐNG MỚI ĐẲNG CẤP: THE WELLNESS MATRIX FLOW UI COMPONENTS ---
+
+  Widget _buildMatrixLiquidStreakDock() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(35), // Đồng bộ hình học viên thuốc kịch trần
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.82),
+              borderRadius: BorderRadius.circular(35),
+              border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Thanh tiến trình chuỗi chấm tròn 7 ngày siêu mảnh cao cấp
+                Row(
+                  children: List.generate(7, (index) {
+                    final dNum = index + 1;
+                    final bool isPassed = dNum <= _currentStreakDay;
+                    final bool isTodayLoc = dNum == _currentStreakDay + 1;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      width: isTodayLoc ? 12 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: isPassed 
+                            ? const Color(0xFF10B981) 
+                            : (isTodayLoc ? const Color(0xFF10B981).withOpacity(0.4) : const Color(0xFFE4E4E7)),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    );
+                  }),
+                ),
+                Row(
+                  children: [
+                    Text(
+                      _isTodayCheckedIn ? 'Đã ghim chuỗi $_currentStreakDay ngày' : 'Chuỗi $_currentStreakDay ngày',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black54),
+                    ),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      height: 32,
+                      width: 82,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isTodayCheckedIn ? const Color(0xFFF4F7F6) : const Color(0xFF1E1E1E),
+                          foregroundColor: _isTodayCheckedIn ? Colors.black38 : Colors.white,
+                          elevation: 0,
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(35)),
+                        ),
+                        onPressed: (_isTodayCheckedIn || _isCheckingIn || _isProfileSyncing) ? null : _executeDailyCheckIn,
+                        child: _isCheckingIn 
+                            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : Text(_isTodayCheckedIn ? 'Đã nhận' : 'Nhận +20', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLiveValueSnapshotBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(35),
+          border: Border.all(color: const Color(0xFFF4F7F6), width: 1),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.stars_rounded, color: Color(0xFF10B981), size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  'Ví Điểm SValue: $_svalueBalance 🌟', 
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.black87)
+                ),
+                if (_missions.isNotEmpty) ...[
+                  Container(width: 1, height: 12, color: Colors.black12, margin: const EdgeInsets.symmetric(horizontal: 10)),
+                  Text(
+                    'Nhiệm vụ (${_missions.where((m) => m['status'] == 'COMPLETED').length}/${_missions.length})',
+                    style: const TextStyle(fontSize: 11, color: Colors.black38, fontWeight: FontWeight.bold),
+                  )
+                ]
+              ],
+            ),
+            GestureDetector(
+              onTap: () => context.push('/promo'),
+              child: const Text('Xem thêm ❯', style: TextStyle(color: Color(0xFF5B9E5F), fontSize: 11, fontWeight: FontWeight.w700)),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- WIDGET CON MỚI: HẦM VÉ ĐẶC QUYỀN ĐỘNG THE PREMIUM TICKET VAULT KHÓA CỨNG HÌNH HỌC 35PX ---
+  Widget _buildPremiumTicketVaultTheater() {
+    if (_publicVouchers.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 16, top: 12, bottom: 10),
+          child: Text('🎟️ Ưu đãi dành cho bạn', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.black87)),
+        ),
+        SizedBox(
+          height: 112, // Nới nhẹ để bao bọc nhãn phân loại tinh sảo không gây méo chữ
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: _publicVouchers.length,
+            itemBuilder: (context, index) {
+              final v = _publicVouchers[index];
+              final String code = v['code'] ?? 'MÃ';
+              final double value = (v['discount_value'] ?? 0).toDouble();
+              final String type = v['discount_type'] ?? 'FIXED';
+              
+              // 1. Ánh xạ chính xác các trường định danh từ Backend phục vụ Fomo thực tế
+              final int totalQty = v['total_quantity'] ?? 0;
+              final int usedQty = v['used_quantity'] ?? 0;
+              final double trueProgress = totalQty > 0 ? (usedQty / totalQty) : 0.0;
+              
+              // 2. Thẩm định thời gian hết hạn thực tế theo múi giờ
+              String expDateFormatted = 'Vô thời hạn';
+              bool isExpired = false;
+              if (v['valid_until'] != null) {
+                try {
+                  final parsedUntil = DateTime.parse(v['valid_until'].toString());
+                  expDateFormatted = DateFormat('dd/MM').format(parsedUntil);
+                  isExpired = DateTime.now().isAfter(parsedUntil);
+                } catch (_) {}
+              }
+              
+              // 3. Phân tách danh hiệu phát hành (ADMIN vs PARTNER)
+              final bool isAdmin = v['issuer_type'] == 'ADMIN';
+              final String partnerName = v['partner_name'] ?? 'Cơ sở';
+              final String partnerUsername = v['partner_username'] ?? '';
+
+              // 4. So khớp trạng thái sở hữu từ bộ đệm Ví mã cá nhân để khóa nút ban đầu
+              final bool isAlreadyClaimed = _myVouchers.any((myV) => myV['id'] == v['id']) || v['isClaimedLocal'] == true;
+              final String labelTitle = type == 'PERCENTAGE' ? 'Giảm ${value.toInt()}%' : 'Giảm ${value.toInt() / 1000}K';
+
+              return Container(
+                width: 224, // Nới rộng nhẹ chiều rộng cố định để cấu trúc hiển thị thông thoáng tối đa
+                margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isExpired 
+                      ? const Color(0xFFE2E8F0) // Tone xám xi măng cao cấp khi hết hạn sử dụng
+                      : (isAlreadyClaimed ? const Color(0xFF10B981).withOpacity(0.02) : Colors.white),
+                  borderRadius: BorderRadius.circular(35), // Khóa đồng bộ hình học viên thuốc 35px hệ thống
+                  border: Border.all(
+                    color: isExpired 
+                        ? const Color(0xFFCBD5E1) 
+                        : (isAlreadyClaimed ? const Color(0xFF10B981).withOpacity(0.2) : const Color(0xFFF4F7F6)), 
+                    width: 1.5
+                  ),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.015), blurRadius: 8, offset: const Offset(0, 3))],
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 18, right: 6),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: isAdmin ? const Color(0xFFF59E0B).withOpacity(0.12) : const Color(0xFF10B981).withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    isAdmin ? 'TOÀN SÀN' : 'CƠ SỞ', 
+                                    style: TextStyle(color: isAdmin ? const Color(0xFFD97706) : const Color(0xFF047857), fontSize: 8, fontWeight: FontWeight.w900)
+                                  ),
+                                ),
+                                Text(
+                                  isExpired ? 'Hết hạn' : 'Hạn: $expDateFormatted',
+                                  style: TextStyle(fontSize: 9, color: isExpired ? Colors.black45 : const Color(0xFFFE2C55), fontWeight: FontWeight.w800),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(labelTitle, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: isExpired ? Colors.black45 : Colors.black87, letterSpacing: -0.5, height: 1.1)),
+                            // 🚀 BẢN VÁ: Thay thế dòng chữ Hệ thống bằng chính tên mã giảm giá (code) đối với Voucher sàn
+                            Text(isAdmin ? code : partnerName, style: const TextStyle(color: Colors.black45, fontSize: 10, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: 4),
+                            // CHỈ BÁO ĐỘ KHAN HIẾM THỰC TẾ (TRUE SERVER SCARCITY BAR): Khớp nối 1:1 tỉ lệ kho Backend
+                            if (!isExpired)
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: LinearProgressIndicator(
+                                  value: trueProgress,
+                                  backgroundColor: const Color(0xFFF4F7F6),
+                                  valueColor: AlwaysStoppedAnimation<Color>(trueProgress >= 0.85 ? const Color(0xFFFE2C55) : const Color(0xFF10B981)),
+                                  minHeight: 3,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    // Kén hành động đúc liền khối tích hợp sâu SMART CONTEXT ROUTING
+                    GestureDetector(
+                      onTap: isExpired 
+                          ? null 
+                          : (isAlreadyClaimed 
+                              ? () {
+                                  if (isAdmin || partnerUsername.isEmpty) {
+                                    // Luồng toàn sàn: Tự kích hoạt từ khóa lọc mảng local
+                                    _searchController.text = v['applicable_services'] != null && (v['applicable_services'] as List).isNotEmpty ? v['applicable_services'][0].toString() : code;
+                                    _applyFilters();
+                                    AppToast.show(context: context, message: '🚀 Đã kích hoạt bộ lọc dịch vụ toàn sàn!', isSuccess: true);
+                                  } else {
+                                    // Luồng cơ sở (SMART CONTEXT ROUTING): Bắn định vị đưa khách thẳng vào trang cá nhân phòng khám phát hành mã
+                                    context.push('/public-profile/$partnerUsername');
+                                    AppToast.show(context: context, message: '🚀 Đang kết nối đưa bạn đến hồ sơ chuyên khoa...', isSuccess: true);
+                                  }
+                                } 
+                              : () => _claimExploreVoucher(code)),
+                      child: Container(
+                        width: 58,
+                        height: double.infinity,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: isExpired 
+                              ? Colors.grey.shade400 
+                              : (isAlreadyClaimed ? const Color(0xFF10B981).withOpacity(0.08) : const Color(0xFF1E1E1E)),
+                          borderRadius: const BorderRadius.horizontal(right: Radius.circular(33)),
+                        ),
+                        child: Text(
+                          isExpired 
+                              ? 'HẾT\nHẠN' 
+                              : (isAlreadyClaimed ? 'DÙNG' : 'SĂN\nMÃ'),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: isExpired ? Colors.white70 : (isAlreadyClaimed ? const Color(0xFF10B981) : Colors.white), fontSize: 10, fontWeight: FontWeight.w900, height: 1.2),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHorizontalCategoryRibbon() {
+    final categories = [
+      {"icon": Icons.spa_rounded, "name": "Spa & Clinic", "color": Colors.pink},
+      {"icon": Icons.medical_services_rounded, "name": "Khám tổng quát", "color": Colors.blue},
+      {"icon": Icons.science_rounded, "name": "Xét nghiệm", "color": Colors.purple},
+      {"icon": Icons.wheelchair_pickup_rounded, "name": "Trị liệu", "color": Colors.orange},
+      {"icon": Icons.health_and_safety_rounded, "name": "Nha khoa", "color": Colors.teal},
+      {"icon": Icons.psychology_rounded, "name": "Tâm lý", "color": Colors.indigo},
+    ];
+
+    return SizedBox(
+      height: 44,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: categories.length,
+        itemBuilder: (context, index) {
+          final cat = categories[index];
+          final String catName = cat['name'] as String;
+          final bool isSelected = _selectedCategoryFilter == catName;
+          final Color baseColor = cat['color'] as Color;
+
+          return GestureDetector(
+            onTap: () {
+              setState(() => _selectedCategoryFilter = isSelected ? 'ALL' : catName);
+              _applyFilters();
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: isSelected ? const Color(0xFF1E1E1E) : Colors.white,
+                borderRadius: BorderRadius.circular(35), // Khóa đồng bộ hình học viên thuốc
+                border: Border.all(color: isSelected ? Colors.transparent : const Color(0xFFF4F7F6), width: 1.2),
+              ),
+              child: Row(
+                children: [
+                  Icon(cat['icon'] as IconData, size: 16, color: isSelected ? Colors.white : baseColor),
+                  const SizedBox(width: 8),
+                  Text(
+                    catName,
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isSelected ? Colors.white : Colors.black87),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildInFeedMissionCard() {
+    if (_missions.isEmpty) return const SizedBox.shrink();
+    final task = _missions.firstWhere((m) => m['status'] != 'COMPLETED', orElse: () => _missions.first);
+    final String status = task['status'];
+    final bool isClaimable = status == 'CLAIMABLE';
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2A5951)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.12), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), shape: BoxShape.circle),
+              child: Icon(isClaimable ? Icons.card_giftcard_rounded : Icons.explore_outlined, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(task['title'] ?? 'Nhiệm vụ hội viên', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(
+                    isClaimable ? 'Nhấn nút nhận thưởng ngay!' : (task['description'] ?? 'Tích lũy điểm thưởng đổi voucher đặc quyền'),
+                    style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w500)
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 32,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isClaimable ? const Color(0xFF80BF84) : Colors.white.withOpacity(0.16),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(35)),
+                ),
+                onPressed: () {
+                  if (isClaimable) {
+                    _claimMissionReward(task['code']);
+                  } else {
+                    _searchController.text = 'Trị liệu';
+                    _applyFilters();
+                    AppToast.show(context: context, message: '🔍 Đang tự động quét tìm dịch vụ trị liệu cho bạn!', isSuccess: true);
+                  }
+                },
+                child: Text(isClaimable ? 'Nhận' : 'Lướt', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- WIDGET CON: NÚT BẤM HIỂN THỊ THÊM PHÂN TRANG ĐỒNG DẠNG HÌNH HỌC 35PX ---
+  Widget _buildLoadMoreServicesButton() {
+    // Chỉ hiển thị khi tổng số lượng phần tử sau lọc vượt quá giới hạn hiển thị hiện tại
+    if (_filteredServices.length <= _servicesDisplayLimit) {
+      return const SizedBox.shrink();
+    }
+    
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF1E1E1E), // Đen tuyền Premium đồng bộ với nút Check-in
+          foregroundColor: Colors.white,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(35)), // Bo góc 35px viên thuốc khéo léo
+        ),
+        onPressed: () {
+          setState(() {
+            _servicesDisplayLimit += 10; // Tăng tiến trình nạp thêm 10 dịch vụ tiếp theo cho tới khi lấp đầy
+          });
+          AppToast.show(context: context, message: '🎉 Đã tải thêm dịch vụ thịnh hành mới!', isSuccess: true);
+        },
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Hiển thị thêm (${_filteredServices.length - _servicesDisplayLimit} gói khám)', 
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.2)
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
+          ],
         ),
       ),
     );

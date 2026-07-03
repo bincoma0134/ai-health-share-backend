@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'auth_guard.dart';
 import '../../core/network/video_cache_engine.dart';
+import '../../core/manager/audio_focus_manager.dart';
 
 // 🚀 THUẬT TOÁN CONTROLLER POOL (LRU CACHE) + DISK CACHE
 // Quản lý tối đa 5 VideoPlayerController đồng thời để tái sử dụng, 
@@ -13,6 +14,9 @@ class FeedVideoPool {
   static final Map<String, VideoPlayerController> _pool = {};
   static final List<String> _lru = [];
   static const int maxPoolSize = 5;
+  
+  // 🚀 CÔNG TẮC TỔNG TOÀN CỤC: Khóa cứng âm lượng toàn bộ Pool khi Studio Đăng tải mở/đóng thành công
+  static bool isGlobalMutedForUpload = false;
 
   static Future<VideoPlayerController> getController(String url) async {
     // Tái sử dụng Controller nếu đã tồn tại trong Pool
@@ -32,12 +36,18 @@ class FeedVideoPool {
     // 🚀 LÕI VIDEO CACHE: Lấy URL tối ưu (File nội bộ nếu đã Cache, hoặc Network gốc)
     final optimalUrl = await VideoCacheEngine.getOptimalUrl(url);
 
-    // Khởi tạo Controller dựa trên nguồn File hoặc Network
+    // Khởi tạo Controller dựa trên nguồn File hoặc Network kèm theo cấu hình trộn kênh âm thanh đồng bộ với Website
     // 🚀 HOTFIX: Nhận diện đường dẫn tuyệt đối (bắt đầu bằng '/' hoặc 'file://') và khởi tạo File an toàn
     final controller = optimalUrl.startsWith('/') || optimalUrl.startsWith('file://')
-        ? VideoPlayerController.file(File(optimalUrl.replaceFirst('file://', '')))
-        : VideoPlayerController.networkUrl(Uri.parse(optimalUrl));
-
+        ? VideoPlayerController.file(
+            File(optimalUrl.replaceFirst('file://', '')),
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true, allowBackgroundPlayback: false),
+          )
+        : VideoPlayerController.networkUrl(
+            Uri.parse(optimalUrl),
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true, allowBackgroundPlayback: false),
+          );
+ 
     _pool[url] = controller;
     _lru.add(url);
     return controller;
@@ -100,6 +110,9 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    // 🚀 TÍCH HỢP KIẾN TRÚC ĐẲNG CẤP: Lắng nghe trọng tài âm thanh tập trung
+    AudioFocusManager.instance.addListener(_onAudioFocusChanged);
 
     // Lấy Controller từ Pool (Hỗ trợ Async Disk Cache)
     FeedVideoPool.getController(widget.videoUrl).then((controller) {
@@ -133,7 +146,8 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
     }
 
     if (_isInitialized && _controller != null) {
-      if (widget.isActive && !_isUserPaused) {
+      // 🚀 ĐỒNG BỘ: Check qua AudioFocusManager thay vì cờ tĩnh toàn cục
+      if (widget.isActive && !_isUserPaused && AudioFocusManager.instance.shouldFeedsPlay) {
         _controller!.play();
       } else {
         _controller!.pause();
@@ -156,14 +170,26 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    
-    // Gỡ bỏ Listener cũ để tránh rò rỉ (Memory Leak) khi Controller được Widget khác mượn lại
     _controller?.removeListener(_videoListener);
+    
+    // 🚀 GỠ THỤ THỂ: Tránh rò rỉ bộ nhớ RAM hệ thống
+    AudioFocusManager.instance.removeListener(_onAudioFocusChanged);
     
     // KHÔNG GỌI _controller.dispose() Ở ĐÂY.
     // Việc giải phóng tài nguyên hiện tại do lớp FeedVideoPool tự động quản lý.
     
     super.dispose();
+  }
+
+  void _onAudioFocusChanged() {
+    if (!mounted || _controller == null || !_isInitialized) return;
+    
+    // Nếu trọng tài ra lệnh tắt luồng Feeds, ép pause vật lý ngay lập tức
+    if (!AudioFocusManager.instance.shouldFeedsPlay) {
+      _controller!.pause();
+    } else if (widget.isActive && !_isUserPaused) {
+      _controller!.play();
+    }
   }
 
   void _togglePlayPause() {
@@ -212,10 +238,21 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
     return VisibilityDetector(
       key: Key(widget.videoUrl),
       onVisibilityChanged: (info) {
-        if (info.visibleFraction == 0) {
-          _controller!.pause();
-        } else if (info.visibleFraction == 1.0 && widget.isActive && !_isUserPaused) {
-          _controller!.play();
+        if (info.visibleFraction < 0.9) {
+          if (_isInitialized && _controller!.value.isPlaying) {
+            _controller!.pause();
+            // 🚀 KHÓA CỨNG: Giả lập gesture người dùng chạm màn hình để đưa vào trạng thái chủ động Pause
+            setState(() {
+              _isUserPaused = true;
+            });
+          }
+        } else if (info.visibleFraction >= 0.9 && widget.isActive) {
+          // Khi quay lại tab, tuyệt đối không tự động .play() nữa nếu người dùng chưa click resume
+          if (!_isUserPaused && AudioFocusManager.instance.shouldFeedsPlay) {
+            _controller!.play();
+          } else {
+            _controller!.pause();
+          }
         }
       },
       child: GestureDetector(

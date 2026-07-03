@@ -9,7 +9,7 @@ import '../../../data/services/explore_api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import '../../widgets/auth_guard.dart';
-
+import '../../widgets/notification_notifier.dart'; // 🚀 Bổ sung thư viện quản lý State thông báo
 
 class PromoScreen extends StatefulWidget {
   const PromoScreen({super.key});
@@ -458,6 +458,38 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                   } else {
                     // Luồng điều hướng Router sang giao diện đổi quà khi đủ điểm trong tương lai
                   }
+                },
+              ),
+              
+              // 🚀 NÚT THÔNG BÁO TÍCH HỢP GÓC PHẢI
+              ListenableBuilder(
+                listenable: NotificationNotifier.instance,
+                builder: (context, child) {
+                  final unread = NotificationNotifier.instance.unreadCount;
+                  return IconButton(
+                    icon: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        const Icon(Icons.notifications_none_rounded, color: Colors.black87, size: 24),
+                        if (unread > 0)
+                          Positioned(
+                            right: -2,
+                            top: -2,
+                            child: Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFE2C55), // Badge đỏ cảnh báo
+                                shape: BoxShape.circle,
+                                // Dùng viền cùng màu nền AppBar (E8F5EE) để tạo hiệu ứng cắt khoét Cut-out
+                                border: Border.all(color: const Color(0xFFE8F5EE), width: 1.5), 
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    onPressed: () => context.push('/notifications'),
+                  );
                 },
               ),
               const SizedBox(width: 8),

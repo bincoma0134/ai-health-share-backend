@@ -5,7 +5,20 @@ import '../../core/network/video_cache_engine.dart';
 
 class MiniVideoPlayer extends StatefulWidget {
   final String videoUrl;
-  const MiniVideoPlayer({super.key, required this.videoUrl});
+  final bool isMuted; 
+  // 🚀 MỚI: Các tham số cấu hình Trim dạng Tùy chọn (Nullable) để tương thích ngược 100% với các màn hình khác
+  final double? trimStartPercent;   
+  final double? trimEndPercent;     
+  final ValueChanged<double>? onProgressUpdate; 
+
+  const MiniVideoPlayer({
+    super.key, 
+    required this.videoUrl, 
+    this.isMuted = true,
+    this.trimStartPercent,
+    this.trimEndPercent,
+    this.onProgressUpdate,
+  });
 
   @override
   State<MiniVideoPlayer> createState() => _MiniVideoPlayerState();
@@ -47,11 +60,19 @@ class _MiniVideoPlayerState extends State<MiniVideoPlayer> {
           _isInitialized = true;
         });
         
-        // CẤU HÌNH TĂNG TỐC 2: Thiết lập luồng phát nén không âm thanh mượt mà tức thì cho Preview
-        await _controller.setVolume(0.0); 
-        await _controller.setLooping(true);
+        await _controller.setVolume(widget.isMuted ? 0.0 : 1.0); 
         
-        // Tự động kích hoạt phát lại ngay khi bộ đệm tối thiểu (Buffer chunk) sẵn sàng
+        // Luồng Trim thì tự quản lý vòng lặp khép kín, luồng cũ giữ looping mặc định của hệ điều hành
+        final isTrimMode = widget.trimStartPercent != null && widget.trimEndPercent != null && widget.onProgressUpdate != null;
+        await _controller.setLooping(!isTrimMode);
+        
+        if (isTrimMode) {
+          _controller.addListener(_videoTrimListener);
+          final totalMs = _controller.value.duration.inMilliseconds;
+          final startMs = (totalMs * widget.trimStartPercent!).toInt();
+          _controller.seekTo(Duration(milliseconds: startMs));
+        }
+        
         if (mounted) {
           _controller.play();
         }
@@ -66,9 +87,55 @@ class _MiniVideoPlayerState extends State<MiniVideoPlayer> {
     }
   }
 
+  void _videoTrimListener() {
+    if (!mounted || !_isInitialized || widget.trimStartPercent == null || widget.trimEndPercent == null || widget.onProgressUpdate == null) return;
+    
+    final totalMs = _controller.value.duration.inMilliseconds;
+    if (totalMs <= 0) return;
+
+    final currentMs = _controller.value.position.inMilliseconds;
+    final startMs = (totalMs * widget.trimStartPercent!).toInt();
+    final endMs = (totalMs * widget.trimEndPercent!).toInt();
+
+    // 1. Tính toán tỷ lệ phần trăm tiến trình tương đối chạy trong dải Slider biên
+    final trimDuration = endMs - startMs;
+    if (trimDuration > 0) {
+      final elapsedInTrim = (currentMs - startMs).clamp(0, trimDuration);
+      widget.onProgressUpdate!(elapsedInTrim / trimDuration);
+    }
+
+    // 2. Logic ép vòng lặp khép kín tại biên cuối (YouTube Short Style)
+    if (currentMs >= endMs || currentMs < startMs) {
+      _controller.seekTo(Duration(milliseconds: startMs));
+      _controller.play();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant MiniVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_isInitialized) {
+      if (oldWidget.isMuted != widget.isMuted) {
+        _controller.setVolume(widget.isMuted ? 0.0 : 1.0);
+      }
+      // Đưa đầu phát về vị trí biên mới nếu màn hình cha cập nhật thanh trượt kéo biên
+      if (widget.trimStartPercent != null && widget.trimEndPercent != null) {
+        if (oldWidget.trimStartPercent != widget.trimStartPercent || oldWidget.trimEndPercent != widget.trimEndPercent) {
+          final totalMs = _controller.value.duration.inMilliseconds;
+          final startMs = (totalMs * widget.trimStartPercent!).toInt();
+          _controller.seekTo(Duration(milliseconds: startMs));
+          _controller.play();
+        }
+      }
+    }
+  }
+
   @override
   void dispose() {
-    // Giải phóng vùng đệm và luồng stream ngay lập tức khi widget bị cuộn khỏi Viewport
+    // Luôn an toàn gỡ listener để tránh rò rỉ bộ nhớ
+    try {
+      _controller.removeListener(_videoTrimListener);
+    } catch (_) {}
     _controller.pause();
     _controller.dispose();
     super.dispose();
@@ -101,16 +168,84 @@ class _MiniVideoPlayerState extends State<MiniVideoPlayer> {
       );
     }
 
-    // Ép cấu trúc khung hình lấp đầy diện tích thẻ Card không để lại vệt đen (Zero-padding Cover layout)
-    return SizedBox.expand(
-      child: FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: _controller.value.size.width,
-          height: _controller.value.size.height,
-          child: VideoPlayer(_controller),
+    // Ép cấu trúc khung hình lấp đầy diện tích kèm theo thanh trượt thời gian Timeline tương tác
+    return Stack(
+      alignment: Alignment.bottomCenter,
+      children: [
+        SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: _controller.value.size.width,
+              height: _controller.value.size.height,
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _controller.value.isPlaying ? _controller.pause() : _controller.play();
+                  });
+                },
+                child: VideoPlayer(_controller),
+              ),
+            ),
+          ),
         ),
-      ),
+        
+        // NÚT BẤM DỪNG PHÁT GIỮA MÀN HÌNH KHI PAUSE
+        if (!_controller.value.isPlaying)
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 40),
+            ),
+          ),
+
+        // HỆ THỐNG TIMELINE ĐIỀU KHIỂN THỜI GIAN CHUYÊN NGHIỆP Ở ĐÁY VIDEO PREVIEW
+        // 🚀 ĐỒNG BỘ: Chỉ hiển thị dải timeline này cho các màn hình cũ, ẩn đi nếu đang ở Studio Đăng tải có Slider riêng
+        if (widget.onProgressUpdate == null)
+        Positioned(
+          bottom: 120, // Nâng cao để không bị che khuất bởi cụm điều khiển Shutter của trang chính
+          left: 16,
+          right: 16,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  ValueListenableBuilder(
+                    valueListenable: _controller,
+                    builder: (context, VideoPlayerValue value, child) {
+                      final duration = value.position;
+                      return Text(
+                        "${duration.inMinutes}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}",
+                        style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                      );
+                    },
+                  ),
+                  Text(
+                    "${_controller.value.duration.inMinutes}:${(_controller.value.duration.inSeconds % 60).toString().padLeft(2, '0')}",
+                    style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: VideoProgressIndicator(
+                  _controller,
+                  allowScrubbing: true, // Cho phép người dùng kéo thả, lướt timeline để tua video tự do
+                  colors: const VideoProgressColors(
+                    playedColor: Color(0xFF80BF84), // Màu xanh ngọc thương hiệu Wellness của sàn
+                    bufferedColor: Colors.white24,
+                    backgroundColor: Colors.white10,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

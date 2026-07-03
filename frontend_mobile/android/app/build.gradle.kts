@@ -15,6 +15,7 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true // 🚀 Bổ sung để hỗ trợ Java 8+ API cho flutter_local_notifications
     }  
 
     defaultConfig {
@@ -40,4 +41,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// 🚀 Nạp gói Desugaring theo yêu cầu của thư viện Local Notification
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

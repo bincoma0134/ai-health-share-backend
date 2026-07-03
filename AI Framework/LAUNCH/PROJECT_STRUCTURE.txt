@@ -1,0 +1,236 @@
+﻿PROJECT ROOT
+├── Backend
+│   ├── main.py
+│   ├── schemas.py
+│   ├── utils.py
+│   └── AI Framework
+│       ├── openapi.json
+│       ├── PROJECT_STRUCTURE.txt
+│       ├── TASK_TEMPLATE.txt
+│       ├── PROJECT_BASH.txt
+│       ├── AI_RULES.md
+│       └── AI_CONTEXT.md
+│
+├── Website
+│   ├── public
+│   │   ├── video-2.mp4
+│   │   ├── video-1.mp4
+│   │   ├── video-3.mp4
+│   │   ├── next.svg
+│   │   ├── globe.svg
+│   │   ├── window.svg
+│   │   ├── vercel.svg
+│   │   └── file.svg
+│   ├── app
+│   │   ├── features
+│   │   │   ├── calendar
+│   │   │   │   └── page.tsx
+│   │   │   ├── explore
+│   │   │   │   └── page.tsx
+│   │   │   ├── AI
+│   │   │   │   └── page.tsx
+│   │   │   ├── voucher
+│   │   │   │   └── page.tsx
+│   │   │   ├── map
+│   │   │   │   └── page.tsx
+│   │   │   ├── favorite
+│   │   │   │   └── page.tsx
+│   │   │   └── community
+│   │   │       └── page.tsx
+│   │   ├── partner
+│   │   │   ├── profile
+│   │   │   │   └── page.tsx
+│   │   │   └── dashboard
+│   │   │       └── page.tsx
+│   │   ├── admin
+│   │   │   ├── dashboard
+│   │   │   │   └── page.tsx
+│   │   │   └── profile
+│   │   │       └── page.tsx
+│   │   ├── page.tsx
+│   │   ├── favicon.ico
+│   │   ├── loading.tsx
+│   │   ├── layout.tsx
+│   │   ├── globals.css
+│   │   ├── moderator
+│   │   │   ├── dashboard
+│   │   │   │   └── page.tsx
+│   │   │   └── profile
+│   │   │       └── page.tsx
+│   │   ├── creator
+│   │   │   ├── profile
+│   │   │   │   └── page.tsx
+│   │   │   └── dashboard
+│   │   │       └── page.tsx
+│   │   ├── user
+│   │   │   └── profile
+│   │   │       └── page.tsx
+│   │   ├── affiliate
+│   │   │   └── dashboard
+│   │   │       └── page.tsx
+│   │   └── [username]
+│   │       ├── UserProfileClient.tsx
+│   │       └── page.tsx
+│   ├── tsconfig.json
+│   ├── README.md
+│   ├── package.json
+│   ├── postcss.config.mjs
+│   ├── next.config.ts
+│   ├── next-env.d.ts
+│   ├── eslint.config.mjs
+│   ├── CLAUDE.md
+│   ├── capacitor.config.ts
+│   ├── AGENTS.md
+│   ├── .gitignore
+│   ├── .env.local
+│   ├── components
+│   │   ├── AuthModal.tsx
+│   │   ├── Sidebar.tsx
+│   │   ├── CommentModal.tsx
+│   │   ├── BookingModal.tsx
+│   │   ├── ProfessorXPanel.tsx
+│   │   ├── NotificationModal.tsx
+│   │   ├── VideoUploader.tsx
+│   │   ├── PostItem.tsx
+│   │   ├── MapClient.tsx
+│   │   ├── ImageUploader.tsx
+│   │   ├── BottomNavigation.tsx
+│   │   ├── MiniMapPicker.tsx
+│   │   ├── FeedVideoPlayer.tsx
+│   │   ├── profile
+│   │   │   ├── PartnerView.tsx
+│   │   │   ├── ModeratorView.tsx
+│   │   │   ├── CreatorView.tsx
+│   │   │   ├── RegularUserView.tsx
+│   │   │   ├── AdminView.tsx
+│   │   │   ├── GuestProfileView.tsx
+│   │   │   └── DashboardButton.tsx
+│   │   └── voucher
+│   │       └── VoucherManager.tsx
+│   ├── context
+│   │   ├── UIContext.tsx
+│   │   └── AuthContext.tsx
+│   ├── utils
+│   │   └── formatTime.ts
+│   └── store
+│       └── useVoucherStore.ts
+│
+├── Mobile
+│   ├── assets
+│   │   ├── images
+│   │   │   └── app_icon.png
+│   │   └── lottie
+│   │       └── 20733-39021-assistant-character.riv
+│   ├── lib
+│   │   ├── presentation
+│   │   │   ├── screens
+│   │   │   │   ├── profile
+│   │   │   │   │   ├── partner_profile_screen.dart
+│   │   │   │   │   ├── public_profile_screen.dart
+│   │   │   │   │   ├── private_profile_screen.dart
+│   │   │   │   │   ├── super_admin_profile_screen.dart
+│   │   │   │   │   ├── creator_profile_screen.dart
+│   │   │   │   │   └── moderator_profile_screen.dart
+│   │   │   │   ├── calendar
+│   │   │   │   │   └── calendar_screen.dart
+│   │   │   │   ├── admin
+│   │   │   │   │   ├── partner_dashboard_screen.dart
+│   │   │   │   │   ├── moderator_dashboard_screen.dart
+│   │   │   │   │   ├── admin_dashboard_screen.dart
+│   │   │   │   │   └── creator_dashboard_screen.dart
+│   │   │   │   ├── explore
+│   │   │   │   │   └── explore_screen.dart
+│   │   │   │   ├── promo
+│   │   │   │   │   └── promo_screen.dart
+│   │   │   │   ├── login_screen.dart
+│   │   │   │   ├── main_hub_screen.dart
+│   │   │   │   ├── splash_screen.dart
+│   │   │   │   ├── wallet_screen.dart
+│   │   │   │   ├── map
+│   │   │   │   │   └── map_screen.dart
+│   │   │   │   ├── feeds
+│   │   │   │   │   └── tiktok_feeds_screen.dart
+│   │   │   │   ├── ai
+│   │   │   │   │   └── ai_chat_screen.dart
+│   │   │   │   └── auth
+│   │   │   │       └── onboarding_screen.dart
+│   │   │   └── widgets
+│   │   │       ├── booking_bottom_sheet.dart
+│   │   │       ├── feed_video_player.dart
+│   │   │       ├── comment_bottom_sheet.dart
+│   │   │       ├── glass_wrapper.dart
+│   │   │       ├── auth_bottom_sheet.dart
+│   │   │       ├── video_uploader.dart
+│   │   │       ├── service_booking_bottom_sheet.dart
+│   │   │       ├── image_uploader.dart
+│   │   │       ├── auth_guard.dart
+│   │   │       ├── app_toast.dart
+│   │   │       ├── shimmer_wrapper.dart
+│   │   │       ├── mini_video_player.dart
+│   │   │       ├── guest_profile_view.dart
+│   │   │       └── liquid_glass
+│   │   │           ├── liquid_glass_surface.dart
+│   │   │           ├── liquid_glass_tokens.dart
+│   │   │           ├── liquid_glass_performance.dart
+│   │   │           └── liquid_glass_panel.dart
+│   │   ├── data
+│   │   │   ├── services
+│   │   │   │   ├── user_api_service.dart
+│   │   │   │   ├── partner_api_service.dart
+│   │   │   │   ├── calendar_api_service.dart
+│   │   │   │   ├── admin_api_service.dart
+│   │   │   │   ├── wallet_api_service.dart
+│   │   │   │   ├── secure_storage_service.dart
+│   │   │   │   ├── map_api_service.dart
+│   │   │   │   ├── feed_api_service.dart
+│   │   │   │   ├── explore_api_service.dart
+│   │   │   │   ├── creator_api_service.dart
+│   │   │   │   └── appointment_api_service.dart
+│   │   │   └── models
+│   │   │       ├── withdrawal_request_model.dart
+│   │   │       ├── voucher_model.dart
+│   │   │       ├── video_model.dart
+│   │   │       ├── service_model.dart
+│   │   │       ├── partner_map_model.dart
+│   │   │       ├── chat_message_model.dart
+│   │   │       ├── auth_model.dart
+│   │   │       ├── appointment_model.dart
+│   │   │       ├── wallet_model.dart
+│   │   │       └── comment_model.dart
+│   │   ├── core
+│   │   │   ├── network
+│   │   │   │   ├── global_cache_engine.dart
+│   │   │   │   ├── video_cache_engine.dart
+│   │   │   │   ├── auth_interceptor.dart
+│   │   │   │   └── api_client.dart
+│   │   │   ├── router
+│   │   │   │   └── app_router.dart
+│   │   │   └── theme
+│   │   │       └── app_theme.dart
+│   │   └── main.dart
+│   ├── README.md
+│   ├── pubspec.yaml
+│   ├── frontend_mobile.iml
+│   ├── analysis_options.yaml
+│   ├── .gitignore
+│   ├── shaders
+│   │   └── liquid_glass_lens.frag
+│   └── test
+│
+├── Database
+│   └── database.py
+│
+├── Documentation
+│   ├── Feedback_01.docx
+│   ├── AI_STATE_Temp.txt
+│   ├── AI_STATE.md
+│   └── note.txt
+│
+└── Infrastructure
+├── requirements.txt
+├── firebase_credentials.json
+├── package.json
+├── .gitignore
+├── .env
+└── .vscode
+└── settings.json

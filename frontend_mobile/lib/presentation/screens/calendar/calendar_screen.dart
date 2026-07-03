@@ -12,6 +12,8 @@ import '../../widgets/app_toast.dart';
 import '../../widgets/auth_bottom_sheet.dart';
 import '../../widgets/auth_guard.dart';
 import '../../widgets/shimmer_wrapper.dart';
+import '../../widgets/notification_notifier.dart'; // 🚀 Bổ sung thư viện quản lý State thông báo
+import 'package:go_router/go_router.dart'; // 🚀 BẢN VÁ: Khai thông hàm extension .push() cho context
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -902,7 +904,40 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                       });
                     }
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 2), // Điều chỉnh khoảng cách thông thoáng
+                  
+                  // 🚀 NÚT THÔNG BÁO TÍCH HỢP GÓC PHẢI HEADER DÀNH CHO LỊCH HẸN
+                  ListenableBuilder(
+                    listenable: NotificationNotifier.instance,
+                    builder: (context, child) {
+                      final unread = NotificationNotifier.instance.unreadCount;
+                      return IconButton(
+                        icon: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            const Icon(Icons.notifications_none_rounded, color: Colors.black87, size: 22),
+                            if (unread > 0)
+                              Positioned(
+                                right: -2,
+                                top: -2,
+                                child: Container(
+                                  width: 9,
+                                  height: 9,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFE2C55), // Badge màu đỏ hồng nổi bật
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 1.5), // Viền trắng đục lỗ chuẩn Apple Layout
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        onPressed: () => context.push('/notifications'),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 2),
+                  
                   Container(
                     width: 32,
                     height: 32,

@@ -188,3 +188,10 @@ class FCMTokenUpdate(BaseModel):
     token: str
     device_id: Optional[str] = None
     platform: Optional[str] = None
+
+
+# --- 14. CẤU TRÚC ĐÁNH GIÁ (REVIEW & RATING) ---
+class ReviewCreate(BaseModel):
+    appointment_id: str
+    rating: int
+    comment: Optional[str] = None

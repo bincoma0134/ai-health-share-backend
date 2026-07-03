@@ -81,6 +81,16 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
               final String wStatus = v['wallet_status'] ?? '';
               if (wStatus != 'UNUSED') continue;
 
+              // 🚀 CHỐT CHẶN BẢO MẬT 1: Loại bỏ ngay lập tức các mã đã quá hạn sử dụng khỏi thuật toán Auto-Apply
+              bool isExpired = false;
+              if (v['valid_until'] != null && v['valid_until'].toString().isNotEmpty) {
+                try {
+                  final expiryDate = DateTime.parse(v['valid_until'].toString());
+                  if (expiryDate.isBefore(DateTime.now())) isExpired = true;
+                } catch (_) {}
+              }
+              if (isExpired) continue;
+
               final String issuerType = (v['issuer_type'] ?? '').toString().toUpperCase();
               final String? rawIssuerId = v['issuer_id']?.toString();
               final bool isAdmin = issuerType == 'ADMIN';
@@ -163,7 +173,12 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   Future<void> _submitBooking() async {
     AuthGuard.run(context, action: () async {
       if (_nameCtrl.text.isEmpty || _phoneCtrl.text.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng điền đủ Tên và Số điện thoại')));
+        // 🚀 ĐỒNG BỘ NÂNG CẤP UX: Thay SnackBar thô cứng bằng hệ thống AppToast kính mờ tinh tế lơ lửng trên đỉnh đầu app
+        AppToast.show(
+          context: context, 
+          message: 'Vui lòng điền đầy đủ thông tin Họ tên và Số điện thoại để đặt lịch hẹn!', 
+          isSuccess: false
+        );
         return;
       }
       setState(() => _isLoading = true);
@@ -225,22 +240,30 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
   Widget _buildSoftInput(TextEditingController controller, String hint, IconData icon, {bool isPhone = false}) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.black.withOpacity(0.02)),
-      ),
+      margin: const EdgeInsets.only(bottom: 16),
       child: TextField(
         controller: controller,
         keyboardType: isPhone ? TextInputType.phone : TextInputType.text,
-        style: const TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.w600),
+        style: const TextStyle(color: Color(0xFF1E293B), fontSize: 14, fontWeight: FontWeight.w600),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: const TextStyle(color: Colors.black38, fontSize: 14, fontWeight: FontWeight.w400),
-          prefixIcon: Icon(icon, color: Colors.black45, size: 20),
-          border: InputBorder.none,
+          hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14, fontWeight: FontWeight.w400),
+          prefixIcon: Icon(icon, color: const Color(0xFF64748B), size: 18),
+          filled: true,
+          fillColor: Colors.white,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFF80BF84), width: 1.5),
+          ),
         ),
       ),
     );
@@ -303,20 +326,26 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                               final String discountDisplay = dType == 'PERCENTAGE' ? 'Giảm ${dValue.toInt()}%' : 'Giảm ${_currencyFormat.format(dValue)}';
 
                               String expiryDate = 'Vô thời hạn';
+                              bool isExpired = false;
                               if (v['valid_until'] != null && v['valid_until'].toString().isNotEmpty) {
                                 try {
                                   final d = DateTime.parse(v['valid_until'].toString());
                                   expiryDate = 'HSD: ${DateFormat('dd/MM/yyyy').format(d)}';
+                                  // Kiểm tra chéo với thời gian thiết bị thực tế
+                                  if (d.isBefore(DateTime.now())) isExpired = true;
                                 } catch (_) {}
                               }
                               
                               final bool isPriceValid = _basePrice >= minOrder;
                               // 🚀 Khớp điều kiện: So khớp chuẩn xác với mã partnerId (authorId) thực tế trích xuất từ mô hình video
                               final bool isPartnerValid = isAdmin || rawIssuerId == _partnerId;
-                              final bool isSelectable = isPriceValid && isPartnerValid;
+                              
+                              // 🚀 CHỐT CHẶN BẢO MẬT 2: Bổ sung rào cản Hết hạn (isExpired) vào luồng bấm chọn
+                              final bool isSelectable = isPriceValid && isPartnerValid && !isExpired;
 
                               String lockReason = '';
-                              if (!isPartnerValid) lockReason = 'Chỉ áp dụng cho dịch vụ cơ sở phát hành';
+                              if (isExpired) lockReason = 'Mã ưu đãi đã hết hạn sử dụng';
+                              else if (!isPartnerValid) lockReason = 'Chỉ áp dụng cho dịch vụ cơ sở phát hành';
                               else if (!isPriceValid) lockReason = 'Đơn chưa đủ ${_currencyFormat.format(minOrder)}';
 
                               return Container(
@@ -478,100 +507,114 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                 _buildSoftInput(_noteCtrl, 'Bạn cần lưu ý thêm điều gì không?', Icons.edit_note_rounded),
                 _buildSoftInput(_affiliateCtrl, 'Mã giới thiệu (Affiliate) nếu có', Icons.handshake_rounded),
 
-                // BAR CHỌN VOUCHER TỪ VÍ (Gia diện sáng)
+                // BAR CHỌN VOUCHER TỪ VÍ (Premium Ticket-Cut Effect)
                 Container(
-                  margin: const EdgeInsets.only(top: 8, bottom: 24),
+                  margin: const EdgeInsets.only(top: 4, bottom: 24),
                   decoration: BoxDecoration(
-                    color: _isVoucherSuccess ? const Color(0xFF80BF84).withOpacity(0.12) : Colors.black.withOpacity(0.02),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: _isVoucherSuccess ? const Color(0xFF80BF84) : Colors.black.withOpacity(0.06)),
+                    gradient: LinearGradient(
+                      colors: _isVoucherSuccess 
+                          ? [const Color(0xFFE8F5E9), const Color(0xFFC8E6C9)] 
+                          : [const Color(0xFFF8FAFC), const Color(0xFFF1F5F9)],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: _isVoucherSuccess ? const Color(0xFF80BF84).withOpacity(0.5) : const Color(0xFFE2E8F0)),
                   ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: _isLoadingWallet ? null : _showVoucherSelectionSheet,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            Icon(Icons.local_activity_rounded, color: _isVoucherSuccess ? const Color(0xFF5B9E5F) : Colors.amber.shade700, size: 24),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Stack(
+                      children: [
+                        // Vết khoét vé bên trái
+                        Positioned(
+                          left: -8, top: 22,
+                          child: Container(width: 16, height: 16, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                        ),
+                        // Vết khoét vé bên phải
+                        Positioned(
+                          right: -8, top: 22,
+                          child: Container(width: 16, height: 16, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                        ),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _isLoadingWallet ? null : _showVoucherSelectionSheet,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                              child: Row(
                                 children: [
-                                  Text(_isVoucherSuccess ? 'Mã ưu đãi đã được áp dụng' : 'Ưu đãi & Voucher', style: const TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 4),
-                                  Text(_isVoucherSuccess ? _appliedVoucherTitle : 'Bấm để chọn từ ví của bạn', style: TextStyle(color: _isVoucherSuccess ? const Color(0xFF5B9E5F) : Colors.black45, fontSize: 13, fontWeight: _isVoucherSuccess ? FontWeight.w900 : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  Icon(Icons.local_activity_rounded, color: _isVoucherSuccess ? const Color(0xFF388E3C) : const Color(0xFF64748B), size: 22),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(_isVoucherSuccess ? 'Mã ưu đãi đã áp dụng' : 'Ưu đãi & Voucher', style: const TextStyle(color: Color(0xFF1E293B), fontSize: 13, fontWeight: FontWeight.w800)),
+                                        const SizedBox(height: 2),
+                                        Text(_isVoucherSuccess ? _appliedVoucherCode! : 'Bấm để lựa chọn từ ví cá nhân', style: TextStyle(color: _isVoucherSuccess ? const Color(0xFF2E7D32) : const Color(0xFF64748B), fontSize: 12, fontWeight: _isVoucherSuccess ? FontWeight.w900 : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      ],
+                                    ),
+                                  ),
+                                  if (_isLoadingWallet)
+                                    const SizedBox(width: 18, height: 20, child: CircularProgressIndicator(color: Color(0xFF80BF84), strokeWidth: 2))
+                                  else if (_isVoucherSuccess)
+                                    IconButton(
+                                      icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 18),
+                                      onPressed: () => setState(() { _isVoucherSuccess = false; _appliedVoucherCode = null; _appliedVoucherTitle = ''; _discountAmount = 0; }),
+                                    )
+                                  else
+                                    const Icon(Icons.chevron_right_rounded, color: Color(0xFF64748B), size: 20),
                                 ],
                               ),
                             ),
-                            if (_isLoadingWallet)
-                              const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Color(0xFF80BF84), strokeWidth: 2))
-                            else if (_isVoucherSuccess)
-                              IconButton(
-                                icon: const Icon(Icons.close_rounded, color: Colors.black54),
-                                onPressed: () => setState(() { _isVoucherSuccess = false; _appliedVoucherCode = null; _appliedVoucherTitle = ''; _discountAmount = 0; }),
-                              )
-                            else
-                              const Icon(Icons.chevron_right_rounded, color: Colors.black45),
-                          ],
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),
 
-                // KHỐI TẠM TÍNH HÓA ĐƠN NÂNG CẤP (Giao diện sáng nổi khối)
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  margin: const EdgeInsets.only(bottom: 24),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.4), 
-                    borderRadius: BorderRadius.circular(24), 
-                    border: Border.all(color: Colors.black.withOpacity(0.04)),
-                  ),
+                // KHỐI TẠM TÍNH HÓA ĐƠN TỰ DO (Floating Invoice Line)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                   child: Column(
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Giá dịch vụ', style: TextStyle(color: Colors.black54, fontSize: 14, fontWeight: FontWeight.w500)),
-                          Text(_currencyFormat.format(_basePrice), style: const TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.w700)),
+                          const Text('Giá dịch vụ niêm yết', style: TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500)),
+                          Text(_currencyFormat.format(_basePrice), style: const TextStyle(color: Color(0xFF1E293B), fontSize: 13, fontWeight: FontWeight.w700)),
                         ],
                       ),
                       if (_discountAmount > 0) ...[
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(child: Text('Voucher: $_appliedVoucherCode', style: const TextStyle(color: Color(0xFF5B9E5F), fontSize: 13, fontWeight: FontWeight.w700))),
-                            Text('- ${_currencyFormat.format(_discountAmount)}', style: const TextStyle(color: Color(0xFF5B9E5F), fontSize: 14, fontWeight: FontWeight.w900)),
+                            Expanded(child: Text('Khấu trừ Voucher ($_appliedVoucherCode)', style: const TextStyle(color: Color(0xFF388E3C), fontSize: 13, fontWeight: FontWeight.w700))),
+                            Text('- ${_currencyFormat.format(_discountAmount)}', style: const TextStyle(color: Color(0xFF388E3C), fontSize: 13, fontWeight: FontWeight.w800)),
                           ],
                         ),
                       ],
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Divider(color: Colors.black.withOpacity(0.06), height: 1),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Divider(color: Color(0xFFF1F5F9), height: 1, thickness: 1),
                       ),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Text('Tổng thanh toán', style: TextStyle(color: Colors.black87, fontSize: 15, fontWeight: FontWeight.bold)),
+                          const Text('Tổng tiền thanh toán', style: TextStyle(color: Color(0xFF1E293B), fontSize: 14, fontWeight: FontWeight.w800)),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               if (_discountAmount > 0)
                                 Text(
                                   _currencyFormat.format(_basePrice), 
-                                  style: TextStyle(color: Colors.black38, fontSize: 13, decoration: TextDecoration.lineThrough, fontWeight: FontWeight.w500)
+                                  style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12, decoration: TextDecoration.lineThrough, fontWeight: FontWeight.w500)
                                 ),
                               Text(
                                 _currencyFormat.format(_finalPrice), 
-                                style: TextStyle(color: _discountAmount > 0 ? const Color(0xFF80BF84) : Colors.black87, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)
+                                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5, height: 1.1)
                               ),
                             ],
                           )
@@ -580,21 +623,37 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 28),
 
-                SizedBox(
+                // NÚT CTA NỔI KHỐI CAO CẤP (Stadium Glow Button)
+                Container(
                   width: double.infinity, 
-                  height: 54,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF80BF84), Color(0xFF4C8D50)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF80BF84).withOpacity(0.35),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      )
+                    ],
+                  ),
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF80BF84), 
-                      foregroundColor: Colors.black87,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
                       elevation: 0,
                     ),
                     onPressed: _isLoading ? null : _submitBooking,
                     child: _isLoading 
-                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.black87, strokeWidth: 2)) 
-                        : const Text('GỬI YÊU CẦU ĐẶT LỊCH', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5, fontSize: 14)),
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                        : const Text('XÁC NHẬN ĐẶT LỊCH HẸN', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5, fontSize: 14)),
                   ),
                 ),
               ],

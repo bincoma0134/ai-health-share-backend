@@ -924,6 +924,42 @@ def delete_my_video(video_id: str, current_user = Depends(verify_user_token), co
         return {"status": "success"}
     finally: cur.close()
 
+@app.get("/user/my-tiktok-feeds", tags=["User"])
+def get_user_videos(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM tiktok_feeds WHERE author_id = %s AND status != 'DELETED' ORDER BY created_at DESC", (current_user.id,))
+        return {"status": "success", "data": cur.fetchall()}
+    finally: cur.close()
+
+@app.patch("/user/my-tiktok-feeds/{video_id}", tags=["User"])
+def update_user_video(video_id: str, payload: dict, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        allowed_cols = {"title", "content", "video_url", "price"}
+        updates, values = ["status = 'PENDING'"], []
+        for k, v in payload.items():
+            if k in allowed_cols and v is not None:
+                updates.append(f"{k} = %s")
+                values.append(v)
+        values.extend([video_id, current_user.id])
+        cur.execute(f"UPDATE tiktok_feeds SET {', '.join(updates)} WHERE id = %s AND author_id = %s RETURNING *", tuple(values))
+        updated = cur.fetchone()
+        if not updated: raise HTTPException(status_code=404, detail="Không tìm thấy video hoặc không có quyền chỉnh sửa.")
+        conn.commit()
+        return {"status": "success", "data": updated}
+    finally: cur.close()
+
+@app.delete("/user/my-tiktok-feeds/{video_id}", tags=["User"])
+def delete_user_video(video_id: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE tiktok_feeds SET status = 'PENDING_DELETE', updated_at = now() WHERE id = %s AND author_id = %s RETURNING id", (video_id, current_user.id))
+        if not cur.fetchone(): raise HTTPException(status_code=404, detail="Không tìm thấy video hoặc không có quyền gỡ.")
+        conn.commit()
+        return {"status": "success"}
+    finally: cur.close()
+
 @app.get("/partner/bookings", tags=["Partner"])
 def get_partner_bookings(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -960,10 +996,26 @@ def complete_booking_escrow(booking_id: str, current_user = Depends(verify_user_
         
         revenue_base = original_total - discount_amount if funded_by == 'PARTNER' else original_total
 
-        partner_rev = revenue_base * 0.70
-        platform_fee = revenue_base * 0.20
-        affiliate_rev = revenue_base * 0.10 if booking.get("affiliate_id") else 0
-        if not booking.get("affiliate_id"): platform_fee += revenue_base * 0.10
+        # Truy xuất % hoa hồng affiliate_rate được ghim trên dịch vụ hoặc video
+        affiliate_rate = 0.0
+        if booking.get("service_id"):
+            cur.execute("SELECT affiliate_rate FROM services WHERE id = %s", (booking["service_id"],))
+            s = cur.fetchone()
+            if s and s.get("affiliate_rate"): affiliate_rate = float(s["affiliate_rate"])
+        elif booking.get("video_id"):
+            cur.execute("SELECT affiliate_rate FROM tiktok_feeds WHERE id = %s", (booking["video_id"],))
+            v = cur.fetchone()
+            if v and v.get("affiliate_rate"): affiliate_rate = float(v["affiliate_rate"])
+
+        # Phân rã dòng tiền (Admin cố định 30%, phần còn lại xử lý cho Partner & Affiliate)
+        platform_fee = revenue_base * 0.30
+        partner_base_rev = revenue_base * 0.70
+        affiliate_rev = 0
+        
+        if booking.get("affiliate_id"):
+            affiliate_rev = partner_base_rev * (affiliate_rate / 100)
+            
+        partner_rev = partner_base_rev - affiliate_rev
 
         cur.execute("UPDATE bookings_transactions SET service_status = 'COMPLETED', partner_revenue = %s, platform_fee = %s, affiliate_revenue = %s WHERE id = %s", 
                     (partner_rev, platform_fee, affiliate_rev, booking_id))
@@ -1082,6 +1134,10 @@ def create_tiktok_feed(payload: schemas.TikTokFeedCreate, current_user = Depends
                        VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
                     (current_user.id, payload.title, payload.content, payload.video_url, payload.price, status))
         data = cur.fetchone()
+        
+        # Gamification: Tăng biến đếm video nếu bài được duyệt trực tiếp
+        if status == "APPROVED":
+            cur.execute("UPDATE users SET video_count = video_count + 1 WHERE id = %s", (current_user.id,))
         conn.commit()
         return {"status": "success", "data": data}
     finally: cur.close()
@@ -1247,6 +1303,14 @@ def moderate_item(item_type: str, item_id: str, payload: dict, current_user = De
         
         cur.execute(f"UPDATE {table} SET status = %s, moderation_note = %s, moderated_by = %s, updated_at = now() WHERE id = %s", 
                     (status, payload.get("note", ""), current_user.id, item_id))
+                    
+        # Gamification: Cộng điểm số lượng video đăng tải thành công cho User
+        if table == "tiktok_feeds" and status == "APPROVED":
+            cur.execute("SELECT author_id FROM tiktok_feeds WHERE id = %s", (item_id,))
+            vid = cur.fetchone()
+            if vid:
+                cur.execute("UPDATE users SET video_count = video_count + 1 WHERE id = %s", (vid[0] if isinstance(vid, tuple) else vid["author_id"],))
+                
         conn.commit()
         return {"status": "success", "message": "Xử lý thành công"}
     finally: cur.close()
@@ -1976,10 +2040,26 @@ def confirm_appointment(appointment_id: str, payload: schemas.AppointmentConfirm
                 # Xác định doanh thu thực tế để tính phế (Ai tạo mã người nấy chịu)
                 revenue_base = original_total - discount_amount if funded_by == 'PARTNER' else original_total
 
-                partner_rev = revenue_base * 0.70
-                platform_fee = revenue_base * 0.20
-                affiliate_rev = revenue_base * 0.10 if booking.get("affiliate_id") else 0
-                if not booking.get("affiliate_id"): platform_fee += revenue_base * 0.10
+                # Truy xuất % hoa hồng affiliate_rate được ghim
+                affiliate_rate = 0.0
+                if booking.get("service_id"):
+                    cur.execute("SELECT affiliate_rate FROM services WHERE id = %s", (booking["service_id"],))
+                    s = cur.fetchone()
+                    if s and s.get("affiliate_rate"): affiliate_rate = float(s["affiliate_rate"])
+                elif booking.get("video_id"):
+                    cur.execute("SELECT affiliate_rate FROM tiktok_feeds WHERE id = %s", (booking["video_id"],))
+                    v = cur.fetchone()
+                    if v and v.get("affiliate_rate"): affiliate_rate = float(v["affiliate_rate"])
+
+                # Phân rã dòng tiền mới
+                platform_fee = revenue_base * 0.30
+                partner_base_rev = revenue_base * 0.70
+                affiliate_rev = 0
+                
+                if booking.get("affiliate_id"):
+                    affiliate_rev = partner_base_rev * (affiliate_rate / 100)
+                    
+                partner_rev = partner_base_rev - affiliate_rev
 
                 cur.execute("UPDATE bookings_transactions SET service_status = 'COMPLETED', partner_revenue = %s, platform_fee = %s, affiliate_revenue = %s WHERE id = %s", 
                             (partner_rev, platform_fee, affiliate_rev, booking_id))
@@ -2340,3 +2420,45 @@ async def upload_media(request: Request, file: UploadFile = File(...), folder: s
     except Exception as e:
         print(f"LỖI UPLOAD R2: {e}") # Bắn log ra Terminal để kiểm soát nếu có sự cố khác
         raise HTTPException(status_code=500, detail=f"Lỗi R2: {str(e)}")
+
+
+@app.post("/services/review", tags=["Services"])
+def create_review(payload: schemas.ReviewCreate, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """API cho phép User đánh giá dịch vụ sau khi đã hoàn thành"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Ràng buộc cứng 1: Số sao phải hợp lệ
+        if not (1 <= payload.rating <= 5):
+            raise HTTPException(status_code=400, detail="Điểm đánh giá phải từ 1 đến 5 sao.")
+
+        # Ràng buộc cứng 2: Lịch hẹn phải tồn tại, thuộc về User và Đã hoàn thành
+        cur.execute("SELECT * FROM appointments WHERE id = %s", (payload.appointment_id,))
+        appt = cur.fetchone()
+        
+        if not appt: 
+            raise HTTPException(status_code=404, detail="Không tìm thấy lịch hẹn.")
+        if appt["user_id"] != current_user.id: 
+            raise HTTPException(status_code=403, detail="Chỉ người đặt lịch mới được quyền đánh giá.")
+        if appt["status"] != "COMPLETED": 
+            raise HTTPException(status_code=400, detail="Chỉ được phép đánh giá khi dịch vụ đã hoàn tất.")
+            
+        # Ghi nhận đánh giá
+        cur.execute("""
+            INSERT INTO reviews (appointment_id, user_id, partner_id, service_id, rating, comment)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING *
+        """, (payload.appointment_id, current_user.id, appt["partner_id"], appt.get("service_id"), payload.rating, payload.comment))
+        new_review = cur.fetchone()
+        
+        # Tự động cộng điểm uy tín cho Partner (Gamification)
+        cur.execute("UPDATE users SET reputation_points = reputation_points + %s WHERE id = %s", (payload.rating, appt["partner_id"]))
+        
+        conn.commit()
+        return {"status": "success", "message": "Cảm ơn bạn đã đánh giá!", "data": new_review}
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail="Bạn đã đánh giá lịch hẹn này rồi.")
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()

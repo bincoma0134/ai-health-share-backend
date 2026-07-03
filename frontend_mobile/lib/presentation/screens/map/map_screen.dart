@@ -12,6 +12,7 @@ import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/auth_guard.dart';
 import '../../widgets/shimmer_wrapper.dart';
+import '../../widgets/notification_notifier.dart'; // 🚀 Bổ sung thư viện quản lý State thông báo
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -72,12 +73,14 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
         debugPrint("⚠️ Hệ thống GPS phản hồi chậm hoặc bị tắt: $error");
       });
 
-      // 2. LUỒNG NGẦM B: Gọi trực tiếp cổng ApiClient bọc thép để tải avatar cá nhân
+      // 2. LUỒNG NGẦM B: Gọi trực tiếp cổng ApiClient đồng bộ với định dạng Swagger của hệ thống
       ApiClient.instance.get('/user/profile').then((response) {
-        if (mounted && response.statusCode == 200) {
+        if (mounted && response.statusCode == 200 && response.data != null) {
           setState(() {
-            final profileData = response.data['data'] ?? {};
-            _userAvatarUrl = profileData['profile']?['avatar_url'];
+            // Sửa lỗi bóc tách JSON sai tầng cấu trúc
+            final dynamic resData = response.data;
+            final profileData = (resData is Map && resData.containsKey('data')) ? resData['data'] : resData;
+            _userAvatarUrl = profileData['avatar_url']?.toString();
           });
         }
       }).catchError((e) => debugPrint("⚠️ Không thể tải avatar người dùng: $e"));
@@ -514,45 +517,98 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
   // ==================== CÁC PHÂN HỆ WIDGET CHUẨN DESIGN SYSTEM ====================
 
   Widget _buildFloatingSearchBar() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(30),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.9),
+    return Row(
+      children: [
+        // Thanh tìm kiếm lơ lửng chiếm không gian chính
+        Expanded(
+          child: ClipRRect(
             borderRadius: BorderRadius.circular(30),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.search_rounded, color: Colors.black54, size: 22),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87),
-                  decoration: const InputDecoration(
-                    hintText: 'Tìm phòng khám, đối tác quanh đây...',
-                    hintStyle: TextStyle(color: Colors.black26, fontSize: 13, fontWeight: FontWeight.normal),
-                    border: InputBorder.none,
-                  ),
-                  onChanged: _performSearch,
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.search_rounded, color: Colors.black54, size: 22),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87),
+                        decoration: const InputDecoration(
+                          hintText: 'Tìm phòng khám, đối tác quanh đây...',
+                          hintStyle: TextStyle(color: Colors.black26, fontSize: 13, fontWeight: FontWeight.normal),
+                          border: InputBorder.none,
+                        ),
+                        onChanged: _performSearch,
+                      ),
+                    ),
+                    if (_searchController.text.isNotEmpty)
+                      GestureDetector(
+                        onTap: () {
+                          _searchController.clear();
+                          _performSearch('');
+                        },
+                        child: const Icon(Icons.clear_rounded, color: Colors.black38, size: 20),
+                      )
+                  ],
                 ),
               ),
-              if (_searchController.text.isNotEmpty)
-                GestureDetector(
-                  onTap: () {
-                    _searchController.clear();
-                    _performSearch('');
-                  },
-                  child: const Icon(Icons.clear_rounded, color: Colors.black38, size: 20),
-                )
-            ],
+            ),
           ),
         ),
-      ),
+        const SizedBox(width: 12), // Khoảng cách giữa Search Bar và Nút Thông Báo
+        
+        // 🚀 NÚT THÔNG BÁO TÍCH HỢP HIỆU ỨNG KÍNH MỜ BẢN ĐỒ
+        ListenableBuilder(
+          listenable: NotificationNotifier.instance,
+          builder: (context, child) {
+            final unread = NotificationNotifier.instance.unreadCount;
+            return GestureDetector(
+              onTap: () => context.push('/notifications'),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(30),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9),
+                      shape: BoxShape.circle,
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
+                    ),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        const Icon(Icons.notifications_none_rounded, color: Colors.black54, size: 22),
+                        if (unread > 0)
+                          Positioned(
+                            right: -2,
+                            top: -2,
+                            child: Container(
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFE2C55), // Badge đỏ cảnh báo nổi bật
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 1.5), // Viền trắng bóc tách 3D
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 
