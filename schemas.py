@@ -91,6 +91,30 @@ class WithdrawalUpdate(BaseModel):
     status: str
     admin_note: Optional[str] = None
 
+class CreatorUpgradeRequest(BaseModel):
+    reason_answer: str
+
+class CreatorUpgradeStatusResponse(BaseModel):
+    status: Optional[str] = None
+    moderation_note: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+class CreatorUpgradeQueueItem(BaseModel):
+    upgrade_id: str
+    user_id: str
+    username: Optional[str] = None
+    full_name: Optional[str] = None
+    email: str
+    reason_answer: str
+    status: str
+    created_at: datetime
+
+class CreatorUpgradeActionRequest(BaseModel):
+    action: str
+    moderation_note: Optional[str] = None
+
+ 
+
 # --- 9. CẤU TRÚC AI ASSISTANT ---
 class ChatMessage(BaseModel):
     role: str

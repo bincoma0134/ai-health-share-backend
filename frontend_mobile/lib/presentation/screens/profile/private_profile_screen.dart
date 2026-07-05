@@ -50,10 +50,63 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
   final _emailController = TextEditingController();
   bool _isUpdating = false;
 
+  // Trạng thái bọc thép quản lý phân hệ Creator Upgrade Phase 3
+  String? _upgradeStatus;
+  String? _moderationNote;
+  bool _isLoadingUpgradeState = false;
+  bool _isSubmittingUpgradeRequest = false;
+  String? _surveyAnswer;
+
   @override
   void initState() {
     super.initState();
     _loadData();
+    _fetchUpgradeStatus();
+  }
+
+  // Hàm đồng bộ nạp trạng thái hồ sơ nâng cấp từ Backend API
+  Future<void> _fetchUpgradeStatus() async {
+    setState(() => _isLoadingUpgradeState = true);
+    try {
+      final res = await ApiClient.instance.get('/user/creator-upgrade/status');
+      if (res.statusCode == 200 && res.data != null) {
+        setState(() {
+          _upgradeStatus = res.data['status'];
+          _moderationNote = res.data['moderation_note'];
+        });
+      }
+    } catch (_) {}
+    setState(() => _isLoadingUpgradeState = false);
+  }
+
+  // Hàm kích hoạt luồng gửi đơn yêu cầu nâng cấp bọc thép
+  Future<void> _submitUpgradeRequest() async {
+    if (_surveyAnswer == null || !['Có', 'Rất có'].contains(_surveyAnswer)) return;
+    setState(() => _isSubmittingUpgradeRequest = true);
+    try {
+      final res = await ApiClient.instance.post(
+        '/user/creator-upgrade/request',
+        data: {'reason_answer': _surveyAnswer},
+      );
+      if (res.statusCode == 200) {
+        setState(() {
+          _upgradeStatus = 'PENDING';
+          _moderationNote = null;
+        });
+        if (mounted) {
+          AppToast.show(context: context, message: 'Bạn đã nộp đơn yêu cầu nâng cấp thành công!', isSuccess: true);
+        }
+      } else {
+        if (mounted) {
+          AppToast.show(context: context, message: 'Gửi yêu cầu thất bại. Vui lòng kiểm tra lại điều kiện!', isSuccess: false);
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        AppToast.show(context: context, message: 'Lỗi kết nối máy chủ hệ thống!', isSuccess: false);
+      }
+    }
+    setState(() => _isSubmittingUpgradeRequest = false);
   }
 
   bool _isFetchingLock = false;
@@ -999,15 +1052,17 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Mở rộng thanh chọn Tab phẳng mượt hiển thị thêm Tab Studio cho User
+                    // Mở rộng thanh chọn Tab phẳng mượt hiển thị thêm Tab Studio & Nâng cấp cho User
                     Row(
                       children: [
                         _buildTabMenuButton(title: 'Đã lưu', tabKey: 'saves'),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
                         _buildTabMenuButton(title: 'Thành tựu', tabKey: 'achievements'),
-                        const SizedBox(width: 8),
-                        _buildTabMenuButton(title: 'Studio', tabKey: 'studio'), // Đốm entry-point kích hoạt Lazy Loading
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
+                        _buildTabMenuButton(title: 'Studio', tabKey: 'studio'),
+                        const SizedBox(width: 6),
+                        _buildTabMenuButton(title: 'Nâng cấp', tabKey: 'upgrade'),
+                        const SizedBox(width: 6),
                         _buildTabMenuButton(title: 'Cá nhân', tabKey: 'history'),
                       ],
                     ),
@@ -1457,6 +1512,267 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
               },
             ),
         ],
+      );
+    }
+    
+    if (_activeTab == 'upgrade') {
+      if (_isLoadingUpgradeState) {
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 40),
+          child: Center(child: CircularProgressIndicator(color: Color(0xFF80BF84))),
+        );
+      }
+
+      final Map<String, dynamic> stats = _profileData?['stats'] ?? {};
+      final int videoCount = stats['approved_count'] ?? profile['video_count'] ?? 0;
+      final int streakCount = profile['streak_count'] ?? 0;
+
+      final bool condVideos = videoCount >= 5;
+      final bool condStreak = streakCount >= 3;
+      final bool hasSurveySelected = _surveyAnswer != null && ['Có', 'Rất có'].contains(_surveyAnswer);
+      final bool isFormQualified = condVideos && condStreak && hasSurveySelected;
+
+      final String displayName = profile['full_name'] ?? 'Bạn';
+
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 6))],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_upgradeStatus == 'REJECTED') ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF0F2),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFFFD6DA)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Yêu cầu nâng cấp lên Creator của bạn đã bị từ chối bởi kiểm duyệt viên. Vui lòng nhấn Xem lý do để biết thêm chi tiết.',
+                        style: TextStyle(color: Colors.red.shade900, fontSize: 13, fontWeight: FontWeight.w500, height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            const Text('Điều kiện nâng cấp Creator', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 15, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 16),
+
+            Row(
+              children: [
+                Icon(condVideos ? Icons.check_circle_rounded : Icons.radio_button_off_rounded, color: condVideos ? const Color(0xFF80BF84) : const Color(0xFFB0C4C1), size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Đăng tải tối thiểu 5 video ngắn đã được duyệt (Hiện tại: $videoCount/5)', style: TextStyle(color: const Color(0xFF1A3A35), fontSize: 13.5, fontWeight: condVideos ? FontWeight.w600 : FontWeight.w400)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                Icon(condStreak ? Icons.check_circle_rounded : Icons.radio_button_off_rounded, color: condStreak ? const Color(0xFF80BF84) : const Color(0xFFB0C4C1), size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Điểm danh liên tục tối thiểu 3 ngày (Hiện tại: $streakCount/3 ngày)', style: TextStyle(color: const Color(0xFF1A3A35), fontSize: 13.5, fontWeight: condStreak ? FontWeight.w600 : FontWeight.w400)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Divider(height: 1, color: Color(0xFFE2ECEB)),
+            const SizedBox(height: 16),
+
+            Text('$displayName có yêu VN Share không?', style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 14, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Radio<String>(
+                  value: 'Có',
+                  groupValue: _surveyAnswer,
+                  activeColor: const Color(0xFF1A3A35),
+                  onChanged: _upgradeStatus == 'PENDING' ? null : (val) => setState(() => _surveyAnswer = val),
+                ),
+                const Text('Có', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 14)),
+                const SizedBox(width: 24),
+                Radio<String>(
+                  value: 'Rất có',
+                  groupValue: _surveyAnswer,
+                  activeColor: const Color(0xFF1A3A35),
+                  onChanged: _upgradeStatus == 'PENDING' ? null : (val) => setState(() => _surveyAnswer = val),
+                ),
+                const Text('Rất có 🇻🇳', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 14)),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: _upgradeStatus == 'PENDING'
+                  ? ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFFF8E1),
+                        disabledBackgroundColor: const Color(0xFFFFF8E1),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        elevation: 0,
+                      ),
+                      onPressed: null,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.amber.shade800, strokeWidth: 2)),
+                          const SizedBox(width: 10),
+                          Text('ĐANG CHỜ DUYỆT HỒ SƠ...', style: TextStyle(color: Colors.amber.shade900, fontSize: 13, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                        ],
+                      ),
+                    )
+                  : _upgradeStatus == 'REJECTED'
+                      ? ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            elevation: 0,
+                          ),
+                          onPressed: () {
+                            // Gọi Pop-up hiển thị lý do bọc GlassWrapper cao cấp an toàn tham số
+                            showDialog(
+                              context: context,
+                              builder: (context) => Dialog(
+                                backgroundColor: Colors.transparent,
+                                elevation: 0,
+                                child: GlassWrapper(
+                                  child: Container(
+                                    padding: const EdgeInsets.all(24),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.9),
+                                      borderRadius: BorderRadius.circular(28),
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: const BoxDecoration(color: Color(0xFFFFEBEE), shape: BoxShape.circle),
+                                          child: const Icon(Icons.gavel_rounded, color: Colors.redAccent, size: 28),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        const Text('Lý do từ chối nâng cấp', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.w900)),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          _moderationNote ?? 'Kiểm duyệt viên từ chối hồ sơ của bạn nhưng không để lại ghi chú chi tiết.',
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(color: Color(0xFF617D79), fontSize: 14, height: 1.5, fontWeight: FontWeight.w500),
+                                        ),
+                                        const SizedBox(height: 24),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: TextButton(
+                                                style: TextButton.styleFrom(
+                                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                                  backgroundColor: const Color(0xFFF2F2F7),
+                                                ),
+                                                onPressed: () => Navigator.pop(context),
+                                                child: const Text('Tôi đã hiểu', style: TextStyle(color: Color(0xFF617D79), fontWeight: FontWeight.bold)),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: ElevatedButton(
+                                                style: ElevatedButton.styleFrom(
+                                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                                  backgroundColor: const Color(0xFF1A3A35),
+                                                  foregroundColor: Colors.white,
+                                                  elevation: 0,
+                                                ),
+                                                onPressed: !isFormQualified ? null : () {
+                                                  Navigator.pop(context);
+                                                  _submitUpgradeRequest();
+                                                },
+                                                child: const Text('Gửi lại yêu cầu', style: TextStyle(fontWeight: FontWeight.bold)),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                          child: const Text('XEM LÝ DO', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                        )
+                      : ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1A3A35),
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: const Color(0xFFD1D1D6),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            elevation: 0,
+                          ),
+                          onPressed: (!isFormQualified || _isSubmittingUpgradeRequest)
+                              ? null
+                              : () async {
+                                  final bool? confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (context) => Dialog(
+                                      backgroundColor: Colors.transparent,
+                                      elevation: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(24),
+                                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28)),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(padding: const EdgeInsets.all(14), decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle), child: const Icon(Icons.rocket_launch_rounded, color: Color(0xFF80BF84), size: 28)),
+                                            const SizedBox(height: 16),
+                                            const Text('Xác nhận nộp đơn', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.w900)),
+                                            const SizedBox(height: 10),
+                                            const Text('Bạn có chắc chắn muốn gửi yêu cầu nâng cấp lên tài khoản Creator lên sàn VN Share không?', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFF617D79), fontSize: 14, height: 1.4)),
+                                            const SizedBox(height: 24),
+                                            Row(
+                                              children: [
+                                                Expanded(child: TextButton(style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), backgroundColor: const Color(0xFFF7FBF9)), onPressed: () => Navigator.pop(context, false), child: const Text('Hủy', style: TextStyle(color: Color(0xFF617D79), fontWeight: FontWeight.bold)))),
+                                                const SizedBox(width: 12),
+                                                Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), backgroundColor: const Color(0xFF1A3A35), foregroundColor: Colors.white, elevation: 0), onPressed: () => Navigator.pop(context, true), child: const Text('Xác nhận', style: TextStyle(fontWeight: FontWeight.bold)))),
+                                              ],
+                                            )
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                  if (confirm == true) {
+                                    _submitUpgradeRequest();
+                                  }
+                                },
+                          child: _isSubmittingUpgradeRequest
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Text('NÂNG CẤP TÀI KHOẢN', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                        ),
+            ),
+          ],
+        ),
       );
     }
 

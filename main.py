@@ -1398,6 +1398,195 @@ def get_creator_content(current_user = Depends(verify_user_token), conn=Depends(
     finally: cur.close()
 
 # ==========================================
+# 8.5. CREATOR UPGRADES LOGIC & API LAYER
+# ==========================================
+@app.post("/user/creator-upgrade/request", tags=["Creator"])
+def request_creator_upgrade(payload: schemas.CreatorUpgradeRequest, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """API nộp đơn yêu cầu nâng cấp lên tài khoản Creator hỗ trợ cơ chế bọc thép UPSERT"""
+    if payload.reason_answer not in ["Có", "Rất có"]:
+        raise HTTPException(status_code=400, detail="Câu trả lời khảo sát không hợp lệ!")
+
+    # Guard: Chặn người dùng đã có quyền cao hơn nộp đơn nâng cấp lặp cấu trúc hệ thống
+    if current_user.role in ["CREATOR", "PARTNER_ADMIN", "SUPER_ADMIN", "ADMIN", "MODERATOR"]:
+        raise HTTPException(status_code=400, detail="Tài khoản của bạn đã sở hữu vai trò Creator hoặc quyền hạn cao hơn!")
+
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # 1. Server-Side Validation Guard: Kiểm tra điều kiện tự động của User
+        cur.execute("SELECT video_count FROM users WHERE id = %s", (current_user.id,))
+        user_info = cur.fetchone()
+        
+        cur.execute("SELECT streak_count FROM user_svalue_wallet WHERE user_id = %s", (current_user.id,))
+        wallet_info = cur.fetchone()
+        
+        video_count = user_info["video_count"] if user_info and user_info.get("video_count") else 0
+        streak_count = wallet_info["streak_count"] if wallet_info and wallet_info.get("streak_count") else 0
+        
+        if video_count < 5 or streak_count < 3:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Tài khoản chưa đủ điều kiện! Yêu cầu tối thiểu 5 video (Hiện tại: {video_count}) và 3 ngày điểm danh liên tiếp (Hiện tại: {streak_count})."
+            )
+
+        # 2. Xử lý cơ chế UPSERT thông minh
+        cur.execute("SELECT id, status FROM creator_upgrades WHERE user_id = %s FOR UPDATE", (current_user.id,))
+        existing_request = cur.fetchone()
+        now_str = datetime.now().isoformat()
+
+        if existing_request:
+            if existing_request["status"] == "PENDING":
+                raise HTTPException(status_code=400, detail="Yêu cầu nâng cấp của bạn đang trong trạng thái chờ duyệt!")
+            if existing_request["status"] == "APPROVED":
+                raise HTTPException(status_code=400, detail="Tài khoản của bạn đã được nâng cấp thành công!")
+            
+            # Nếu trạng thái cũ là REJECTED -> Tiến hành reset trạng thái làm sạch dữ liệu cũ
+            cur.execute("""
+                UPDATE creator_upgrades 
+                SET reason_answer = %s, status = 'PENDING', moderation_note = NULL, moderated_by = NULL, updated_at = NOW()
+                WHERE user_id = %s RETURNING id, user_id, reason_answer, status, created_at, updated_at
+            """, (payload.reason_answer, current_user.id))
+        else:
+            cur.execute("""
+                INSERT INTO creator_upgrades (user_id, reason_answer, status, created_at, updated_at)
+                VALUES (%s, %s, 'PENDING', NOW(), NOW()) RETURNING id, user_id, reason_answer, status, created_at, updated_at
+            """, (current_user.id, payload.reason_answer))
+
+        result = cur.fetchone()
+        if result:
+            if isinstance(result.get("created_at"), datetime):
+                result["created_at"] = result["created_at"].isoformat()
+            if isinstance(result.get("updated_at"), datetime):
+                result["updated_at"] = result["updated_at"].isoformat()
+
+        conn.commit()
+        return {"status": "success", "message": "Nộp đơn yêu cầu nâng cấp Creator thành công!", "data": result}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+
+@app.get("/user/creator-upgrade/status", response_model=schemas.CreatorUpgradeStatusResponse, tags=["Creator"])
+def get_creator_upgrade_status(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """API lấy trạng thái đơn xin nâng cấp mới nhất của User phục vụ chuyển trạng thái UI Button"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT status, moderation_note, updated_at 
+            FROM creator_upgrades 
+            WHERE user_id = %s 
+            ORDER BY created_at DESC LIMIT 1
+        """, (current_user.id,))
+        row = cur.fetchone()
+        if not row:
+            return {"status": None, "moderation_note": None, "updated_at": None}
+            
+        if isinstance(row.get("updated_at"), datetime):
+            row["updated_at"] = row["updated_at"].isoformat()
+        return row
+    finally:
+        cur.close()
+
+@app.get("/moderation/creator-upgrades/queue", tags=["Moderation"])
+def get_creator_upgrades_queue(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """API nạp danh sách các hồ sơ nâng cấp đang ở trạng thái PENDING cho Moderator/Admin Dashboard"""
+    if current_user.role not in ["MODERATOR", "SUPER_ADMIN"]:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền truy cập hàng đợi kiểm duyệt!")
+        
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT cu.id as upgrade_id, cu.user_id, u.username, u.full_name, u.email, cu.reason_answer, cu.status, cu.created_at
+            FROM creator_upgrades cu
+            JOIN users u ON cu.user_id = u.id
+            WHERE cu.status = 'PENDING'
+            ORDER BY cu.created_at ASC
+        """)
+        rows = cur.fetchall()
+        for r in rows:
+            if isinstance(r.get("created_at"), datetime):
+                r["created_at"] = r["created_at"].isoformat()
+        return {"status": "success", "data": rows}
+    finally:
+        cur.close()
+
+@app.patch("/moderation/creator-upgrades/{upgrade_id}/action", tags=["Moderation"])
+def moderate_creator_upgrade(upgrade_id: str, payload: schemas.CreatorUpgradeActionRequest, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """API phê duyệt/từ chối yêu cầu nâng cấp sử dụng Giao dịch nguyên tử (Atomic Database Transaction) chống Race Condition"""
+    if current_user.role not in ["MODERATOR", "SUPER_ADMIN"]:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền thực hiện hành động này!")
+        
+    if payload.action not in ["APPROVED", "REJECTED"]:
+        raise HTTPException(status_code=400, detail="Hành động kiểm duyệt không hợp lệ!")
+
+    note_value = payload.moderation_note if payload.moderation_note is not None else ""
+
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Sử dụng Row-level Locking để cô lập dữ liệu đơn kiểm duyệt
+        cur.execute("SELECT user_id, status FROM creator_upgrades WHERE id = %s FOR UPDATE", (upgrade_id,))
+        upgrade_req = cur.fetchone()
+        
+        if not upgrade_req:
+            raise HTTPException(status_code=404, detail="Không tìm thấy đơn yêu cầu nâng cấp tài khoản!")
+        if upgrade_req["status"] != "PENDING":
+            raise HTTPException(status_code=400, detail="Hồ sơ yêu cầu này đã được xử lý kiểm duyệt trước đó!")
+
+        target_user_id = upgrade_req["user_id"]
+
+        # Cập nhật trạng thái đơn nâng cấp
+        cur.execute("""
+            UPDATE creator_upgrades 
+            SET status = %s, moderation_note = %s, moderated_by = %s, updated_at = NOW()
+            WHERE id = %s
+        """, (payload.action, note_value, current_user.id, upgrade_id))
+
+        # Nếu APPROVED -> Đồng thời nâng cấp vai trò người dùng trong cùng một phiên làm việc nguyên tử
+        if payload.action == "APPROVED":
+            cur.execute("UPDATE users SET role = 'CREATOR' WHERE id = %s", (target_user_id,))
+            
+            # Kích hoạt thông báo thời gian thực về thiết bị di động
+            from notification_service import NotificationService
+            NotificationService.dispatch_event(
+                conn, 
+                user_id=target_user_id, 
+                event_type="CREATOR_UPGRADE_APPROVED", 
+                reference_id=upgrade_id, 
+                sender_id=current_user.id
+            )
+        else:
+            # Nếu REJECTED -> Bắn thông báo lý do từ chối
+            from notification_service import NotificationService
+            NotificationService.dispatch_event(
+                conn, 
+                user_id=target_user_id, 
+                event_type="LEGACY", 
+                reference_id=upgrade_id, 
+                metadata={
+                    "category": "SYSTEM", 
+                    "title": "Hồ sơ nâng cấp Creator bị từ chối", 
+                    "message": f"Yêu cầu nâng cấp lên tài khoản Creator của bạn đã bị từ chối. Lý do: {note_value or 'Không có lý do chi tiết.'}"
+                }, 
+                sender_id=current_user.id
+            )
+
+        conn.commit()
+        return {"status": "success", "message": f"Đã xử lý quyết định đơn nâng cấp thành công sang trạng thái: {payload.action}"}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+
+
+
+# ==========================================
 # 9. QUẢN TRỊ VIÊN CẤP CAO (SUPER ADMIN)
 # ==========================================
 @app.get("/admin/profile-stats", tags=["Admin"])

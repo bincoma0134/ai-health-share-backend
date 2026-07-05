@@ -1,5 +1,11 @@
 # AI_RULES.md
 
+
+## Đặc biệt quan trọng, quan trọng nhất là nguyên tắc CTRL+H:
+* Mặc định sử dụng cơ chế Tìm kiếm / Thay thế (`FIND / REPLACE`) trực tiếp trước khi áp dụng bất kỳ hình thức chỉnh sửa code nào khác.
+* Gửi Find và Replace thành 2 khối code riêng biệt - 2 box typescript riêng biệt.
+* Trong box Typescript chỉ có code, không thêm chú thích FIND / REPLACE trong box, sẵn sàng copy-paste tức thời.
+
 ## 0. ROOT CAUSE FIRST PRINCIPLE
 Không được sửa code trước khi xác định Root Cause.
 * **Quy trình cấm:** Audit → Đoán → Sửa
