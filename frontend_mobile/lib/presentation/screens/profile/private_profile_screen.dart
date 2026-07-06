@@ -34,8 +34,8 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
   List<dynamic> _savedItems = [];
   int _visibleSavesCount = 5; // Giới hạn hiển thị ban đầu tối đa 10 video đã lưu gần nhất
   
-  // Mở rộng điều hướng phân tầng nội bộ: thêm 'studio' dành riêng cho Regular User
-  String _activeTab = 'saves';
+  // Mở rộng điều hướng phân tầng nội bộ: Đã chuyển đổi hiển thị mặc định sang Studio cá nhân chuẩn nghiệp vụ
+  String _activeTab = 'studio';
 
   // Trạng thái quản lý bộ nhớ đệm Studio & Lazy Loading của User
   List<dynamic> _userVideos = [];
@@ -115,6 +115,10 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
     _isFetchingLock = true;
     try {
       setState(() => _isLoading = true);
+      
+      // BỌC THÉP LOGIC: Đánh sập cờ cache bộ nhớ đệm Studio trước khi nạp để bảo đảm dữ liệu đếm video chuẩn xác 100%
+      _hasFetchedStudio = false;
+
       final results = await Future.wait([
         UserApiService.fetchPrivateProfile(),
         UserApiService.fetchSavedItems(),
@@ -126,6 +130,11 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
         _savedItems = results[1] as List<dynamic>? ?? [];
         _isLoading = false;
       });
+
+      // BỌC THÉP LOGIC: Tự động kéo lại danh sách video thật từ Server nếu tab hiện tại đang là Studio
+      if (_activeTab == 'studio') {
+        await _loadUserStudioIfNeeded();
+      }
     } finally {
       _isFetchingLock = false;
     }
@@ -350,6 +359,9 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                               _userVideos.insert(0, mockNewVideo); // Chèn tức thì vào đầu lưới hiển thị UI
                               _hasFetchedStudio = false; // Đặt lại cờ cache để nạp chuẩn dữ liệu thật ở chu kỳ sau
                             });
+                            
+                            // BỌC THÉP LOGIC: Gọi lại luồng nạp dữ liệu gốc để tái đồng bộ số lượng video_count phục vụ luồng nâng cấp
+                            _loadData();
                             
                             AppToast.show(context: context, message: 'Gửi video lên hàng đợi duyệt thành công!', isSuccess: true);
                           }
@@ -1052,19 +1064,93 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Mở rộng thanh chọn Tab phẳng mượt hiển thị thêm Tab Studio & Nâng cấp cho User
-                    Row(
-                      children: [
-                        _buildTabMenuButton(title: 'Đã lưu', tabKey: 'saves'),
-                        const SizedBox(width: 6),
-                        _buildTabMenuButton(title: 'Thành tựu', tabKey: 'achievements'),
-                        const SizedBox(width: 6),
-                        _buildTabMenuButton(title: 'Studio', tabKey: 'studio'),
-                        const SizedBox(width: 6),
-                        _buildTabMenuButton(title: 'Nâng cấp', tabKey: 'upgrade'),
-                        const SizedBox(width: 6),
-                        _buildTabMenuButton(title: 'Cá nhân', tabKey: 'history'),
-                      ],
+                    // Tái cấu trúc bọc cuộn chống Overflowed và tích hợp Animation lấp lánh sắc Hồng thương hiệu Creator
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: [
+                          _buildTabMenuButton(title: 'Studio', tabKey: 'studio'),
+                          const SizedBox(width: 6),
+                          _buildTabMenuButton(title: 'Thành tựu', tabKey: 'achievements'),
+                          const SizedBox(width: 6),
+                          _buildTabMenuButton(title: 'Cá nhân', tabKey: 'history'),
+                          const SizedBox(width: 6),
+                          
+                          // Thiết lập nút Nâng cấp bọc thép hiệu ứng luồng sáng chéo Gradient Premium chạy vô hạn
+                          TweenAnimationBuilder<double>(
+                            tween: Tween<double>(begin: -1.0, end: 2.0),
+                            duration: const Duration(milliseconds: 2500),
+                            builder: (context, alignmentOffset, child) {
+                              final bool isSelected = _activeTab == 'upgrade';
+                              
+                              // Thiết lập mảng màu dải sáng chéo Premium chèn giữa nền Hồng Creator
+                              final List<Color> activeGradientColors = [
+                                const Color(0xFFFF6B8B),
+                                const Color(0xFFFF8EAA),
+                                Colors.white.withOpacity(0.8), // Điểm giao thoa ánh sáng chéo lấp lánh cực đỉnh
+                                const Color(0xFFFF8EAA),
+                                const Color(0xFFFF6B8B),
+                              ];
+
+                              final List<Color> inactiveGradientColors = [
+                                const Color(0xFFFF6B8B).withOpacity(0.08),
+                                const Color(0xFFFF8EAA).withOpacity(0.2),
+                                const Color(0xFFFFD6DA).withOpacity(0.6), // Dải sáng chéo mờ thanh lịch khi chưa chọn
+                                const Color(0xFFFF8EAA).withOpacity(0.2),
+                                const Color(0xFFFF6B8B).withOpacity(0.08),
+                              ];
+
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() => _activeTab = 'upgrade');
+                                },
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment(alignmentOffset - 0.4, -1.0),
+                                      end: Alignment(alignmentOffset + 0.4, 1.0),
+                                      colors: isSelected ? activeGradientColors : inactiveGradientColors,
+                                      stops: const [0.0, 0.35, 0.5, 0.65, 1.0],
+                                    ),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: isSelected 
+                                          ? const Color(0xFFFF4B72) 
+                                          : const Color(0xFFFF6B8B).withOpacity(0.4),
+                                      width: 1.2,
+                                    ),
+                                    boxShadow: isSelected ? [
+                                      BoxShadow(
+                                        color: const Color(0xFFFF6B8B).withOpacity(0.35),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                      )
+                                    ] : null,
+                                  ),
+                                  child: Text(
+                                    'Nâng cấp',
+                                    style: TextStyle(
+                                      color: isSelected ? Colors.white : const Color(0xFFFF4B72),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                            onEnd: () {
+                              // Chạy cơ chế khởi động lại luồng lập lịch lặp vô hạn (Infinite Loop Auto-Restart)
+                              setState(() {});
+                            },
+                          ),
+                          const SizedBox(width: 6),
+                          _buildTabMenuButton(title: 'Đã lưu', tabKey: 'saves'),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 14),
 
@@ -1481,6 +1567,10 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                                           if (res.statusCode == 200) {
                                             _hasFetchedStudio = false;
                                             _loadUserStudioIfNeeded();
+                                            
+                                            // BỌC THÉP LOGIC: Gọi lại luồng nạp dữ liệu gốc để làm sạch trường đếm video_count, chặn đứng lỗ hổng Client-Side Bypass
+                                            _loadData();
+                                            
                                             AppToast.show(context: context, message: 'Đã gửi yêu cầu gỡ video chờ duyệt!', isSuccess: true);
                                           } else {
                                             AppToast.show(context: context, message: 'Lỗi thực thi lệnh gỡ!', isSuccess: false);
@@ -1523,8 +1613,12 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
         );
       }
 
-      final Map<String, dynamic> stats = _profileData?['stats'] ?? {};
-      final int videoCount = stats['approved_count'] ?? profile['video_count'] ?? 0;
+      // NÂNG CẤP THUẬT TOÁN BỌC THÉP: Đếm trực tiếp các video có nhãn trạng thái Đã duyệt trong mảng Studio
+      final int videoCount = _userVideos.where((v) {
+        final String status = (v['status'] ?? '').toString().toUpperCase();
+        return status == 'APPROVED' || status == 'PUBLISHED';
+      }).length;
+
       final int streakCount = profile['streak_count'] ?? 0;
 
       final bool condVideos = videoCount >= 5;
@@ -1574,12 +1668,13 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
             const Text('Điều kiện nâng cấp Creator', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 15, fontWeight: FontWeight.w800)),
             const SizedBox(height: 16),
 
+            // Dòng kiểm tra điều kiện đăng tải video
             Row(
               children: [
                 Icon(condVideos ? Icons.check_circle_rounded : Icons.radio_button_off_rounded, color: condVideos ? const Color(0xFF80BF84) : const Color(0xFFB0C4C1), size: 20),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text('Đăng tải tối thiểu 5 video ngắn đã được duyệt (Hiện tại: $videoCount/5)', style: TextStyle(color: const Color(0xFF1A3A35), fontSize: 13.5, fontWeight: condVideos ? FontWeight.w600 : FontWeight.w400)),
+                  child: Text('Đăng tải tối thiểu 5 video ngắn (Chỉ tính các video đã được duyệt thành công) (Hiện tại: $videoCount/5)', style: TextStyle(color: const Color(0xFF1A3A35), fontSize: 13.5, fontWeight: condVideos ? FontWeight.w600 : FontWeight.w400)),
                 ),
               ],
             ),

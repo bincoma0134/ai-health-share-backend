@@ -45,6 +45,13 @@ class TikTokFeedCreate(BaseModel):
     content: Optional[str] = None
     video_url: str
     price: Optional[float] = None
+    affiliate_rate: Optional[float] = 0.0
+    partner_id: Optional[str] = None
+    service_id: Optional[str] = None
+    voucher_code: Optional[str] = None
+    feed_type: Optional[str] = "TIKTOK_FEED" # "TIKTOK_FEED" hoặc "SERVICE_VIDEO"
+    trim_start_percent: Optional[float] = 0.0
+    trim_end_percent: Optional[float] = 100.0
 
 # --- 5. CẤU TRÚC COMMUNITY (Bài viết diễn đàn) ---
 class CommunityPostCreate(BaseModel):
@@ -97,7 +104,7 @@ class CreatorUpgradeRequest(BaseModel):
 class CreatorUpgradeStatusResponse(BaseModel):
     status: Optional[str] = None
     moderation_note: Optional[str] = None
-    updated_at: Optional[datetime] = None
+    updated_at: Optional[Any] = None
 
 class CreatorUpgradeQueueItem(BaseModel):
     upgrade_id: str

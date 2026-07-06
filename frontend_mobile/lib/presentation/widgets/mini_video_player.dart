@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:visibility_detector/visibility_detector.dart'; // Màng lọc kiểm soát hiển thị thông minh
 import '../../core/network/video_cache_engine.dart';
 
 class MiniVideoPlayer extends StatefulWidget {
@@ -144,7 +145,6 @@ class _MiniVideoPlayerState extends State<MiniVideoPlayer> {
   @override
   Widget build(BuildContext context) {
     if (_hasError) {
-      // Dự phòng an toàn (Fallback UI) nếu link video lỗi, hiển thị icon y tế chuyên nghiệp
       return Container(
         color: const Color(0xFFF1F5F9),
         child: const Center(child: Icon(Icons.broken_image_rounded, color: Colors.black26, size: 28)),
@@ -152,7 +152,6 @@ class _MiniVideoPlayerState extends State<MiniVideoPlayer> {
     }
 
     if (!_isInitialized) {
-      // TỐI ƯU HÓA UX 3: Thay thế vòng quay Circular cũ bằng bộ khung xương mờ mịn màng sang trọng
       return Container(
         color: const Color(0xFFF8FAFC),
         child: Center(
@@ -168,84 +167,56 @@ class _MiniVideoPlayerState extends State<MiniVideoPlayer> {
       );
     }
 
-    // Ép cấu trúc khung hình lấp đầy diện tích kèm theo thanh trượt thời gian Timeline tương tác
-    return Stack(
-      alignment: Alignment.bottomCenter,
-      children: [
-        SizedBox.expand(
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: _controller.value.size.width,
-              height: _controller.value.size.height,
-              child: GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _controller.value.isPlaying ? _controller.pause() : _controller.play();
-                  });
-                },
-                child: VideoPlayer(_controller),
-              ),
-            ),
-          ),
-        ),
+    // Bọc VisibilityDetector thiết lập màng bảo vệ tự động đóng ngắt luồng giải mã video tiết kiệm tài nguyên
+    return VisibilityDetector(
+      key: Key('mini_video_${widget.videoUrl}_${identityHashCode(this)}'),
+      onVisibilityChanged: (visibilityInfo) {
+        if (!mounted || !_isInitialized) return;
+        final double visiblePercentage = visibilityInfo.visibleFraction * 100;
         
-        // NÚT BẤM DỪNG PHÁT GIỮA MÀN HÌNH KHI PAUSE
-        if (!_controller.value.isPlaying)
-          Center(
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
-              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 40),
-            ),
-          ),
-
-        // HỆ THỐNG TIMELINE ĐIỀU KHIỂN THỜI GIAN CHUYÊN NGHIỆP Ở ĐÁY VIDEO PREVIEW
-        // 🚀 ĐỒNG BỘ: Chỉ hiển thị dải timeline này cho các màn hình cũ, ẩn đi nếu đang ở Studio Đăng tải có Slider riêng
-        if (widget.onProgressUpdate == null)
-        Positioned(
-          bottom: 120, // Nâng cao để không bị che khuất bởi cụm điều khiển Shutter của trang chính
-          left: 16,
-          right: 16,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  ValueListenableBuilder(
-                    valueListenable: _controller,
-                    builder: (context, VideoPlayerValue value, child) {
-                      final duration = value.position;
-                      return Text(
-                        "${duration.inMinutes}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}",
-                        style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
-                      );
-                    },
-                  ),
-                  Text(
-                    "${_controller.value.duration.inMinutes}:${(_controller.value.duration.inSeconds % 60).toString().padLeft(2, '0')}",
-                    style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: VideoProgressIndicator(
-                  _controller,
-                  allowScrubbing: true, // Cho phép người dùng kéo thả, lướt timeline để tua video tự do
-                  colors: const VideoProgressColors(
-                    playedColor: Color(0xFF80BF84), // Màu xanh ngọc thương hiệu Wellness của sàn
-                    bufferedColor: Colors.white24,
-                    backgroundColor: Colors.white10,
-                  ),
+        // Thuật toán: Nếu tỷ lệ hiển thị dưới 15% diện tích màn hình, lập tức đóng ngắt luồng CPU để bảo vệ RAM
+        if (visiblePercentage < 15) {
+          if (_controller.value.isPlaying) {
+            _controller.pause();
+          }
+        } else {
+          // Khi quay trở lại vùng nhìn thấy lớn hơn 15%, tự động kích hoạt preview mượt mà
+          if (!_controller.value.isPlaying) {
+            _controller.play();
+          }
+        }
+      },
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: _controller.value.size.width,
+                height: _controller.value.size.height,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _controller.value.isPlaying ? _controller.pause() : _controller.play();
+                    });
+                  },
+                  child: VideoPlayer(_controller),
                 ),
               ),
-            ],
+            ),
           ),
-        ),
-      ],
+          
+          if (!_controller.value.isPlaying)
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+                child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 40),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

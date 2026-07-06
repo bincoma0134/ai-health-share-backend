@@ -321,11 +321,20 @@ def get_services(user_id: str = None, conn=Depends(get_db_connection)):
 def get_map_partners(conn=Depends(get_db_connection)):
     """
     API phục vụ phân hệ Bản đồ khám phá (Map Explore).
-    Tự động kết hợp dữ liệu Tọa độ Đối tác, gắn nhãn (tags) ngẫu nhiên dựa trên tên và đóng gói mảng Dịch vụ đi kèm.
+    Tự động kết hợp dữ liệu Tọa độ Đối tác, tính toán Biên độ hoa hồng thực tế dựa trên dịch vụ và đóng gói mảng dịch vụ đi kèm.
     """
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        # Sử dụng Subquery kết hợp COALESCE và json_agg để đóng gói mảng services native từ DB
+        # Tự động thực hiện Migration ngầm đồng bộ cấu trúc lưu trữ thương mại mới
+        cur.execute("ALTER TABLE tiktok_feeds ADD COLUMN IF NOT EXISTS affiliate_rate NUMERIC DEFAULT 0.0")
+        cur.execute("ALTER TABLE tiktok_feeds ADD COLUMN IF NOT EXISTS partner_id UUID")
+        cur.execute("ALTER TABLE tiktok_feeds ADD COLUMN IF NOT EXISTS service_id UUID")
+        cur.execute("ALTER TABLE tiktok_feeds ADD COLUMN IF NOT EXISTS voucher_code VARCHAR(255)")
+        cur.execute("ALTER TABLE tiktok_feeds ADD COLUMN IF NOT EXISTS feed_type VARCHAR(50) DEFAULT 'TIKTOK_FEED'")
+        cur.execute("ALTER TABLE tiktok_feeds ADD COLUMN IF NOT EXISTS trim_start_percent NUMERIC DEFAULT 0.0")
+        cur.execute("ALTER TABLE tiktok_feeds ADD COLUMN IF NOT EXISTS trim_end_percent NUMERIC DEFAULT 100.0")
+        conn.commit()
+
         query = """
             SELECT 
                 u.id, 
@@ -340,11 +349,13 @@ def get_map_partners(conn=Depends(get_db_connection)):
                     WHEN u.username ILIKE '%lab%' OR u.full_name ILIKE '%Lab%' THEN json_build_array('Xét nghiệm', 'Chẩn đoán')
                     ELSE json_build_array('Trị liệu Đông Y', 'Phục hồi chức năng')
                 END as tags,
+                COALESCE((SELECT MIN(affiliate_rate) FROM services WHERE partner_id = u.id AND status = 'APPROVED' AND is_deleted = false), 0.0) as min_commission,
+                COALESCE((SELECT MAX(affiliate_rate) FROM services WHERE partner_id = u.id AND status = 'APPROVED' AND is_deleted = false), 0.0) as max_commission,
                 COALESCE(
                     (
-                        SELECT json_agg(json_build_object('id', s.id, 'service_name', s.service_name, 'price', s.price))
+                        SELECT json_agg(json_build_object('id', s.id, 'service_name', s.service_name, 'price', s.price, 'affiliate_rate', COALESCE(s.affiliate_rate, 0.0)))
                         FROM services s
-                        WHERE s.partner_id = u.id AND s.status = 'APPROVED'
+                        WHERE s.partner_id = u.id AND s.status = 'APPROVED' AND s.is_deleted = false
                     ),
                     '[]'::json
                 ) as services
@@ -354,9 +365,19 @@ def get_map_partners(conn=Depends(get_db_connection)):
         """
         cur.execute(query)
         partners_data = cur.fetchall()
+        
+        # Xây dựng chuỗi stats đặc biệt để client render giao diện xịn tức thời
+        for p in partners_data:
+            min_val = float(p['min_commission'])
+            max_val = float(p['max_commission'])
+            if min_val == max_val:
+                p['commission_range'] = f"{min_val:.0f}%"
+            else:
+                p['commission_range'] = f"{min_val:.0f}% - {max_val:.0f}%"
+                
         return {"status": "success", "data": partners_data}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Lỗi truy vấn dữ liệu bản đồ: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Lỗi truy vấn dữ liệu bản đồ và tính toán biên độ: {str(e)}")
     finally:
         cur.close()
 
@@ -1127,19 +1148,55 @@ def get_tiktok_feeds(user_id: str = None, filter: str = None, limit: int = 50, c
 
 @app.post("/tiktok/feeds", tags=["TikTok Feeds"])
 def create_tiktok_feed(payload: schemas.TikTokFeedCreate, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    role = getattr(current_user, 'role', 'USER')
+    user_id = getattr(current_user, 'id', None)
+
+    # 🛡️ GUARD 1: Kiểm thử và bọc thép an toàn đối với Standard USER
+    if role == "USER":
+        if payload.price or payload.partner_id or payload.service_id or payload.voucher_code or (payload.affiliate_rate and payload.affiliate_rate > 0):
+            raise HTTPException(status_code=403, detail="Tài khoản thường chỉ được quyền nhập tiêu đề và mô tả video ngắn!")
+
+    # 🛡️ GUARD 2: Ép góc nghiệp vụ đối với CREATOR
+    if role == "CREATOR":
+        if payload.affiliate_rate and payload.affiliate_rate > 0:
+            raise HTTPException(status_code=403, detail="Creator không có quyền tự thiết lập tỷ lệ hoa hồng của đối tác!")
+
+    # 🛡️ GUARD 3: Điều kiện biên bọc thép đối với đối tác PARTNER_ADMIN
+    if role == "PARTNER_ADMIN":
+        if payload.feed_type == "TIKTOK_FEED":
+            if payload.affiliate_rate and payload.affiliate_rate > 0:
+                raise HTTPException(status_code=400, detail="Chế độ TikTok Feeds của đối tác không được phép thiết lập tỷ lệ hoa hồng liên kết!")
+        elif payload.feed_type == "SERVICE_VIDEO":
+            if not payload.price or payload.price <= 0:
+                raise HTTPException(status_code=400, detail="Video dịch vụ y khoa bắt buộc phải cấu hình giá niêm yết cụ thể!")
+            if not payload.affiliate_rate or payload.affiliate_rate <= 0:
+                raise HTTPException(status_code=400, detail="Video giới thiệu dịch vụ bắt buộc phải điền tỷ lệ phần trăm hoa hồng affiliate!")
+
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        status = "APPROVED" if current_user.role in ["SUPER_ADMIN", "ADMIN"] else "PENDING"
-        cur.execute("""INSERT INTO tiktok_feeds (author_id, title, content, video_url, price, status) 
-                       VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
-                    (current_user.id, payload.title, payload.content, payload.video_url, payload.price, status))
+        status = "APPROVED" if role in ["SUPER_ADMIN", "ADMIN"] else "PENDING"
+        
+        # Ép buộc gắn chặt mã đối tác là chính mình nếu là tài khoản Partner đăng tải
+        final_partner_id = user_id if role == "PARTNER_ADMIN" else payload.partner_id
+
+        cur.execute("""
+            INSERT INTO tiktok_feeds 
+            (author_id, title, content, video_url, price, affiliate_rate, partner_id, service_id, voucher_code, feed_type, trim_start_percent, trim_end_percent, status) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
+        """, (
+            user_id, payload.title, payload.content, payload.video_url, payload.price, 
+            payload.affiliate_rate, final_partner_id, payload.service_id, payload.voucher_code, 
+            payload.feed_type, payload.trim_start_percent, payload.trim_end_percent, status
+        ))
         data = cur.fetchone()
         
-        # Gamification: Tăng biến đếm video nếu bài được duyệt trực tiếp
         if status == "APPROVED":
-            cur.execute("UPDATE users SET video_count = video_count + 1 WHERE id = %s", (current_user.id,))
+            cur.execute("UPDATE users SET video_count = video_count + 1 WHERE id = %s", (user_id,))
         conn.commit()
         return {"status": "success", "data": data}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống khi thực thi xuất bản nội dung số: {str(e)}")
     finally: cur.close()
 
  # ==========================================
@@ -1395,6 +1452,47 @@ def get_creator_content(current_user = Depends(verify_user_token), conn=Depends(
         cur.execute("SELECT * FROM community_posts WHERE author_id = %s ORDER BY created_at DESC", (current_user.id,))
         posts = cur.fetchall()
         return {"status": "success", "data": {"videos": videos, "community_posts": posts}}
+    finally: cur.close()
+
+@app.post("/creator/withdraw", tags=["Creator"])
+def create_creator_withdrawal_request(payload: schemas.WithdrawalRequest, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    if current_user.role != "CREATOR":
+        raise HTTPException(status_code=403, detail="Quyền hạn không hợp lệ! Endpoint này chỉ dành riêng cho Creator.")
+        
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT balance FROM wallets WHERE user_id = %s", (current_user.id,))
+        wlt = cur.fetchone()
+        if not wlt or float(wlt["balance"]) < payload.amount: 
+            raise HTTPException(status_code=400, detail="Số dư tài khoản không đủ để thực hiện giao dịch!")
+        if payload.amount < 50000: 
+            raise HTTPException(status_code=400, detail="Số tiền rút tối thiểu phải từ 50,000 VND trở lên.")
+
+        payout_info = json.dumps({"bank_name": payload.bank_name, "account_number": payload.account_number, "account_name": payload.account_name})
+        cur.execute("INSERT INTO withdrawal_requests (user_id, amount, status, payout_info) VALUES (%s, %s, 'PENDING', %s)", (current_user.id, payload.amount, payout_info))
+        cur.execute("UPDATE wallets SET balance = balance - %s WHERE user_id = %s", (payload.amount, current_user.id))
+        
+        from notification_service import NotificationService
+        NotificationService.dispatch_event(conn, user_id=current_user.id, event_type="LEGACY", reference_id="", metadata={"category": "FINANCIAL", "title": "Yêu cầu rút tiền Creator", "message": f"Yêu cầu rút tiền số tiền {payload.amount:,.0f}đ từ số dư Creator đang chờ hệ thống phê duyệt."})
+        conn.commit()
+        return {"status": "success", "message": "Yêu cầu rút tiền đã được gửi thành công!"}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally: cur.close()
+
+@app.get("/creator/withdrawals", tags=["Creator"])
+def get_creator_withdrawals(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    if current_user.role != "CREATOR":
+        raise HTTPException(status_code=403, detail="Quyền hạn không hợp lệ!")
+        
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM withdrawal_requests WHERE user_id = %s ORDER BY created_at DESC", (current_user.id,))
+        return {"status": "success", "data": cur.fetchall()}
     finally: cur.close()
 
 # ==========================================

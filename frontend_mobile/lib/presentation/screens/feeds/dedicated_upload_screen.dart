@@ -62,14 +62,19 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
   CancelToken? _currentUploadCancelToken;
   Timer? _debounceTrimTimer;
 
-  // Trạng thái Bước 2 (Metadata Form)
+  // Trạng thái Bước 2 (Metadata Form & Commerce Configuration)
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
-  
+  final _commissionController = TextEditingController(); // Bộ điều khiển trường hoa hồng cho Partner làm Affiliate
+
   String? _selectedPartnerName;
   String? _selectedServiceName;
   String? _selectedVoucherCode;
+  
+  // Mặc định nạp quyền để giả lập phân quyền từ Token Hệ thống, trong thực tế sẽ đọc từ current_user.role
+  String _userRole = "USER"; // Cấu hình test: 'USER', 'CREATOR', hoặc 'PARTNER_ADMIN'
+  String _partnerPublishMode = "TIKTOK_FEED"; // 'TIKTOK_FEED' hoặc 'SERVICE_VIDEO'
   
   bool _isSubmitting = false;
 
@@ -318,6 +323,18 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
     if (_titleController.text.trim().isEmpty) {
       AppToast.show(context: context, message: "Vui lòng nhập tiêu đề bài viết!", isSuccess: false);
       return;
+    }
+
+    // 🛡️ VALIDATION HOÀN THIỆN ĐỐI VỚI VAI TRÒ PARTNER ADMIN KHI ĐĂNG VIDEO DỊCH VỤ
+    if (_userRole == "PARTNER_ADMIN" && _partnerPublishMode == "SERVICE_VIDEO") {
+      if (_priceController.text.trim().isEmpty) {
+        AppToast.show(context: context, message: "Lỗi: Vai trò Đối tác đăng Video dịch vụ bắt buộc phải nhập Giá bán!", isSuccess: false);
+        return;
+      }
+      if (_commissionController.text.trim().isEmpty) {
+        AppToast.show(context: context, message: "Lỗi: Vui lòng nhập tỷ lệ % Hoa hồng cho Creator làm Affiliate!", isSuccess: false);
+        return;
+      }
     }
 
     // ĐỒNG BỘ ĐIỂM CHẶN CUỐI CÙNG: Chỉ kiểm tra cờ tải lên ngầm tại thời điểm xuất bản biểu mẫu
@@ -842,6 +859,9 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
 
   // ==================== STEP 2: COMMERCE METADATA FORM ====================
   Widget _buildStep2Metadata() {
+    final bool isUserCardLocked = _userRole == "USER";
+    final bool isPartnerRole = _userRole == "PARTNER_ADMIN";
+
     return Column(
       children: [
         Expanded(
@@ -851,6 +871,65 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 🔔 LỰA CHỌN PHÂN HỆ ĐỐI VỚI VAI TRÒ PARTNER ADMIN (PARTNER ASYMMETRIC PUBLISH SWITCH)
+                if (isPartnerRole) ...[
+                  _buildFormSectionTitle("Chế độ đăng tải video"),
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 20),
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE2ECEB).withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setState(() => _partnerPublishMode = "TIKTOK_FEED"),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              decoration: BoxDecoration(
+                                color: _partnerPublishMode == "TIKTOK_FEED" ? const Color(0xFF1A3A35) : Colors.transparent,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                "TikTok Feeds",
+                                style: TextStyle(
+                                  color: _partnerPublishMode == "TIKTOK_FEED" ? Colors.white : const Color(0xFF617D79),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => setState(() => _partnerPublishMode = "SERVICE_VIDEO"),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              decoration: BoxDecoration(
+                                color: _partnerPublishMode == "SERVICE_VIDEO" ? const Color(0xFF1A3A35) : Colors.transparent,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                "Video dịch vụ",
+                                style: TextStyle(
+                                  color: _partnerPublishMode == "SERVICE_VIDEO" ? Colors.white : const Color(0xFF617D79),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
                 _buildFormSectionTitle("Thông tin bài đăng ngắn"),
                 _buildTextField(controller: _titleController, hint: "Nhập tiêu đề hấp dẫn về sức khỏe..."),
                 const SizedBox(height: 14),
@@ -858,34 +937,97 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                 const SizedBox(height: 24),
 
                 _buildFormSectionTitle("Cấu hình thương mại / Tiếp thị"),
-                _buildTextField(controller: _priceController, hint: "Đặt mức giá hiển thị dịch vụ (VND) nếu có...", keyboardType: TextInputType.number),
-                const SizedBox(height: 16),
+                
+                // 🔒 KHÓA TOÀN BỘ CẤU HÌNH THƯƠNG MẠI & AFFILIATE NẾU LÀ ROLE USER (FROSTED GLASS LUXURY LOCK CURTAIN OVERLAY)
+                Stack(
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Hệ thống phân bổ trường nhập giá cả và phần trăm hoa hồng theo vai trò
+                        if (isPartnerRole && _partnerPublishMode == "SERVICE_VIDEO") ...[
+                          const Text('Giá gói dịch vụ khám (Bắt buộc) *', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 6),
+                          _buildTextField(controller: _priceController, hint: "Nhập giá bán dịch vụ y khoa (VND)...", keyboardType: TextInputType.number),
+                          const SizedBox(height: 14),
+                          const Text('% Hoa hồng chia cho Creator Affiliate (Bắt buộc) *', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 6),
+                          _buildTextField(controller: _commissionController, hint: "Nhập tỷ lệ hoa hồng (VD: 10, 15)...", keyboardType: TextInputType.number),
+                          const SizedBox(height: 20),
+                        ] else ...[
+                          _buildTextField(controller: _priceController, hint: "Đặt mức giá hiển thị dịch vụ (VND) nếu có...", keyboardType: TextInputType.number),
+                          const SizedBox(height: 16),
+                        ],
 
-                _buildSelectableTile(
-                  icon: Icons.maps_home_work_rounded,
-                  label: "Gắn thẻ Cơ sở Wellness",
-                  value: _selectedPartnerName ?? "Chọn đối tác y tế phân phối lịch hẹn...",
-                  onTap: () {
-                    setState(() => _selectedPartnerName = "Bệnh Viện Đa Khoa Hồng Ngọc");
-                  },
-                ),
-                const Divider(height: 1, color: Color(0xFFE2ECEB)),
-                _buildSelectableTile(
-                  icon: Icons.medical_services_rounded,
-                  label: "Liên kết Gói dịch vụ",
-                  value: _selectedServiceName ?? "Nhúng gói trị liệu bọc hoa hồng nền tảng...",
-                  onTap: _selectedPartnerName == null ? null : () {
-                    setState(() => _selectedServiceName = "Gói Trị Liệu Chuyên Sâu Cơ Xương Khớp");
-                  },
-                ),
-                const Divider(height: 1, color: Color(0xFFE2ECEB)),
-                _buildSelectableTile(
-                  icon: Icons.local_offer_rounded,
-                  label: "Đính kèm Mã ưu đãi độc quyền",
-                  value: _selectedVoucherCode ?? "Chọn Voucher công khai kích thích chuyển đổi...",
-                  onTap: _selectedPartnerName == null ? null : () {
-                    setState(() => _selectedVoucherCode = "WELLNESS50K");
-                  },
+                        // Thành phần liên kết ghim cơ sở đối tác và voucher y khoa liên kết
+                        _buildSelectableTile(
+                          icon: Icons.maps_home_work_rounded,
+                          label: "Gắn thẻ Cơ sở Wellness",
+                          value: _selectedPartnerName ?? "Chọn đối tác y tế phân phối lịch hẹn...",
+                          onTap: isUserCardLocked ? null : () {
+                            setState(() => _selectedPartnerName = "Bệnh Viện Đa Khoa Hồng Ngọc");
+                          },
+                        ),
+                        const Divider(height: 1, color: Color(0xFFE2ECEB)),
+                        _buildSelectableTile(
+                          icon: Icons.medical_services_rounded,
+                          label: "Liên kết Gói dịch vụ",
+                          value: _selectedServiceName ?? "Nhúng gói trị liệu bọc hoa hồng nền tảng...",
+                          onTap: (isUserCardLocked || _selectedPartnerName == null) ? null : () {
+                            setState(() => _selectedServiceName = "Gói Trị Liệu Chuyên Sâu Cơ Xương Khớp");
+                          },
+                        ),
+                        const Divider(height: 1, color: Color(0xFFE2ECEB)),
+                        _buildSelectableTile(
+                          icon: Icons.local_offer_rounded,
+                          label: "Đính kèm Mã ưu đãi độc quyền",
+                          value: _selectedVoucherCode ?? "Chọn Voucher công khai kích thích chuyển đổi...",
+                          onTap: (isUserCardLocked || _selectedPartnerName == null) ? null : () {
+                            setState(() => _selectedVoucherCode = "WELLNESS50K");
+                          },
+                        ),
+                      ],
+                    ),
+                    
+                    // Lớp màn che mờ cao cấp bao bọc toàn bộ phân hệ cấu hình thương mại và trường nhập giá của vai trò USER
+                    if (isUserCardLocked)
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.88),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: InkWell(
+                            onTap: () {
+                              AppToast.show(context: context, message: "Kích hoạt: Vui lòng nâng cấp lên tài khoản Creator để mở khóa phân hệ Tiếp thị liên kết!", isSuccess: false);
+                            },
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: const BoxDecoration(color: Color(0xFFFFF0F2), shape: BoxShape.circle),
+                                    child: const Icon(Icons.lock_outline_rounded, color: Color(0xFFFF7A8A), size: 26),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  const Text(
+                                    "MỞ KHÓA CẤU HÌNH THƯƠNG MẠI & AFFILIATE",
+                                    style: TextStyle(color: Color(0xFF1A3A35), fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    "Yêu cầu nâng cấp vai trò lên Creator để thiết lập giá và đính kèm dịch vụ.",
+                                    style: TextStyle(color: Color(0xFF617D79), fontSize: 10, fontWeight: FontWeight.w500),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
