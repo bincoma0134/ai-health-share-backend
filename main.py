@@ -1042,11 +1042,28 @@ def complete_booking_escrow(booking_id: str, current_user = Depends(verify_user_
                     (partner_rev, platform_fee, affiliate_rev, booking_id))
         cur.execute("UPDATE appointments SET status = 'COMPLETED' WHERE booking_id = %s", (booking_id,))
 
-        cur.execute("SELECT * FROM wallets WHERE user_id = %s", (current_user.id,))
+        cur.execute("SELECT id FROM wallets WHERE user_id = %s", (current_user.id,))
         if cur.fetchone():
             cur.execute("UPDATE wallets SET balance = balance + %s, total_earned = total_earned + %s WHERE user_id = %s", (partner_rev, partner_rev, current_user.id))
         else:
             cur.execute("INSERT INTO wallets (user_id, balance, total_earned) VALUES (%s, %s, %s)", (current_user.id, partner_rev, partner_rev))
+        
+        # 🚀 CẬP NHẬT CHỈ SỐ AFFILIATE METRICS TỰ ĐỘNG (ATOMIC UPDATE)
+        if booking.get("affiliate_id"):
+            cur.execute("""
+                SELECT id FROM affiliate_partnerships 
+                WHERE creator_id = %s AND partner_id = %s AND status = 'APPROVED' LIMIT 1
+            """, (booking["affiliate_id"], current_user.id))
+            p_ship = cur.fetchone()
+            if p_ship:
+                cur.execute("""
+                    UPDATE affiliate_metrics 
+                    SET total_conversions = total_conversions + 1,
+                        total_revenue_generated = total_revenue_generated + %s,
+                        total_commission_earned = total_commission_earned + %s,
+                        last_activity_at = NOW()
+                    WHERE partnership_id = %s
+                """, (revenue_base, affiliate_rev, p_ship["id"]))
         
         from notification_service import NotificationService
         NotificationService.dispatch_event(conn, user_id=current_user.id, event_type="REVENUE_DISBURSED", reference_id=booking_id, sender_id=booking["user_id"])
@@ -2357,6 +2374,24 @@ def confirm_appointment(appointment_id: str, payload: schemas.AppointmentConfirm
                 else:
                     cur.execute("INSERT INTO wallets (user_id, balance, total_earned) VALUES (%s, %s, %s)", (appt["partner_id"], partner_rev, partner_rev))
 
+                # 🚀 CẬP NHẬT CHỈ SỐ AFFILIATE METRICS TỰ ĐỘNG (ATOMIC UPDATE - ĐỒNG BỘ TOÀN DIỆN BIẾN NHẬN)
+                target_affiliate_id = booking.get("affiliate_id")
+                if target_affiliate_id:
+                    cur.execute("""
+                        SELECT id FROM affiliate_partnerships 
+                        WHERE creator_id = %s AND partner_id = %s AND status = 'APPROVED' LIMIT 1
+                    """, (target_affiliate_id, appt["partner_id"]))
+                    p_ship = cur.fetchone()
+                    if p_ship:
+                        cur.execute("""
+                            UPDATE affiliate_metrics 
+                            SET total_conversions = total_conversions + 1,
+                                total_revenue_generated = total_revenue_generated + %s,
+                                total_commission_earned = total_commission_earned + %s,
+                                last_activity_at = NOW()
+                            WHERE partnership_id = %s
+                        """, (revenue_base, affiliate_rev, p_ship["id"]))
+
         cur.execute("UPDATE appointments SET status = 'COMPLETED', user_confirmed = True WHERE id = %s", (appointment_id,))
         from notification_service import NotificationService
         NotificationService.dispatch_event(conn, user_id=appt["partner_id"], event_type="REVENUE_DISBURSED", reference_id=appointment_id, sender_id=current_user.id)
@@ -2749,3 +2784,255 @@ def create_review(payload: schemas.ReviewCreate, current_user = Depends(verify_u
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         cur.close()
+
+# =====================================================================
+# 🚀 NÂNG CẤP PHÂN HỆ AFFILIATE ENDPOINTS (PHASE 2.7 & PHASE 2.6)
+# =====================================================================
+
+@app.get("/creator/affiliate/partners", tags=["Creator Affiliate"])
+async def get_affiliate_partners(current_user = Depends(verify_user_token)):
+    """
+    [Phase 2.6] Creator theo dõi danh sách Cơ sở đối tác kèm biên độ % hoa hồng động
+    và trạng thái ứng tuyển của bản thân tương ứng với từng đối tác.
+    """
+    conn = db_pool.getconn()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Lấy toàn bộ danh sách tài khoản là PARTNER hoặc PARTNER_ADMIN
+        cur.execute("SELECT id, username, full_name, avatar_url FROM users WHERE role IN ('PARTNER', 'PARTNER_ADMIN')")
+        partners = cur.fetchall()
+        
+        # Lấy các liên kết hiện tại của Creator này để map trạng thái button UI
+        cur.execute("SELECT partner_id, status FROM affiliate_partnerships WHERE creator_id = %s", (current_user.id,))
+        partnerships = cur.fetchall()
+        partnership_map = {str(p["partner_id"]): p["status"] for p in partnerships}
+        
+        result = []
+        for pt in partners:
+            p_id = str(pt["id"])
+            
+            # Tính toán Biên độ hoa hồng thực tế dựa trên kho video của đối tác đó (Sử dụng đúng trường khóa ngoại UUID)
+            cur.execute("SELECT affiliate_rate FROM tiktok_feeds WHERE partner_id = %s AND affiliate_rate > 0", (p_id,))
+            rates = cur.fetchall()
+            
+            if rates:
+                min_rate = min([r["affiliate_rate"] for r in rates])
+                max_rate = max([r["affiliate_rate"] for r in rates])
+                margin = f"{int(min_rate)}% - {int(max_rate)}%" if min_rate != max_rate else f"{int(min_rate)}%"
+            else:
+                margin = "0%"
+                
+            status = partnership_map.get(p_id, "NOT_APPLIED")
+            
+            result.append({
+                "partner_id": p_id,
+                "username": pt["username"],
+                "full_name": pt["full_name"],
+                "avatar_url": pt["avatar_url"],
+                "commission_margin": margin,
+                "status": status
+            })
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        db_pool.putconn(conn)
+
+
+@app.post("/creator/affiliate/apply", tags=["Creator Affiliate"])
+async def creator_apply_affiliate(payload: schemas.AffiliateApplyRequest, current_user = Depends(verify_user_token)):
+    """
+    [Phase 2.6] Button ứng tuyển làm Affiliate cho một cơ sở đối tác xác định.
+    Sử dụng cơ chế UPSERT đề phòng double-click bọc thép chống race condition.
+    """
+    conn = db_pool.getconn()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        query = """
+            INSERT INTO affiliate_partnerships (creator_id, partner_id, status, updated_at)
+            VALUES (%s, %s, 'PENDING', NOW())
+            ON CONFLICT (creator_id, partner_id) 
+            DO UPDATE SET status = 'PENDING', updated_at = NOW()
+            RETURNING id, status;
+        """
+        cur.execute(query, (current_user.id, payload.partner_id))
+        res = cur.fetchone()
+        conn.commit()
+        return {"status": "success", "message": "Nộp đơn ứng tuyển làm cộng tác viên thành công!", "data": res}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        db_pool.putconn(conn)
+
+
+@app.get("/partner/affiliate/queue", tags=["Partner Dashboard"])
+async def get_partner_affiliate_queue(current_user = Depends(verify_user_token)):
+    """
+    [Phase 2.7] Đối tác truy vấn hàng đợi danh sách Creator đang nộp đơn ứng tuyển làm Affiliate.
+    """
+    conn = db_pool.getconn()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        query = """
+            SELECT ap.id as partnership_id, u.id as creator_id, u.username, u.full_name, u.avatar_url, ap.status, ap.created_at
+            FROM affiliate_partnerships ap
+            JOIN users u ON ap.creator_id = u.id
+            WHERE ap.partner_id = %s AND ap.status = 'PENDING'
+            ORDER BY ap.created_at DESC;
+        """
+        cur.execute(query, (current_user.id,))
+        queue = cur.fetchall()
+        for q in queue:
+            q["partnership_id"] = str(q["partnership_id"])
+            q["creator_id"] = str(q["creator_id"])
+            q["created_at"] = q["created_at"].strftime("%Y-%m-%d %H:%M:%S") if q["created_at"] else ""
+        return {"status": "success", "data": queue}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        db_pool.putconn(conn)
+
+
+@app.patch("/partner/affiliate/{partnership_id}/action", tags=["Partner Dashboard"])
+async def action_partner_affiliate(partnership_id: str, payload: schemas.AffiliateActionRequest, current_user = Depends(verify_user_token)):
+    """
+    [Phase 2.7] Đối tác phê duyệt hoặc Từ chối yêu cầu ứng tuyển của Creator.
+    Sử dụng Atomic Database Transaction để khởi tạo thực thể Metrics đồng bộ khi duyệt APPROVED thành công.
+    """
+    if payload.action not in ["APPROVED", "REJECTED"]:
+        raise HTTPException(status_code=400, detail="Hành động duyệt không hợp lệ!")
+        
+    conn = db_pool.getconn()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Cập nhật trạng thái liên kết đối tác
+        query_update = """
+            UPDATE affiliate_partnerships 
+            SET status = %s, admin_note = %s, updated_at = NOW()
+            WHERE id = %s AND partner_id = %s
+            RETURNING id, status;
+        """
+        cur.execute(query_update, (payload.action, payload.admin_note, partnership_id, current_user.id))
+        res = cur.fetchone()
+        
+        if not res:
+            conn.rollback()
+            raise HTTPException(status_code=404, detail="Không tìm thấy hồ sơ ứng tuyển hoặc bạn không có quyền sở hữu!")
+            
+        # Nếu được phê duyệt, tự động khởi tạo bảng metrics hiệu suất trống cho Creator (Bọc thép dữ liệu)
+        if payload.action == "APPROVED":
+            query_metrics = """
+                INSERT INTO affiliate_metrics (partnership_id, total_clicks, total_conversions, total_revenue_generated, total_commission_earned, last_activity_at)
+                VALUES (%s, 0, 0, 0.00, 0.00, NOW())
+                ON CONFLICT (partnership_id) DO NOTHING;
+            """
+            cur.execute(query_metrics, (partnership_id,))
+            
+        conn.commit()
+        return {"status": "success", "message": f"Đã xử lý trạng thái liên kết sang hình thức: {payload.action}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        db_pool.putconn(conn)
+
+
+@app.get("/creator/affiliate/partners/{partner_id}/services", tags=["Creator Affiliate"])
+async def get_partner_services_for_creator(partner_id: str, current_user = Depends(verify_user_token)):
+    """
+    [Phase 2.6] Creator xem danh mục toàn bộ dịch vụ của một Partner cụ thể,
+    gồm thông tin dịch vụ và tỷ lệ % hoa hồng lấy từ video đại diện.
+    """
+    conn = db_pool.getconn()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # 1. Xác thực thông tin định danh username của Partner từ id nhận được
+        cur.execute("SELECT id, username FROM users WHERE id = %s AND role IN ('PARTNER', 'PARTNER_ADMIN')", (partner_id,))
+        partner = cur.fetchone()
+        if not partner:
+            raise HTTPException(status_code=404, detail="Không tìm thấy cơ sở đối tác hợp lệ.")
+            
+        # 2. Truy vấn danh sách dịch vụ đã được duyệt của cơ sở này
+        query_services = """
+            SELECT id, service_name, description, price, image_url, video_url, tags, service_type, status, created_at
+            FROM services
+            WHERE partner_id = %s AND status = 'APPROVED'
+            ORDER BY created_at DESC;
+        """
+        cur.execute(query_services, (partner_id,))
+        services = cur.fetchall()
+        
+        # 3. Kéo dải cấu hình hoa hồng thực tế gắn với từng service_id từ bảng feeds (Sử dụng chuẩn hóa UUID định danh)
+        cur.execute("SELECT service_id, affiliate_rate FROM tiktok_feeds WHERE partner_id = %s AND service_id IS NOT NULL", (partner_id,))
+        feeds = cur.fetchall()
+        feed_rate_map = {str(f["service_id"]): f["affiliate_rate"] for f in feeds}
+        
+        result = []
+        for svc in services:
+            svc_id = str(svc["id"])
+            # Khớp nối tỷ lệ phần trăm hoa hồng từ Video Studio (Mặc định 0.0 nếu chưa cấu hình)
+            commission_rate = feed_rate_map.get(svc_id, 0.0)
+            
+            result.append({
+                "id": svc_id,
+                "service_name": svc["service_name"],
+                "description": svc["description"],
+                "price": float(svc["price"]),
+                "image_url": svc["image_url"],
+                "video_url": svc["video_url"],
+                "tags": svc["tags"],
+                "service_type": svc["service_type"],
+                "status": svc["status"],
+                "affiliate_rate": float(commission_rate)
+            })
+            
+        return {"status": "success", "data": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        db_pool.putconn(conn)
+
+
+@app.get("/partner/affiliate/metrics", tags=["Partner Dashboard"])
+async def get_partner_affiliate_metrics(current_user = Depends(verify_user_token)):
+    """
+    [Phase 2.7] Tab theo dõi tiến độ, tiến trình hoạt động, doanh thu mang lại của toàn bộ Affiliate thuộc quyền quản lý.
+    """
+    conn = db_pool.getconn()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        query = """
+            SELECT am.partnership_id, u.username as creator_username, u.full_name as creator_full_name,
+                   am.total_clicks, am.total_conversions, am.total_revenue_generated, am.total_commission_earned, am.last_activity_at
+        FROM affiliate_metrics am
+        JOIN affiliate_partnerships ap ON am.partnership_id = ap.id
+        JOIN users u ON ap.creator_id = u.id
+        WHERE ap.partner_id = %s AND ap.status = 'APPROVED'
+        ORDER BY am.total_revenue_generated DESC;
+    """
+        cur.execute(query, (current_user.id,))
+        metrics = cur.fetchall()
+        for m in metrics:
+            m["partnership_id"] = str(m["partnership_id"])
+            m["last_activity_at"] = m["last_activity_at"].strftime("%Y-%m-%d %H:%M:%S") if m["last_activity_at"] else ""
+            m["total_revenue_generated"] = float(m["total_revenue_generated"])
+            m["total_commission_earned"] = float(m["total_commission_earned"])
+        return {"status": "success", "data": metrics}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        db_pool.putconn(conn)

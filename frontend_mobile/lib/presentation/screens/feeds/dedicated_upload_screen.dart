@@ -15,10 +15,14 @@ import 'package:video_compress/video_compress.dart'; // 🚀 HOTFIX: Thêm thư 
 import '../../../core/manager/audio_focus_manager.dart';
 import 'package:dio/dio.dart'; // Đảm bảo đính kèm lõi Token hủy mạng
 import 'dart:async';
+import '../../../data/services/secure_storage_service.dart';
+import '../../../data/services/partner_api_service.dart';
 
 
 class DedicatedUploadScreen extends StatefulWidget {
-  const DedicatedUploadScreen({super.key});
+  final String userRole;
+
+  const DedicatedUploadScreen({super.key, required this.userRole});
 
   @override
   State<DedicatedUploadScreen> createState() => _DedicatedUploadScreenState();
@@ -71,12 +75,18 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
   String? _selectedPartnerName;
   String? _selectedServiceName;
   String? _selectedVoucherCode;
+  String? _selectedServiceId; // Lưu ID dịch vụ thực tế để truyền payload và gỡ liên kết
   
-  // Mặc định nạp quyền để giả lập phân quyền từ Token Hệ thống, trong thực tế sẽ đọc từ current_user.role
-  String _userRole = "USER"; // Cấu hình test: 'USER', 'CREATOR', hoặc 'PARTNER_ADMIN'
+  // Lưu trữ danh sách thực tế của riêng Partner để hiển thị lựa chọn
+  List<dynamic> _partnerAvailableServices = [];
+  List<dynamic> _partnerAvailableVouchers = [];
+  bool _isFetchingMetadata = false;
+  
+  String _userRole = "USER"; // Sẽ tự động nạp động từ luồng trạng thái tài khoản hệ thống
   String _partnerPublishMode = "TIKTOK_FEED"; // 'TIKTOK_FEED' hoặc 'SERVICE_VIDEO'
   
   bool _isSubmitting = false;
+  bool _isLoadingRole = true; // 🛡️ GÁC CỔNG TRẠNG THÁI: Ngăn chặn giao diện vẽ vội vã khi chưa nạp xong quyền
 
   @override
   void initState() {
@@ -88,6 +98,93 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
       vsync: this,
       duration: const Duration(seconds: 4),
     )..repeat(); // Kích hoạt luồng quay vô hạn tạo sóng hạt Hologram 3D mượt màng
+
+    _userRole = widget.userRole.trim().toUpperCase();
+    _isLoadingRole = false;
+    
+    // Nếu là Partner, chủ động tiền tải dữ liệu thương mại của cơ sở để sẵn sàng cho tab 2
+    if (_userRole == "PARTNER_ADMIN" || _userRole == "PARTNER") {
+      _loadPartnerMetadata();
+    }
+  }
+
+  Future<void> _loadPartnerMetadata() async {
+    if (_isFetchingMetadata) return;
+    _isFetchingMetadata = true;
+    try {
+      // Tận dụng cổng API Service chuẩn hóa của Partner Private Profile
+      final results = await Future.wait([
+        PartnerApiService.fetchMyServices().catchError((_) => []),
+        ApiClient.instance.get('/partner/vouchers').then((res) => res.data is List ? res.data : []).catchError((_) => []),
+      ]);
+
+      if (mounted) {
+        setState(() {
+          // Chỉ lấy các dịch vụ đã APPROVED để đảm bảo tính pháp lý khi nhúng vào video
+          _partnerAvailableServices = (results[0] as List<dynamic>)
+              .where((svc) => svc['status'] == 'APPROVED')
+              .toList();
+          
+          // Lọc voucher do cơ sở phát hành và còn thời hạn sử dụng real-time năm 2026
+          final now = DateTime.now();
+          _partnerAvailableVouchers = (results[1] as List<dynamic>).where((v) {
+            if (v['valid_until'] == null) return false;
+            try {
+              final expireDate = DateTime.parse(v['valid_until'].toString());
+              return expireDate.isAfter(now);
+            } catch (_) {
+              return false;
+            }
+          }).toList();
+        });
+      }
+    } catch (_) {}
+    _isFetchingMetadata = false;
+  }
+
+  // Helper hiển thị danh sách chọn lựa mượt mà cho đối tác
+  void _showSelectionBottomSheet({
+    required String title,
+    required List<dynamic> items,
+    required String itemTitleKey,
+    required String itemValueKey,
+    required Function(String selectedTitle, String selectedValue) onSelected,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            Expanded(
+              child: items.isEmpty
+                  ? const Center(child: Text("Kho dữ liệu trống hoặc đang chờ phê duyệt", style: TextStyle(color: Color(0xFF617D79))))
+                  : ListView.builder(
+                      itemCount: items.length,
+                      itemBuilder: (context, index) {
+                        final item = items[index];
+                        final displayTitle = item[itemTitleKey]?.toString() ?? '';
+                        final displayValue = item[itemValueKey]?.toString() ?? '';
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(displayTitle, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600, fontSize: 14)),
+                          trailing: const Icon(Icons.add_circle_outline_rounded, color: Color(0xFF80BF84), size: 20),
+                          onTap: () {
+                            onSelected(displayTitle, displayValue);
+                            Navigator.pop(context);
+                          },
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -325,8 +422,8 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
       return;
     }
 
-    // 🛡️ VALIDATION HOÀN THIỆN ĐỐI VỚI VAI TRÒ PARTNER ADMIN KHI ĐĂNG VIDEO DỊCH VỤ
-    if (_userRole == "PARTNER_ADMIN" && _partnerPublishMode == "SERVICE_VIDEO") {
+    // 🛡️ VALIDATION HOÀN THIỆN ĐỐI VỚI VAI TRÒ PARTNER / PARTNER ADMIN KHI ĐĂNG VIDEO DỊCH VỤ
+    if ((_userRole == "PARTNER_ADMIN" || _userRole == "PARTNER") && _partnerPublishMode == "SERVICE_VIDEO") {
       if (_priceController.text.trim().isEmpty) {
         AppToast.show(context: context, message: "Lỗi: Vai trò Đối tác đăng Video dịch vụ bắt buộc phải nhập Giá bán!", isSuccess: false);
         return;
@@ -357,15 +454,48 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
 
     setState(() => _isSubmitting = true);
 
-    // 🚀 ĐÓNG GÓI SIÊU TỐC TỨC THỜI (0ms): Lấy thẳng URL mạng đã chạy ngầm xong từ trước đẩy đi
+    String? targetedServiceId = _selectedServiceId;
+
+    // 🚀 LUỒNG PHÂN PHỐI KÉP: Nếu Partner đăng Video Dịch vụ nhưng chưa liên kết gói có sẵn -> Tạo Service mới trước
+    if ((_userRole == "PARTNER_ADMIN" || _userRole == "PARTNER") && _partnerPublishMode == "SERVICE_VIDEO" && targetedServiceId == null) {
+      final Map<String, dynamic> servicePayload = {
+        'service_name': _titleController.text.trim(),
+        'description': _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+        'price': double.tryParse(_priceController.text.trim()) ?? 0.0,
+        'image_url': null,
+        'video_url': _finalCloudVideoUrl,
+        'tags': [],
+        'service_type': 'RELAXATION',
+        'status': 'PENDING'
+      };
+
+      try {
+        final serviceRes = await ApiClient.instance.post('/services', data: servicePayload);
+        if (serviceRes.statusCode == 200 && serviceRes.data != null) {
+          // Trích xuất id từ response map thô của dio
+          final dynamic resData = serviceRes.data;
+          if (resData is Map && resData.containsKey('id')) {
+            targetedServiceId = resData['id']?.toString();
+          } else if (resData is Map && resData.containsKey('data') && resData['data'] is Map) {
+            targetedServiceId = resData['data']['id']?.toString();
+          }
+        }
+      } catch (e) {
+        // Bỏ qua lỗi chặn hoặc fallback im lặng để tiếp tục đẩy luồng Feed truyền thông, tránh crash giao diện
+        debugPrint("⚠️ Service creation fallback alert: $e");
+      }
+    }
+
     final Map<String, dynamic> payload = {
       'title': _titleController.text.trim(),
       'content': _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
       'price': _priceController.text.trim().isEmpty ? null : double.tryParse(_priceController.text.trim()),
-      'video_url': _finalCloudVideoUrl, // URL mạng bọc vàng bảo chứng đoạn đã cắt ngắn vật lý
-      'partner_name': _selectedPartnerName,
-      'service_name': _selectedServiceName,
+      'video_url': _finalCloudVideoUrl,
+      'affiliate_rate': _commissionController.text.trim().isEmpty ? 0.0 : double.tryParse(_commissionController.text.trim()),
+      'partner_id': _selectedPartnerName, 
+      'service_id': targetedServiceId, // Đính kèm ID dịch vụ mới tạo hoặc ID có sẵn được chọn liên kết
       'voucher_code': _selectedVoucherCode,
+      'feed_type': (_userRole == "PARTNER_ADMIN" || _userRole == "PARTNER") ? _partnerPublishMode : "TIKTOK_FEED",
       'trim_start_percent': _trimStartPercent,
       'trim_end_percent': _trimEndPercent,
     };
@@ -373,10 +503,9 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
     try {
       final res = await ApiClient.instance.post('/tiktok/feeds', data: payload);
       if (res.statusCode == 200) {
-        // Giải phóng hoàn toàn trạng thái âm thanh lỗi ngầm trước khi pop đóng màn hình
         FeedVideoPool.isGlobalMutedForUpload = false;
         if (mounted) {
-          AppToast.show(context: context, message: "Gửi video lên hàng đợi duyệt thành công!", isSuccess: true);
+          AppToast.show(context: context, message: "Phát sóng video ngắn và đồng bộ danh mục dịch vụ thành công!", isSuccess: true);
           context.pop();
         }
       } else {
@@ -428,7 +557,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
         }
       },
       child: Scaffold(
-        backgroundColor: _currentStep == 0 ? Colors.black : const Color(0xFFF7FBF9), // Bước 1 dùng Dark Studio nền đen sang trọng chuyên nghiệp
+        backgroundColor: const Color(0xFFF4F9F6), // Cân bằng Off-white và Sage Mint dịu mắt, cao cấp cho cả hai bước
         body: PageView(
           controller: _pageController,
           physics: const NeverScrollableScrollPhysics(),
@@ -450,7 +579,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
         // 1. PHÂN KHU NỀN CỐT LÕI (CAMERA HOẶC TRÌNH PHÁT VIDEO PREVIEW 9:16)
         Positioned.fill(
           child: Container(
-            color: Colors.black,
+            color: const Color(0xFFF4F9F6),
             child: _uploadedVideoUrl.isNotEmpty
                 ? MiniVideoPlayer(
                     videoUrl: _uploadedVideoUrl, 
@@ -458,19 +587,17 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                     trimStartPercent: _trimStartPercent,
                     trimEndPercent: _trimEndPercent,
                     onProgressUpdate: (progress) {
-                      // 🚀 TỐI ƯU 60FPS: Cập nhật trực tiếp giá trị vào notifier mà không thông qua setState cha
                       _trimPlaybackProgressNotifier.value = progress;
                     },
                   )
                 : (_currentMode == "CAMERA"
-                    ? const Center(child: Text("Camera view đang khởi động luồng phần cứng...", style: TextStyle(color: Colors.white54, fontSize: 13)))
+                    ? const Center(child: Text("Camera view đang khởi động luồng phần cứng...", style: TextStyle(color: Color(0xFF617D79), fontSize: 13)))
                     : Center(
                         child: GestureDetector(
                           onTap: _isLockingAction ? null : _pickVideoFromGallery,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // KHỐI RENDER TOÁN HỌC CANVAS ORB ANIMATION CAO CẤP TRÍCH XUẤT TỪ AI CHAT
                               AnimatedBuilder(
                                 animation: _orbController,
                                 builder: (context, child) {
@@ -484,19 +611,19 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                               const Text(
                                 "Chào mừng bạn đến với trạm sáng tạo",
                                 style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.5,
+                                  color: Color(0xFF1A3A35),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.3,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 8),
                               const Text(
                                 "Nơi lan tỏa kiến thức bảo chứng và giá trị Wellness",
                                 style: TextStyle(
-                                  color: Colors.white38,
-                                  fontSize: 11,
+                                  color: Color(0xFF617D79),
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w400,
                                 ),
                                 textAlign: TextAlign.center,
@@ -508,7 +635,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
           ),
         ),
 
-        // 2. III. NÂNG CẤP HOÀN THIỆN ĐỈNH MÀN HÌNH (TOP BAR PREMIUM GLASS LAYOUT)
+        // 2. ĐỈNH MÀN HÌNH CHUYỂN SANG GLASS LAYOUT SÁNG SANG TRỌNG
         Positioned(
           top: statusBarPadding + 12,
           left: 16,
@@ -519,19 +646,21 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
               IconButton(
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
-                icon: const Icon(Icons.close_rounded, color: Colors.white, size: 26),
+                icon: const Icon(Icons.close_rounded, color: Color(0xFF1A3A35), size: 26),
                 onPressed: () async {
                   final shouldPop = await _onWillPop();
                   if (shouldPop && mounted) context.pop();
                 },
               ),
-              // Thanh trạng thái Kính mờ Premium thay thế hoàn toàn thanh chọn âm thanh cũ của TikTok
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.black38,
+                  color: Colors.white.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white12, width: 1),
+                  border: Border.all(color: const Color(0xFFE2ECEB), width: 1),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
+                  ],
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -540,17 +669,16 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                     SizedBox(width: 6),
                     Text(
                       "Chế độ Sáng tạo nội dung",
-                      style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.2),
+                      style: TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.2),
                     ),
                   ],
                 ),
               ),
-              // Điểm điều hướng tiến độ 2 bước tinh tế
               Row(
                 children: [
-                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFF1A3A35), shape: BoxShape.circle)),
                   const SizedBox(width: 4),
-                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white24, shape: BoxShape.circle)),
+                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFFB0C4C1), shape: BoxShape.circle)),
                 ],
               ),
             ],
@@ -610,7 +738,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
         // 🚀 MỚI: HỆ THỐNG TIMELINE CẮT XÉN BIÊN ĐÔI DYNAMIC TRIM SLIDER (YOUTUBE SHORT STYLE)
         if (_uploadedVideoUrl.isNotEmpty)
           Positioned(
-            bottom: 140, // Nằm cân đối phía trên dải nút Shutter chính
+            bottom: 140,
             left: 24,
             right: 24,
             child: Column(
@@ -620,24 +748,23 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text("${(_trimStartPercent * 100).toInt()}%", style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
-                    // Hiển thị động tiến độ xử lý ngầm của YouTube Shorts
+                    Text("${(_trimStartPercent * 100).toInt()}%", style: const TextStyle(color: Color(0xFF617D79), fontSize: 10, fontWeight: FontWeight.bold)),
                     Text(
                       _isUploadingNgam 
-                          ? "Đang xử lý video: ${(_uploadNgamProgress * 100).toInt()}%" 
+                          ? "Đang mã hóa dữ liệu: ${(_uploadNgamProgress * 100).toInt()}%" 
                           : "Đoạn video đăng tải ngắn (Đã sẵn sàng)", 
-                      style: TextStyle(color: _isUploadingNgam ? Colors.amberAccent : const Color(0xFF80BF84), fontSize: 10, fontWeight: FontWeight.bold)
+                      style: TextStyle(color: _isUploadingNgam ? Colors.orangeAccent : const Color(0xFF1A3A35), fontSize: 10, fontWeight: FontWeight.bold)
                     ),
-                    Text("${(_trimEndPercent * 100).toInt()}%", style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
+                    Text("${(_trimEndPercent * 100).toInt()}%", style: const TextStyle(color: Color(0xFF617D79), fontSize: 10, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 const SizedBox(height: 6),
                 Container(
                   height: 44,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white12, width: 1),
+                    color: Colors.white.withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2ECEB).withOpacity(0.6), width: 1.5),
                   ),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
@@ -646,15 +773,13 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                       return Stack(
                         alignment: Alignment.center,
                         children: [
-                          // 1. Lớp nền dải trượt biên đôi của YouTube
                           RangeSlider(
                             values: RangeValues(_trimStartPercent, _trimEndPercent),
                             min: 0.0,
                             max: 1.0,
                             activeColor: const Color(0xFF80BF84),
-                            inactiveColor: Colors.white10,
+                            inactiveColor: const Color(0xFFE2ECEB),
                             onChangeEnd: (RangeValues values) {
-                              // Chặn bớt các nhấp chuột gạt biên quá nhanh của người dùng trước khi tính toán file nặng
                               _debounceTrimTimer?.cancel();
                               _debounceTrimTimer = Timer(const Duration(milliseconds: 600), () {
                                 if (mounted) {
@@ -667,12 +792,11 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                                 setState(() {
                                   _trimStartPercent = values.start;
                                   _trimEndPercent = values.end;
-                                  _trimPlaybackProgressNotifier.value = 0.0; // Reset kim về đầu biên trượt khi chỉnh biên
+                                  _trimPlaybackProgressNotifier.value = 0.0;
                                 });
                               }
                             },
                           ),
-                          // 2. KIM PHÁT ĐỘNG PHẢN HỒI 60FPS cô lập (PLAYBACK NEEDLE WITH MICROTICK LERPING)
                           IgnorePointer(
                             child: ValueListenableBuilder<double>(
                               valueListenable: _trimPlaybackProgressNotifier,
@@ -682,7 +806,6 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
 
                                 return Stack(
                                   children: [
-                                    // Sử dụng AnimatedPositioned với thời gian lerp cực ngắn để làm mượt hoàn toàn các bước nhảy FPS của Controller
                                     AnimatedPositioned(
                                       duration: const Duration(milliseconds: 40),
                                       curve: Curves.linear,
@@ -692,10 +815,10 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                                       child: Container(
                                         width: 4,
                                         decoration: BoxDecoration(
-                                          color: Colors.white,
+                                          color: const Color(0xFF1A3A35),
                                           borderRadius: BorderRadius.circular(2),
                                           boxShadow: [
-                                            BoxShadow(color: Colors.black45, blurRadius: 3, offset: const Offset(1, 1))
+                                            BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 2, offset: const Offset(1, 1))
                                           ],
                                         ),
                                       ),
@@ -720,18 +843,20 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
           left: 0,
           right: 0,
           child: Container(
-            padding: const EdgeInsets.only(top: 24, bottom: 20),
+            padding: const EdgeInsets.only(top: 20, bottom: 24),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.bottomCenter,
                 end: Alignment.topCenter,
-                colors: [Colors.black.withOpacity(0.9), Colors.transparent],
+                colors: [
+                  const Color(0xFF1A3A35).withOpacity(0.06),
+                  const Color(0xFF1A3A35).withOpacity(0.0),
+                ],
               ),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 4.1 Hệ thống hàng nút bấm Shutter lỏng đối xứng trung tâm mới
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 60),
                   child: Row(
@@ -743,21 +868,22 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                         child: Column(
                           children: [
                             Container(
-                              width: 44, height: 44,
+                              width: 46, height: 46,
                               decoration: BoxDecoration(
-                                color: Colors.black38,
+                                color: Colors.white,
                                 shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white38, width: 1.5),
+                                border: Border.all(color: const Color(0xFFE2ECEB), width: 1.5),
+                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6)],
                               ),
                               child: const Icon(Icons.spa_rounded, color: Color(0xFF80BF84), size: 20),
                             ),
-                            const SizedBox(height: 6),
-                            const Text("Nhạc thiền", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 8),
+                            const Text("Nhạc thiền", style: TextStyle(color: Color(0xFF617D79), fontSize: 10, fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
 
-                      // Trung tâm: Nút hành động chính Liquid Glass - Đóng vai trò chọn tệp hoặc Next bước tiếp theo
+                      // Trung tâm: Nút chính
                       GestureDetector(
                         onTap: () {
                           if (_uploadedVideoUrl.isNotEmpty) {
@@ -767,21 +893,24 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                           }
                         },
                         child: Container(
-                          width: 76, height: 76,
+                          width: 78, height: 78,
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white.withOpacity(0.6), width: 4),
+                            border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.4), width: 4),
                           ),
                           child: Container(
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               color: _uploadedVideoUrl.isNotEmpty 
-                                  ? const Color(0xFF80BF84) // Đổi sang màu ngọc xanh nếu có tệp để sẵn sàng Next
+                                  ? const Color(0xFF80BF84)
                                   : const Color(0xFF1A3A35),
+                              boxShadow: [
+                                BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 4))
+                              ],
                             ),
                             child: Icon(
-                              _uploadedVideoUrl.isNotEmpty ? Icons.arrow_forward_rounded : Icons.video_library_rounded, // 🚀 CẬP NHẬT: Thay thế icon quay thành icon thư viện
+                              _uploadedVideoUrl.isNotEmpty ? Icons.arrow_forward_rounded : Icons.video_library_rounded,
                               color: Colors.white,
                               size: 26,
                             ),
@@ -789,24 +918,25 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                         ),
                       ),
 
-                      // Vệ tinh Phải: Trạng thái hiển thị chữ chỉ dẫn thông báo tương tác nhanh
+                      // Vệ tinh Phải
                       Column(
                         children: [
                           Container(
-                            width: 44, height: 44,
+                            width: 46, height: 46,
                             decoration: BoxDecoration(
-                              color: Colors.black87,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: _uploadedVideoUrl.isNotEmpty ? const Color(0xFF80BF84) : Colors.white12, width: 1.5),
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: _uploadedVideoUrl.isNotEmpty ? const Color(0xFF80BF84) : const Color(0xFFE2ECEB), width: 1.5),
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6)],
                             ),
                             child: Icon(
                               _uploadedVideoUrl.isNotEmpty ? Icons.check_circle_rounded : Icons.cloud_upload_outlined,
-                              color: _uploadedVideoUrl.isNotEmpty ? const Color(0xFF80BF84) : Colors.white38,
+                              color: _uploadedVideoUrl.isNotEmpty ? const Color(0xFF80BF84) : const Color(0xFF617D79),
                               size: 20
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          Text(_uploadedVideoUrl.isNotEmpty ? "Đã nhận" : "Tải lên", style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 8),
+                          Text(_uploadedVideoUrl.isNotEmpty ? "Đã nhận" : "Tải lên", style: const TextStyle(color: Color(0xFF617D79), fontSize: 10, fontWeight: FontWeight.w600)),
                         ],
                       ),
                     ],
@@ -832,22 +962,22 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
             Container(
               width: 46, height: 46,
               decoration: BoxDecoration(
-                color: const Color(0xFF1A3A35).withOpacity(0.5),
+                color: Colors.white.withOpacity(0.85),
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.2), width: 1.2),
+                border: Border.all(color: const Color(0xFFE2ECEB), width: 1.2),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 2))
+                  BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 3))
                 ],
               ),
-              child: Icon(icon, color: const Color(0xFFE2ECEB), size: 20),
+              child: Icon(icon, color: const Color(0xFF1A3A35), size: 20),
             ),
             const SizedBox(height: 6),
             Text(
               label.toUpperCase(), 
               style: const TextStyle(
-                color: Colors.white70, 
+                color: Color(0xFF617D79), 
                 fontSize: 8.5, 
-                fontWeight: FontWeight.w700, 
+                fontWeight: FontWeight.w800, 
                 letterSpacing: 0.3
               ),
             ),
@@ -859,47 +989,59 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
 
   // ==================== STEP 2: COMMERCE METADATA FORM ====================
   Widget _buildStep2Metadata() {
-    final bool isUserCardLocked = _userRole == "USER";
-    final bool isPartnerRole = _userRole == "PARTNER_ADMIN";
+    final String currentRole = _userRole.trim().toUpperCase();
+    final double statusBarPadding = MediaQuery.paddingOf(context).top;
+        
+    final bool isUserRole = currentRole == "USER";
+    final bool isCreatorRole = currentRole == "CREATOR";
+    final bool isPartnerRole = currentRole == "PARTNER_ADMIN" || currentRole == "PARTNER";
 
     return Column(
       children: [
         Expanded(
           child: SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            padding: EdgeInsets.only(left: 24, right: 24, top: statusBarPadding + 16, bottom: 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 🔔 LỰA CHỌN PHÂN HỆ ĐỐI VỚI VAI TRÒ PARTNER ADMIN (PARTNER ASYMMETRIC PUBLISH SWITCH)
+                // Phân tầng UI bằng cấu hình rẽ nhánh Role độc lập bọc thép chuẩn Private Profile
                 if (isPartnerRole) ...[
                   _buildFormSectionTitle("Chế độ đăng tải video"),
                   Container(
                     margin: const EdgeInsets.only(bottom: 20),
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE2ECEB).withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(14),
+                      color: const Color(0xFF1A3A35).withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFF1A3A35).withOpacity(0.1)),
                     ),
                     child: Row(
                       children: [
                         Expanded(
                           child: GestureDetector(
                             onTap: () => setState(() => _partnerPublishMode = "TIKTOK_FEED"),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 250),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
                                 color: _partnerPublishMode == "TIKTOK_FEED" ? const Color(0xFF1A3A35) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Text(
-                                "TikTok Feeds",
-                                style: TextStyle(
-                                  color: _partnerPublishMode == "TIKTOK_FEED" ? Colors.white : const Color(0xFF617D79),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                textAlign: TextAlign.center,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.dynamic_feed_rounded, size: 16, color: _partnerPublishMode == "TIKTOK_FEED" ? Colors.white : const Color(0xFF617D79)),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    "TikTok Feeds",
+                                    style: TextStyle(
+                                      color: _partnerPublishMode == "TIKTOK_FEED" ? Colors.white : const Color(0xFF617D79),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -907,20 +1049,27 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                         Expanded(
                           child: GestureDetector(
                             onTap: () => setState(() => _partnerPublishMode = "SERVICE_VIDEO"),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 250),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
                                 color: _partnerPublishMode == "SERVICE_VIDEO" ? const Color(0xFF1A3A35) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              child: Text(
-                                "Video dịch vụ",
-                                style: TextStyle(
-                                  color: _partnerPublishMode == "SERVICE_VIDEO" ? Colors.white : const Color(0xFF617D79),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                textAlign: TextAlign.center,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.medical_information_rounded, size: 16, color: _partnerPublishMode == "SERVICE_VIDEO" ? Colors.white : const Color(0xFF617D79)),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    "Video dịch vụ",
+                                    style: TextStyle(
+                                      color: _partnerPublishMode == "SERVICE_VIDEO" ? Colors.white : const Color(0xFF617D79),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -928,107 +1077,204 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                       ],
                     ),
                   ),
-                ],
-
-                _buildFormSectionTitle("Thông tin bài đăng ngắn"),
-                _buildTextField(controller: _titleController, hint: "Nhập tiêu đề hấp dẫn về sức khỏe..."),
-                const SizedBox(height: 14),
-                _buildTextField(controller: _descriptionController, hint: "Thêm mô tả chi tiết, cảm nghĩ hoặc lời khuyên chuyên gia (tùy chọn)...", maxLines: 3),
-                const SizedBox(height: 24),
-
-                _buildFormSectionTitle("Cấu hình thương mại / Tiếp thị"),
-                
-                // 🔒 KHÓA TOÀN BỘ CẤU HÌNH THƯƠNG MẠI & AFFILIATE NẾU LÀ ROLE USER (FROSTED GLASS LUXURY LOCK CURTAIN OVERLAY)
-                Stack(
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  
+                  _buildFormSectionTitle("Thông tin bài đăng đối tác"),
+                  _buildTextField(controller: _titleController, hint: "Nhập tiêu đề giới thiệu dịch vụ khám..."),
+                  const SizedBox(height: 14),
+                  _buildTextField(controller: _descriptionController, hint: "Mô tả chi tiết phác đồ trị liệu hoặc cơ sở vật chất...", maxLines: 3),
+                  const SizedBox(height: 24),
+                  
+                  _buildFormSectionTitle("Cấu hình thương mại Đối tác"),
+                  
+                  // Trường giá hiển thị ở cả 2 tab nhưng có thuộc tính khóa linh hoạt và cấu hình gợi ý riêng
+                  Text(
+                    _partnerPublishMode == "SERVICE_VIDEO" 
+                        ? 'Giá gói dịch vụ khám (Bắt buộc đối với Đối tác) *' 
+                        : 'Giá gói dịch vụ tham khảo (Không bắt buộc)', 
+                    style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.bold)
+                  ),
+                  const SizedBox(height: 6),
+                  _buildTextField(
+                    controller: _priceController, 
+                    hint: _selectedServiceName != null ? "Sử dụng giá của gói dịch vụ đã ghim" : "Nhập giá bán dịch vụ y khoa (VND)...", 
+                    keyboardType: TextInputType.number,
+                    readOnly: _selectedServiceName != null // Tự động khóa cứng nếu đã chọn liên kết dịch vụ y khoa
+                  ),
+                  const SizedBox(height: 14),
+                  
+                  if (_partnerPublishMode == "SERVICE_VIDEO") ...[
+                    const Text('% Hoa hồng chi trả cho Creator Affiliate *', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    _buildTextField(controller: _commissionController, hint: "Nhập tỷ lệ hoa hồng trích lập từ dịch vụ (Ví dụ: 15)...", keyboardType: TextInputType.number),
+                    const SizedBox(height: 20),
+                  ],
+                  
+                  _buildSelectableTile(
+                    icon: Icons.maps_home_work_rounded,
+                    label: "Gắn thẻ Cơ sở Wellness",
+                    value: "Hệ thống tự động ghim cơ sở của bạn",
+                    onTap: null,
+                  ),
+                  const Divider(height: 1, color: Color(0xFFE2ECEB)),
+                  _buildSelectableTile(
+                    icon: Icons.medical_services_rounded,
+                    label: "Liên kết Gói dịch vụ y khoa",
+                    value: _selectedServiceName ?? "Nhúng gói trị liệu nền tảng...",
+                    onTap: () {
+                      _showSelectionBottomSheet(
+                        title: "Chọn Gói dịch vụ y khoa của bạn",
+                        items: _partnerAvailableServices,
+                        itemTitleKey: "service_name",
+                        itemValueKey: "id",
+                        onSelected: (name, id) {
+                          // Truy vết lấy đúng bản ghi dịch vụ để trích xuất trường price gán cứng vào bộ điều khiển
+                          final selectedSvc = _partnerAvailableServices.firstWhere((element) => element['id'].toString() == id);
+                          final double svcPrice = double.tryParse(selectedSvc['price']?.toString() ?? '0') ?? 0;
+                          
+                          setState(() {
+                            _selectedServiceName = name;
+                            _selectedServiceId = id;
+                            _priceController.text = svcPrice.toInt().toString(); // Khóa và gán cứng giá của dịch vụ
+                          });
+                        },
+                      );
+                    },
+                    onRemove: _selectedServiceName == null ? null : () {
+                      setState(() {
+                        _selectedServiceName = null;
+                        _selectedServiceId = null;
+                        _priceController.clear(); // Giải phóng gán cứng, cho phép tự do nhập giá
+                      });
+                    },
+                  ),
+                  const Divider(height: 1, color: Color(0xFFE2ECEB)),
+                  _buildSelectableTile(
+                    icon: Icons.local_offer_rounded,
+                    label: "Đính kèm Mã ưu đãi độc quyền",
+                    value: _selectedVoucherCode ?? "Chọn Voucher cơ sở kích thích đặt hẹn...",
+                    onTap: () {
+                      _showSelectionBottomSheet(
+                        title: "Chọn Voucher đang phát hành",
+                        items: _partnerAvailableVouchers,
+                        itemTitleKey: "code",
+                        itemValueKey: "code",
+                        onSelected: (code, val) {
+                          setState(() {
+                            _selectedVoucherCode = code;
+                          });
+                        },
+                      );
+                    },
+                  ),
+                ] else if (isCreatorRole) ...[
+                  _buildFormSectionTitle("Studio sáng tạo - Tiếp thị liên kết (Creator)"),
+                  _buildTextField(controller: _titleController, hint: "Nhập tiêu đề truyền cảm hứng hoặc kiến thức y khoa..."),
+                  const SizedBox(height: 14),
+                  _buildTextField(controller: _descriptionController, hint: "Thêm lời khuyên, hastag hoặc tóm tắt nội dung video ngắn...", maxLines: 3),
+                  const SizedBox(height: 24),
+                  
+                  _buildFormSectionTitle("Doanh thu Tiếp thị liên kết (Affiliate Engine)"),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.only(bottom: 20),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF80BF84).withOpacity(0.08), 
+                      borderRadius: BorderRadius.circular(16), 
+                      border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.2))
+                    ),
+                    child: Row(
                       children: [
-                        // Hệ thống phân bổ trường nhập giá cả và phần trăm hoa hồng theo vai trò
-                        if (isPartnerRole && _partnerPublishMode == "SERVICE_VIDEO") ...[
-                          const Text('Giá gói dịch vụ khám (Bắt buộc) *', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 6),
-                          _buildTextField(controller: _priceController, hint: "Nhập giá bán dịch vụ y khoa (VND)...", keyboardType: TextInputType.number),
-                          const SizedBox(height: 14),
-                          const Text('% Hoa hồng chia cho Creator Affiliate (Bắt buộc) *', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 6),
-                          _buildTextField(controller: _commissionController, hint: "Nhập tỷ lệ hoa hồng (VD: 10, 15)...", keyboardType: TextInputType.number),
-                          const SizedBox(height: 20),
-                        ] else ...[
-                          _buildTextField(controller: _priceController, hint: "Đặt mức giá hiển thị dịch vụ (VND) nếu có...", keyboardType: TextInputType.number),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // Thành phần liên kết ghim cơ sở đối tác và voucher y khoa liên kết
-                        _buildSelectableTile(
-                          icon: Icons.maps_home_work_rounded,
-                          label: "Gắn thẻ Cơ sở Wellness",
-                          value: _selectedPartnerName ?? "Chọn đối tác y tế phân phối lịch hẹn...",
-                          onTap: isUserCardLocked ? null : () {
-                            setState(() => _selectedPartnerName = "Bệnh Viện Đa Khoa Hồng Ngọc");
-                          },
-                        ),
-                        const Divider(height: 1, color: Color(0xFFE2ECEB)),
-                        _buildSelectableTile(
-                          icon: Icons.medical_services_rounded,
-                          label: "Liên kết Gói dịch vụ",
-                          value: _selectedServiceName ?? "Nhúng gói trị liệu bọc hoa hồng nền tảng...",
-                          onTap: (isUserCardLocked || _selectedPartnerName == null) ? null : () {
-                            setState(() => _selectedServiceName = "Gói Trị Liệu Chuyên Sâu Cơ Xương Khớp");
-                          },
-                        ),
-                        const Divider(height: 1, color: Color(0xFFE2ECEB)),
-                        _buildSelectableTile(
-                          icon: Icons.local_offer_rounded,
-                          label: "Đính kèm Mã ưu đãi độc quyền",
-                          value: _selectedVoucherCode ?? "Chọn Voucher công khai kích thích chuyển đổi...",
-                          onTap: (isUserCardLocked || _selectedPartnerName == null) ? null : () {
-                            setState(() => _selectedVoucherCode = "WELLNESS50K");
-                          },
+                        const Icon(Icons.monetization_on_rounded, color: Color(0xFF80BF84), size: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: const Text(
+                            "Hệ thống tự động mở khóa tính năng nhận chiết khấu hoa hồng liên kết (10% - 25%) từ Đối tác y tế sau khi duyệt video.", 
+                            style: TextStyle(color: Color(0xFF1A3A35), fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
                         ),
                       ],
                     ),
-                    
-                    // Lớp màn che mờ cao cấp bao bọc toàn bộ phân hệ cấu hình thương mại và trường nhập giá của vai trò USER
-                    if (isUserCardLocked)
-                      Positioned.fill(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.88),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: InkWell(
-                            onTap: () {
-                              AppToast.show(context: context, message: "Kích hoạt: Vui lòng nâng cấp lên tài khoản Creator để mở khóa phân hệ Tiếp thị liên kết!", isSuccess: false);
-                            },
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: const BoxDecoration(color: Color(0xFFFFF0F2), shape: BoxShape.circle),
-                                    child: const Icon(Icons.lock_outline_rounded, color: Color(0xFFFF7A8A), size: 26),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  const Text(
-                                    "MỞ KHÓA CẤU HÌNH THƯƠNG MẠI & AFFILIATE",
-                                    style: TextStyle(color: Color(0xFF1A3A35), fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 0.5),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  const Text(
-                                    "Yêu cầu nâng cấp vai trò lên Creator để thiết lập giá và đính kèm dịch vụ.",
-                                    style: TextStyle(color: Color(0xFF617D79), fontSize: 10, fontWeight: FontWeight.w500),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
-                            ),
+                  ),
+                  _buildSelectableTile(
+                    icon: Icons.maps_home_work_rounded,
+                    label: "Gắn thẻ Cơ sở Wellness",
+                    value: _selectedPartnerName ?? "Chọn đối tác y tế phân phối lịch hẹn...",
+                    onTap: () => setState(() => _selectedPartnerName = "Bệnh Viện Đa Khoa Hồng Ngọc"),
+                  ),
+                  const Divider(height: 1, color: Color(0xFFE2ECEB)),
+                  _buildSelectableTile(
+                    icon: Icons.medical_services_rounded,
+                    label: "Liên kết Gói dịch vụ y khoa",
+                    value: _selectedServiceName ?? "Nhúng gói trị liệu nền tảng...",
+                    onTap: _selectedPartnerName == null ? null : () => setState(() => _selectedServiceName = "Gói Trị Liệu Chuyên Sâu Cơ Xương Khớp"),
+                  ),
+                  const Divider(height: 1, color: Color(0xFFE2ECEB)),
+                  _buildSelectableTile(
+                    icon: Icons.local_offer_rounded,
+                    label: "Đính kèm Mã ưu đãi độc quyền",
+                    value: _selectedVoucherCode ?? "Chọn Voucher công khai kích thích chuyển đổi...",
+                    onTap: _selectedPartnerName == null ? null : () => setState(() => _selectedVoucherCode = "WELLNESS50K"),
+                  ),
+                ] else ...[
+                  // Mặc định hoặc USER ROLE - Khóa chặt không gian thương mại, tập trung chia sẻ nhật ký cá nhân Wellness
+                  _buildFormSectionTitle("Nhật ký chia sẻ trải nghiệm (Thành viên)"),
+                  _buildTextField(controller: _titleController, hint: "Nhập tiêu đề hoặc cảm nghĩ về hành trình sức khỏe của bạn..."),
+                  const SizedBox(height: 14),
+                  _buildTextField(controller: _descriptionController, hint: "Thêm mô tả chi tiết, câu chuyện thay đổi bản thân (tùy chọn)...", maxLines: 3),
+                  const SizedBox(height: 24),
+                  
+                  _buildFormSectionTitle("Cấu hình thương mại / Tiếp thị liên kết"),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFF1A3A35).withOpacity(0.08)),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10)],
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(color: const Color(0xFF1A3A35).withOpacity(0.05), shape: BoxShape.circle),
+                          child: const Icon(Icons.lock_clock_rounded, color: Color(0xFF1A3A35), size: 32),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          "MỞ KHÓA TÍNH NĂNG KIẾM TIỀN",
+                          style: TextStyle(color: Color(0xFF1A3A35), fontSize: 13, fontWeight: FontWeight.w900, letterSpacing: 0.8),
+                        ),
+                        const SizedBox(height: 6),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            "Nhúng link gói dịch vụ, gắn thẻ cơ sở y tế và nhận hoa hồng liên kết tự động. Kích hoạt tức thì khi nâng cấp thành Chuyên gia (Creator)!",
+                            style: TextStyle(color: Color(0xFF617D79), fontSize: 11, fontWeight: FontWeight.w500, height: 1.4),
+                            textAlign: TextAlign.center,
                           ),
                         ),
-                      ),
-                  ],
-                ),
+                        const SizedBox(height: 18),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1A3A35),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            elevation: 2,
+                          ),
+                          onPressed: () {
+                            AppToast.show(context: context, message: "Đang chuyển hướng đến cổng nộp đơn nâng cấp Creator...", isSuccess: true);
+                          },
+                          icon: const Icon(Icons.bolt_rounded, size: 16, color: Color(0xFF80BF84)),
+                          label: const Text("Nâng cấp ngay", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        )
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1091,32 +1337,42 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
     );
   }
 
-  Widget _buildTextField({required TextEditingController controller, required String hint, int maxLines = 1, TextInputType keyboardType = TextInputType.text}) {
+  Widget _buildTextField({required TextEditingController controller, required String hint, int maxLines = 1, TextInputType keyboardType = TextInputType.text, bool readOnly = false}) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: readOnly ? const Color(0xFFF1F5F5) : Colors.white, // Đổi màu nền xám mờ sang trọng khi bị khóa gán cứng
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5E5EA), width: 1),
+        border: Border.all(color: const Color(0xFFE2ECEB), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1A3A35).withOpacity(0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
+        ],
       ),
       child: TextField(
         controller: controller,
         maxLines: maxLines,
         keyboardType: keyboardType,
-        style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 14, fontWeight: FontWeight.w500),
+        readOnly: readOnly,
+        style: TextStyle(color: readOnly ? const Color(0xFF617D79) : const Color(0xFF1A3A35), fontSize: 14, fontWeight: FontWeight.w600),
         decoration: InputDecoration(
           border: InputBorder.none,
           hintText: hint,
-          hintStyle: const TextStyle(color: Color(0xFFB0C4C1), fontSize: 13.5),
-          contentPadding: const EdgeInsets.all(16),
+          hintStyle: TextStyle(color: const Color(0xFF1A3A35).withOpacity(0.35), fontSize: 13, fontWeight: FontWeight.w400),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
       ),
     );
   }
 
-  Widget _buildSelectableTile({required IconData icon, required String label, required String value, required VoidCallback? onTap}) {
+  Widget _buildSelectableTile({required IconData icon, required String label, required String value, required VoidCallback? onTap, VoidCallback? onRemove}) {
     final bool isDisabled = onTap == null;
+    final bool hasValue = onRemove != null;
+
     return InkWell(
-      onTap: onTap,
+      onTap: hasValue ? null : onTap, // Khóa click mở modal nếu đã chọn liên kết dữ liệu rồi
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 4),
         child: Row(
@@ -1133,7 +1389,15 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, size: 18, color: isDisabled ? const Color(0xFFD1D1D6) : const Color(0xFFB0C4C1)),
+            if (hasValue)
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: const Icon(Icons.link_off_rounded, size: 18, color: Colors.redAccent),
+                onPressed: onRemove,
+              )
+            else
+              Icon(Icons.chevron_right_rounded, size: 18, color: isDisabled ? const Color(0xFFD1D1D6) : const Color(0xFFB0C4C1)),
           ],
         ),
       ),
@@ -1148,14 +1412,14 @@ class _StudioOrbPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final baseRadius = size.width / 2.5;
-    
+    final double baseRadius = size.width / 2;
+    final Offset center = Offset(size.width / 2, size.height / 2);
+
     final paintOrb = Paint()
       ..shader = RadialGradient(
         colors: [
-          const Color(0xFF80BF84).withOpacity(0.85),
-          const Color(0xFF1A3A35).withOpacity(0.4),
+          const Color(0xFF80BF84).withOpacity(0.35),
+          const Color(0xFFB0C4C1).withOpacity(0.15),
           const Color(0xFF80BF84).withOpacity(0.0),
         ],
       ).createShader(Rect.fromCircle(center: center, radius: baseRadius * 1.6))
@@ -1164,12 +1428,12 @@ class _StudioOrbPainter extends CustomPainter {
     // Lõi năng lượng phát sáng khuếch tán hữu cơ
     canvas.drawCircle(center, baseRadius, paintOrb);
 
-    final paintLine = Paint()..style = PaintingStyle.stroke..strokeWidth = 1.0;
+    final paintLine = Paint()..style = PaintingStyle.stroke..strokeWidth = 1.2;
     final int particleCount = 28;
 
     // Thuật toán lượng giác vẽ các vòng hạt sóng điện từ ép góc Elip tạo không gian 3D
     for (int layer = 0; layer < 3; layer++) {
-      paintLine.color = const Color(0xFF80BF84).withOpacity(0.5 - (layer * 0.15));
+      paintLine.color = const Color(0xFF1A3A35).withOpacity(0.35 - (layer * 0.1));
       final path = Path();
 
       for (int i = 0; i <= particleCount; i++) {

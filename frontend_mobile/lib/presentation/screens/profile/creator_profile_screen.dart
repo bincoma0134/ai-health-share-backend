@@ -1154,7 +1154,10 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
           ],
         ),
       ),
-      floatingActionButton: CreatorFloatingActionButton(crtPrimary: _crtPrimary),
+      floatingActionButton: CreatorFloatingActionButton(
+        crtPrimary: _crtPrimary,
+        profile: widget.profile,
+      ),
     );
   }
 
@@ -1869,7 +1872,13 @@ class _PremiumSparklinePainter extends CustomPainter {
 // [LOGIC 6] Thành phần Widget Floating Action Button độc lập, chuẩn hóa phân rã mã nguồn Flutter
 class CreatorFloatingActionButton extends StatelessWidget {
   final Color crtPrimary;
-  const CreatorFloatingActionButton({super.key, required this.crtPrimary});
+  final Map<String, dynamic> profile;
+
+  const CreatorFloatingActionButton({
+    super.key, 
+    required this.crtPrimary,
+    required this.profile,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1890,7 +1899,10 @@ class CreatorFloatingActionButton extends StatelessWidget {
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () => context.push('/upload-studio'),
+              onTap: () {
+                final currentRole = profile['role'] ?? 'CREATOR';
+                context.push('/upload-studio', extra: currentRole.toString());
+              },
               splashColor: crtPrimary.withOpacity(0.2),
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20),

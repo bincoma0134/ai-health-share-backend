@@ -13,8 +13,11 @@ class SecureStorageService {
   static Future<String?> getToken() async => await _storage.read(key: _tokenKey);
 
   // --- ROLE (USER / PARTNER) ---
-  static Future<void> saveRole(String role) async => await _storage.write(key: _roleKey, value: role);
-  static Future<String?> getRole() async => await _storage.read(key: _roleKey);
+  static Future<void> saveRole(String role) async => await _storage.write(key: _roleKey, value: role.trim().toUpperCase());
+  static Future<String?> getRole() async {
+    final role = await _storage.read(key: _roleKey);
+    return role?.trim().toUpperCase();
+  }
 
   // --- TÊN HIỂN THỊ (FULL NAME) ---
   static Future<void> saveName(String name) async => await _storage.write(key: _nameKey, value: name);

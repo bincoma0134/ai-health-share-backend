@@ -119,11 +119,14 @@ final GoRouter appRouter = GoRouter(
       parentNavigatorKey: rootNavigatorKey, 
       builder: (context, state) => const NotificationCenterScreen(),
     ),
-    // Tuyến đường độc lập bọc AuthGuard phục vụ Creative Studio của Affiliate / Partner / Creator
+    // Tuyến đường độc lập phục vụ Creative Studio áp dụng Inject Quyền cứng trực tiếp từ tầng router cửa ngõ
     GoRoute(
       path: '/upload-studio',
       parentNavigatorKey: rootNavigatorKey,
-      builder: (context, state) => const DedicatedUploadScreen(),
+      builder: (context, state) {
+        final roleParam = (state.extra as String?) ?? 'USER';
+        return DedicatedUploadScreen(userRole: roleParam);
+      },
     ),
   ],
 );

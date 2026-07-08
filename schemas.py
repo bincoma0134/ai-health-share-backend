@@ -226,3 +226,38 @@ class ReviewCreate(BaseModel):
     appointment_id: str
     rating: int
     comment: Optional[str] = None
+
+# 🚀 NÂNG CẤP HẠ TẦNG AFFILIATE SCHEMA BIẾN ĐỘ & TRẠNG THÁI (PHASE 2.7 & 2.6)
+class AffiliateApplyRequest(BaseModel):
+    partner_id: str
+
+class AffiliateActionRequest(BaseModel):
+    action: str # 'APPROVED' | 'REJECTED'
+    admin_note: Optional[str] = None
+
+class AffiliatePartnerResponse(BaseModel):
+    partner_id: str
+    username: str
+    full_name: str
+    avatar_url: Optional[str] = None
+    commission_margin: str # Ví dụ: "5% - 20%"
+    status: str # 'NOT_APPLIED' | 'PENDING' | 'APPROVED' | 'REJECTED'
+
+class AffiliateCreatorResponse(BaseModel):
+    partnership_id: str
+    creator_id: str
+    username: str
+    full_name: str
+    avatar_url: Optional[str] = None
+    status: str
+    created_at: str
+
+class AffiliateMetricResponse(BaseModel):
+    partnership_id: str
+    creator_username: str
+    creator_full_name: str
+    total_clicks: int
+    total_conversions: int
+    total_revenue_generated: float
+    total_commission_earned: float
+    last_activity_at: str

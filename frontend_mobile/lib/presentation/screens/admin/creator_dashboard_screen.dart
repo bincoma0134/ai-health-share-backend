@@ -24,6 +24,12 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   List<dynamic> _recentVideos = [];
   List<dynamic> _recentPosts = [];
   List<dynamic> _withdrawalHistory = [];
+  
+  // Trạng thái lưu trữ cho phân hệ Affiliate (Phase 2.6)
+  List<dynamic> _affiliatePartners = [];
+  bool _isLoadingAffiliate = false;
+  Map<String, dynamic>? _selectedPartnerDetail;
+  bool _isLoadingPartnerDetail = false;
 
   // Khởi tạo các bộ điều khiển Form xử lý thông tin tài khoản ngân hàng thụ hưởng cho Creator
   final TextEditingController _bankNameController = TextEditingController();
@@ -39,6 +45,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   void initState() {
     super.initState();
     _loadDashboardData();
+    _fetchAffiliatePartners();
   }
 
   @override
@@ -105,6 +112,166 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
     } finally {
       if (mounted) setState(() => _isSubmittingWithdrawal = false);
     }
+  }
+
+  Future<void> _fetchAffiliatePartners() async {
+    setState(() {
+      _isLoadingAffiliate = true;
+    });
+    try {
+      final response = await ApiClient.instance.get('/creator/affiliate/partners');
+      if (response != null && response.statusCode == 200) {
+        setState(() {
+          _affiliatePartners = response.data['data'] ?? [];
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể tải danh sách đối tác: $e')),
+      );
+    } finally {
+      setState(() {
+        _isLoadingAffiliate = false;
+      });
+    }
+  }
+
+  Future<void> _applyForAffiliate(String partnerId) async {
+    try {
+      final response = await ApiClient.instance.post(
+        '/creator/affiliate/apply',
+        data: {'partner_id': partnerId},
+      );
+      if (response != null && response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gửi yêu cầu ứng tuyển Affiliate thành công!')),
+        );
+        _fetchAffiliatePartners();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lỗi ứng tuyển: $e')),
+      );
+    }
+  }
+
+  Future<void> _fetchPartnerServices(String partnerId, String partnerName) async {
+    setState(() {
+      _isLoadingPartnerDetail = true;
+      _selectedPartnerDetail = null;
+    });
+    try {
+      final response = await ApiClient.instance.get('/creator/affiliate/partners/$partnerId/services');
+      if (response != null && response.statusCode == 200) {
+        setState(() {
+          _selectedPartnerDetail = {
+            'name': partnerName,
+            'services': response.data['data'] ?? [],
+          };
+        });
+        _showPartnerServicesBottomSheet();
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không thể tải danh sách dịch vụ: $e')),
+      );
+    } finally {
+      setState(() {
+        _isLoadingPartnerDetail = false;
+      });
+    }
+  }
+
+  void _showPartnerServicesBottomSheet() {
+    if (_selectedPartnerDetail == null) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final services = _selectedPartnerDetail!['services'] as List<dynamic>;
+        final NumberFormat currencyFormatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(24),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.75,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Dịch vụ từ ${_selectedPartnerDetail!['name']}',
+                style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Chi tiết tỉ lệ hoa hồng áp dụng cho từng danh mục dịch vụ tiếp thị:',
+                style: TextStyle(color: Color(0xFF617D79), fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: services.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24.0),
+                          child: Text('Đối tác chưa cấu hình dịch vụ affiliate.', style: TextStyle(color: Color(0xFFB0C4C1))),
+                        ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: services.length,
+                        separatorBuilder: (_, __) => const Divider(color: Color(0xFFE2ECEB)),
+                        itemBuilder: (context, index) {
+                          final s = services[index];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        s['service_name'] ?? 'Dịch vụ chưa rõ tên',
+                                        style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 14, fontWeight: FontWeight.bold),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Giá gốc: ${currencyFormatter.format(s['price'] ?? 0)}',
+                                        style: const TextStyle(color: Color(0xFF617D79), fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF48C9B0).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: const Color(0xFF48C9B0).withOpacity(0.3)),
+                                  ),
+                                  child: Text(
+                                    '+${s['affiliate_rate'] ?? 0}% Hoa hồng',
+                                    style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _loadDashboardData() async {
@@ -220,6 +387,8 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                       _buildSwitchTabButton(title: 'Số dư ví', tabKey: 'wallet'),
                       const SizedBox(width: 6),
                       _buildSwitchTabButton(title: 'Rút tiền', tabKey: 'withdraw'),
+                      const SizedBox(width: 6),
+                      _buildSwitchTabButton(title: 'Affiliate', tabKey: 'affiliate'),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -349,9 +518,12 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                   ] else if (_activeTab == 'wallet') ...[
                     // GIAO DIỆN CHUYÊN BIỆT CHO TAB VÍ TIỀN BẢO CHỨNG SVALUE SAAS (CHỈ CÓ BIỂU ĐỒ & DÒNG TIỀN VỀ)
                     _buildCreatorWalletSection(),
-                  ] else ...[
+                  ] else if (_activeTab == 'withdraw') ...[
                     // GIAO DIỆN PHÂN TÁCH BIỆT LẬP DÀNH RIÊNG CHO TAB RÚT TIỀN (FORM & LỊCH SỬ LỆNH)
                     _buildCreatorWithdrawalRequestSection(),
+                  ] else ...[
+                    // GIAO DIỆN PHÂN TÁCH BIỆT LẬP DÀNH RIÊNG CHO TAB AFFILIATE (PHASE 2.6)
+                    _buildCreatorAffiliateSection(),
                   ],
                 ],
               ),
@@ -1114,5 +1286,198 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
           }),
       ],
     );
+  }
+
+  Widget _buildCreatorAffiliateSection() {
+    if (_isLoadingAffiliate) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: CircularProgressIndicator(color: _crtPrimary),
+        ),
+      );
+    }
+
+    if (_affiliatePartners.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            children: [
+              const Icon(Icons.business_center_outlined, size: 48, color: Color(0xFFB0C4C1)),
+              const SizedBox(height: 12),
+              const Text(
+                'Không tìm thấy cơ sở đối tác nào khả dụng.',
+                style: TextStyle(color: Color(0xFF617D79), fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 12),
+              TextButton(onPressed: _fetchAffiliatePartners, child: const Text('Tải lại dữ liệu'))
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Hợp tác chiến dịch Affiliate',
+          style: TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Đăng ký liên kết cùng các cơ sở y khoa để nhận mức hoa hồng hấp dẫn.',
+          style: TextStyle(color: Color(0xFF617D79), fontSize: 12, fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(height: 16),
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _affiliatePartners.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final partner = _affiliatePartners[index];
+            final String status = partner['status'] ?? 'NOT_APPLIED';
+            final String margin = partner['commission_margin'] ?? '0%';
+
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFFE2ECEB)),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 8, offset: const Offset(0, 2))],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => _fetchPartnerServices(partner['partner_id'].toString(), partner['full_name'] ?? 'Đối tác'),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 22,
+                              backgroundColor: const Color(0xFFF7FBF9),
+                              backgroundImage: partner['avatar_url'] != null && partner['avatar_url'].toString().isNotEmpty
+                                  ? NetworkImage(partner['avatar_url'])
+                                  : null,
+                              child: partner['avatar_url'] == null || partner['avatar_url'].toString().isEmpty
+                                  ? const Icon(Icons.local_hospital_rounded, color: Color(0xFF617D79))
+                                  : null,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    partner['full_name'] ?? 'Tên đối tác',
+                                    style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 15, fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '@${partner['username'] ?? 'username'}',
+                                    style: const TextStyle(color: Color(0xFFB0C4C1), fontSize: 12, fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12.0),
+                          child: Divider(height: 1, color: Color(0xFFF0F4F3)),
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Biên độ hoa hồng',
+                                  style: TextStyle(color: Color(0xFF617D79), fontSize: 11, fontWeight: FontWeight.w500),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  margin,
+                                  style: const TextStyle(color: Color(0xFF48C9B0), fontSize: 15, fontWeight: FontWeight.w900),
+                                ),
+                              ],
+                            ),
+                            _buildAffiliateActionButton(partner['partner_id'].toString(), status),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAffiliateActionButton(String partnerId, String status) {
+    switch (status) {
+      case 'PENDING':
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.amber.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.amber.withOpacity(0.3)),
+          ),
+          child: Text('Chờ duyệt', style: TextStyle(color: Colors.amber.shade900, fontSize: 12, fontWeight: FontWeight.bold)),
+        );
+      case 'APPROVED':
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF48C9B0).withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFF48C9B0).withOpacity(0.3)),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF48C9B0)),
+              SizedBox(width: 4),
+              Text('Đã liên kết', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        );
+      case 'REJECTED':
+        return ElevatedButton(
+          onPressed: () => _applyForAffiliate(partnerId),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFF7A8A).withOpacity(0.1),
+            foregroundColor: _crtPrimary,
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: _crtPrimary.withOpacity(0.3))),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          ),
+          child: const Text('Ứng tuyển lại', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+        );
+      case 'NOT_APPLIED':
+      default:
+        return ElevatedButton(
+          onPressed: () => _applyForAffiliate(partnerId),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF1A3A35),
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          ),
+          child: const Text('Ứng tuyển', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+        );
+    }
   }
 }

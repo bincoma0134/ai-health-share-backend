@@ -757,10 +757,10 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                   color: Colors.transparent,
                   child: InkWell(
                     onTap: () {
-                      // Kích hoạt điều hướng toàn màn hình chuyển tiếp sang phân hệ Studio sáng tạo dùng chung
-                      context.push('/upload-studio');
-                    },
-                    splashColor: const Color(0xFF80BF84).withOpacity(0.2),
+                    final currentVerifiedRole = _profileData?['profile']?['role'] ?? 'USER';
+                    context.push('/upload-studio', extra: currentVerifiedRole.toString());
+                  },
+                  splashColor: const Color(0xFF80BF84).withOpacity(0.2),
                     highlightColor: Colors.transparent,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20), // Tạo khoảng đệm lót đối xứng giúp nút tự co giãn hoàn hảo theo chữ
@@ -1351,10 +1351,10 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
+                crossAxisCount: 3,
                 childAspectRatio: 9 / 16,
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
               ),
               itemCount: _userVideos.length,
               itemBuilder: (context, index) {
@@ -1372,13 +1372,13 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                     badgeBgColor = const Color(0xFFE8F5E9).withOpacity(0.9);
                     dotColor = const Color(0xFF48C9B0);
                     textColor = const Color(0xFF1A3A35);
-                    statusText = 'Đã duyệt';
+                    statusText = '';
                     break;
                   case 'PENDING_EDIT':
                     badgeBgColor = const Color(0xFFE3F2FD).withOpacity(0.9);
                     dotColor = Colors.blue.shade600;
                     textColor = Colors.blue.shade900;
-                    statusText = 'Chờ duyệt sửa';
+                    statusText = '';
                     break;
                   case 'PENDING_DELETE':
                     badgeBgColor = const Color(0xFFFFEBEE).withOpacity(0.9);
@@ -1391,7 +1391,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                     badgeBgColor = const Color(0xFFFFF8E1).withOpacity(0.9);
                     dotColor = Colors.amber.shade700;
                     textColor = Colors.amber.shade900;
-                    statusText = 'Chờ duyệt';
+                    statusText = '';
                     break;
                 }
 

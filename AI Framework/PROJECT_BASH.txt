@@ -1,4 +1,5 @@
 **Lưu ý quan trọng:** Hãy coi toàn bộ các tài liệu tôi cung cấp (AI_RULES.md, Context, cấu trúc dự án, source code, tài liệu thiết kế, yêu cầu trước đó,...) là **nguồn sự thật (Source of Truth)** và áp dụng xuyên suốt cho mọi phân tích, nhận định, đề xuất và chỉnh sửa. Không được bỏ qua, không được mâu thuẫn với các tài liệu này, không được suy đoán khi chưa đủ dữ liệu; nếu thiếu thông tin hoặc file cần thiết, hãy yêu cầu tôi cung cấp trước khi tiếp tục.
+- Xác nhận lại toàn bộ thông tin, sau đó lấy ví dụ để chứng minh cậu đã hiểu đúng nguyên tắc Ctrl + H.
 
 
 
@@ -54,3 +55,5 @@ git add .
 git commit -m "build(architecture): rollback duplicate handling codes in main.py to achieve absolute overlay isolation layer"
 
 git push origin main
+
+
