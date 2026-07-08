@@ -2870,7 +2870,7 @@ async def creator_apply_affiliate(payload: schemas.AffiliateApplyRequest, curren
 
 
 @app.get("/partner/affiliate/queue", tags=["Partner Dashboard"])
-async def get_partner_affiliate_queue(current_user = Depends(verify_user_token)):
+async def get_partner_affiliate_queue(current_user: dict = Depends(get_current_user)):
     """
     [Phase 2.7] Đối tác truy vấn hàng đợi danh sách Creator đang nộp đơn ứng tuyển làm Affiliate.
     """
@@ -2899,7 +2899,7 @@ async def get_partner_affiliate_queue(current_user = Depends(verify_user_token))
 
 
 @app.patch("/partner/affiliate/{partnership_id}/action", tags=["Partner Dashboard"])
-async def action_partner_affiliate(partnership_id: str, payload: schemas.AffiliateActionRequest, current_user = Depends(verify_user_token)):
+async def action_partner_affiliate(partnership_id: str, payload: schemas.AffiliateActionRequest, current_user: dict = Depends(get_current_user)):
     """
     [Phase 2.7] Đối tác phê duyệt hoặc Từ chối yêu cầu ứng tuyển của Creator.
     Sử dụng Atomic Database Transaction để khởi tạo thực thể Metrics đồng bộ khi duyệt APPROVED thành công.
@@ -2947,7 +2947,7 @@ async def action_partner_affiliate(partnership_id: str, payload: schemas.Affilia
 
 
 @app.get("/creator/affiliate/partners/{partner_id}/services", tags=["Creator Affiliate"])
-async def get_partner_services_for_creator(partner_id: str, current_user = Depends(verify_user_token)):
+async def get_partner_services_for_creator(partner_id: str, current_user: dict = Depends(get_current_user)):
     """
     [Phase 2.6] Creator xem danh mục toàn bộ dịch vụ của một Partner cụ thể,
     gồm thông tin dịch vụ và tỷ lệ % hoa hồng lấy từ video đại diện.
@@ -3007,7 +3007,7 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
 
 
 @app.get("/partner/affiliate/metrics", tags=["Partner Dashboard"])
-async def get_partner_affiliate_metrics(current_user = Depends(verify_user_token)):
+async def get_partner_affiliate_metrics(current_user: dict = Depends(get_current_user)):
     """
     [Phase 2.7] Tab theo dõi tiến độ, tiến trình hoạt động, doanh thu mang lại của toàn bộ Affiliate thuộc quyền quản lý.
     """
