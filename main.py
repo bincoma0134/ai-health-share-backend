@@ -2812,8 +2812,8 @@ async def get_affiliate_partners(current_user = Depends(verify_user_token)):
         for pt in partners:
             p_id = str(pt["id"])
             
-            # Tính toán Biên độ hoa hồng thực tế dựa trên kho video của đối tác gắn với từng dịch vụ
-            cur.execute("SELECT affiliate_rate FROM tiktok_feeds WHERE partner_id = %s AND affiliate_rate > 0", (p_id,))
+            # Tính toán Biên độ hoa hồng thực tế dựa trên bảng services của chính đối tác đó
+            cur.execute("SELECT affiliate_rate FROM services WHERE partner_id = %s AND status = 'APPROVED' AND affiliate_rate > 0", (p_id,))
             rates = cur.fetchall()
             
             if rates:
