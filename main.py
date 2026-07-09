@@ -2790,7 +2790,7 @@ def create_review(payload: schemas.ReviewCreate, current_user = Depends(verify_u
 # =====================================================================
 
 @app.get("/creator/affiliate/partners", tags=["Creator Affiliate"])
-async def get_affiliate_partners(current_user = Depends(verify_user_token)):
+async def get_affiliate_partners(current_user: dict = Depends(get_current_user)):
     """
     [Phase 2.6] Creator theo dõi danh sách Cơ sở đối tác kèm biên độ % hoa hồng động
     và trạng thái ứng tuyển của bản thân tương ứng với từng đối tác.
@@ -2804,7 +2804,7 @@ async def get_affiliate_partners(current_user = Depends(verify_user_token)):
         partners = cur.fetchall()
         
         # Lấy các liên kết hiện tại của Creator này để map trạng thái button UI
-        cur.execute("SELECT partner_id, status FROM affiliate_partnerships WHERE creator_id = %s", (current_user.id,))
+        cur.execute("SELECT partner_id, status FROM affiliate_partnerships WHERE creator_id = %s", (current_user.get("id"),))
         partnerships = cur.fetchall()
         partnership_map = {str(p["partner_id"]): p["status"] for p in partnerships}
         
@@ -2812,8 +2812,8 @@ async def get_affiliate_partners(current_user = Depends(verify_user_token)):
         for pt in partners:
             p_id = str(pt["id"])
             
-            # Tính toán Biên độ hoa hồng thực tế dựa trên kho video của đối tác đó (Sử dụng đúng trường khóa ngoại UUID)
-            cur.execute("SELECT affiliate_rate FROM tiktok_feeds WHERE partner_id = %s AND affiliate_rate > 0", (p_id,))
+            # Tính toán Biên độ hoa hồng thực tế dựa trên kho video của đối tác đó
+            cur.execute("SELECT affiliate_rate FROM tiktok_feeds WHERE partner_id = %s AND affiliate_rate > 0", (pt["username"],))
             rates = cur.fetchall()
             
             if rates:
@@ -2842,7 +2842,7 @@ async def get_affiliate_partners(current_user = Depends(verify_user_token)):
 
 
 @app.post("/creator/affiliate/apply", tags=["Creator Affiliate"])
-async def creator_apply_affiliate(payload: schemas.AffiliateApplyRequest, current_user = Depends(verify_user_token)):
+async def creator_apply_affiliate(payload: schemas.AffiliateApplyRequest, current_user: dict = Depends(get_current_user)):
     """
     [Phase 2.6] Button ứng tuyển làm Affiliate cho một cơ sở đối tác xác định.
     Sử dụng cơ chế UPSERT đề phòng double-click bọc thép chống race condition.
@@ -2857,7 +2857,7 @@ async def creator_apply_affiliate(payload: schemas.AffiliateApplyRequest, curren
             DO UPDATE SET status = 'PENDING', updated_at = NOW()
             RETURNING id, status;
         """
-        cur.execute(query, (current_user.id, payload.partner_id))
+        cur.execute(query, (current_user.get("id"), payload.partner_id))
         res = cur.fetchone()
         conn.commit()
         return {"status": "success", "message": "Nộp đơn ứng tuyển làm cộng tác viên thành công!", "data": res}
@@ -2884,7 +2884,7 @@ async def get_partner_affiliate_queue(current_user: dict = Depends(get_current_u
             WHERE ap.partner_id = %s AND ap.status = 'PENDING'
             ORDER BY ap.created_at DESC;
         """
-        cur.execute(query, (current_user.id,))
+        cur.execute(query, (current_user.get("id"),))
         queue = cur.fetchall()
         for q in queue:
             q["partnership_id"] = str(q["partnership_id"])
@@ -2918,7 +2918,7 @@ async def action_partner_affiliate(partnership_id: str, payload: schemas.Affilia
             WHERE id = %s AND partner_id = %s
             RETURNING id, status;
         """
-        cur.execute(query_update, (payload.action, payload.admin_note, partnership_id, current_user.id))
+        cur.execute(query_update, (payload.action, payload.admin_note, partnership_id, current_user.get("id")))
         res = cur.fetchone()
         
         if not res:
@@ -2946,66 +2946,6 @@ async def action_partner_affiliate(partnership_id: str, payload: schemas.Affilia
         db_pool.putconn(conn)
 
 
-@app.get("/creator/affiliate/partners/{partner_id}/services", tags=["Creator Affiliate"])
-async def get_partner_services_for_creator(partner_id: str, current_user: dict = Depends(get_current_user)):
-    """
-    [Phase 2.6] Creator xem danh mục toàn bộ dịch vụ của một Partner cụ thể,
-    gồm thông tin dịch vụ và tỷ lệ % hoa hồng lấy từ video đại diện.
-    """
-    conn = db_pool.getconn()
-    try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # 1. Xác thực thông tin định danh username của Partner từ id nhận được
-        cur.execute("SELECT id, username FROM users WHERE id = %s AND role IN ('PARTNER', 'PARTNER_ADMIN')", (partner_id,))
-        partner = cur.fetchone()
-        if not partner:
-            raise HTTPException(status_code=404, detail="Không tìm thấy cơ sở đối tác hợp lệ.")
-            
-        # 2. Truy vấn danh sách dịch vụ đã được duyệt của cơ sở này
-        query_services = """
-            SELECT id, service_name, description, price, image_url, video_url, tags, service_type, status, created_at
-            FROM services
-            WHERE partner_id = %s AND status = 'APPROVED'
-            ORDER BY created_at DESC;
-        """
-        cur.execute(query_services, (partner_id,))
-        services = cur.fetchall()
-        
-        # 3. Kéo dải cấu hình hoa hồng thực tế gắn với từng service_id từ bảng feeds (Sử dụng chuẩn hóa UUID định danh)
-        cur.execute("SELECT service_id, affiliate_rate FROM tiktok_feeds WHERE partner_id = %s AND service_id IS NOT NULL", (partner_id,))
-        feeds = cur.fetchall()
-        feed_rate_map = {str(f["service_id"]): f["affiliate_rate"] for f in feeds}
-        
-        result = []
-        for svc in services:
-            svc_id = str(svc["id"])
-            # Khớp nối tỷ lệ phần trăm hoa hồng từ Video Studio (Mặc định 0.0 nếu chưa cấu hình)
-            commission_rate = feed_rate_map.get(svc_id, 0.0)
-            
-            result.append({
-                "id": svc_id,
-                "service_name": svc["service_name"],
-                "description": svc["description"],
-                "price": float(svc["price"]),
-                "image_url": svc["image_url"],
-                "video_url": svc["video_url"],
-                "tags": svc["tags"],
-                "service_type": svc["service_type"],
-                "status": svc["status"],
-                "affiliate_rate": float(commission_rate)
-            })
-            
-        return {"status": "success", "data": result}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        cur.close()
-        db_pool.putconn(conn)
-
-
 @app.get("/partner/affiliate/metrics", tags=["Partner Dashboard"])
 async def get_partner_affiliate_metrics(current_user: dict = Depends(get_current_user)):
     """
@@ -3023,7 +2963,7 @@ async def get_partner_affiliate_metrics(current_user: dict = Depends(get_current
         WHERE ap.partner_id = %s AND ap.status = 'APPROVED'
         ORDER BY am.total_revenue_generated DESC;
     """
-        cur.execute(query, (current_user.id,))
+        cur.execute(query, (current_user.get("id"),))
         metrics = cur.fetchall()
         for m in metrics:
             m["partnership_id"] = str(m["partnership_id"])
