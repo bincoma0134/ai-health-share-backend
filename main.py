@@ -2954,26 +2954,32 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
     """
     conn = db_pool.getconn()
     try:
+        # Ép buộc giải phóng mọi giao dịch tồn đọng trước đó trên kết nối này để làm sạch Pool
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+            
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # 1. Xác thực thông tin định danh username của Partner từ id nhận được
-        cur.execute("SELECT id, username FROM users WHERE id = %s AND role IN ('PARTNER', 'PARTNER_ADMIN')", (partner_id,))
+        # 1. Xác thực thông tin định danh username của Partner từ id nhận được sử dụng ép kiểu UUID tường minh
+        cur.execute("SELECT id, username FROM users WHERE id = %s::uuid AND role IN ('PARTNER', 'PARTNER_ADMIN')", (partner_id,))
         partner = cur.fetchone()
         if not partner:
             raise HTTPException(status_code=404, detail="Không tìm thấy cơ sở đối tác hợp lệ.")
             
-        # 2. Truy vấn danh sách dịch vụ đã được duyệt của cơ sở này kèm trường affiliate_rate gốc
+        # 2. Truy vấn danh sách dịch vụ đã được duyệt của cơ sở này kèm trường affiliate_rate gốc sử dụng ép kiểu UUID tường minh
         query_services = """
             SELECT id, service_name, description, price, image_url, video_url, tags, service_type, status, created_at, affiliate_rate
             FROM services
-            WHERE partner_id = %s AND status = 'APPROVED'
+            WHERE partner_id = %s::uuid AND status = 'APPROVED' AND is_deleted = false
             ORDER BY created_at DESC;
         """
         cur.execute(query_services, (partner_id,))
         services = cur.fetchall()
         
         # 3. Kéo dải cấu hình hoa hồng thực tế gắn với từng service_id từ bảng feeds làm phương án fallback phụ trợ
-        cur.execute("SELECT service_id, affiliate_rate FROM tiktok_feeds WHERE partner_id = %s AND service_id IS NOT NULL", (partner_id,))
+        cur.execute("SELECT service_id, affiliate_rate FROM tiktok_feeds WHERE partner_id = %s::uuid AND service_id IS NOT NULL", (partner_id,))
         feeds = cur.fetchall()
         feed_rate_map = {str(f["service_id"]): f["affiliate_rate"] for f in feeds}
         
@@ -2987,15 +2993,27 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
                 commission_rate = feed_rate_map.get(svc_id, 0.0)
             if commission_rate is None:
                 commission_rate = 0.0
+                
+            # Xử lý an toàn dữ liệu trường tags tránh lỗi parse chuỗi JSON thô từ CSV/DB
+            raw_tags = svc.get("tags")
+            processed_tags = []
+            if raw_tags:
+                if isinstance(raw_tags, list):
+                    processed_tags = raw_tags
+                elif isinstance(raw_tags, str):
+                    try:
+                        processed_tags = json.loads(raw_tags)
+                    except Exception:
+                        processed_tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
             
             result.append({
                 "id": svc_id,
                 "service_name": svc["service_name"],
                 "description": svc["description"],
-                "price": float(svc["price"]),
+                "price": float(svc["price"]) if svc["price"] is not None else 0.0,
                 "image_url": svc["image_url"],
                 "video_url": svc["video_url"],
-                "tags": svc["tags"],
+                "tags": processed_tags,
                 "service_type": svc["service_type"],
                 "status": svc["status"],
                 "affiliate_rate": float(commission_rate)
@@ -3003,11 +3021,26 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
             
         return {"status": "success", "data": result}
     except HTTPException:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         raise
     except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        cur.close()
+        try:
+            cur.close()
+        except Exception:
+            pass
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         db_pool.putconn(conn)
 
 
