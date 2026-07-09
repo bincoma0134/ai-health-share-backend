@@ -508,7 +508,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
           AppToast.show(context: context, message: "Phát sóng video ngắn và đồng bộ danh mục dịch vụ thành công!", isSuccess: true);
           context.pop();
         }
-      } else {
+      } else {  
         if (mounted) AppToast.show(context: context, message: "Lỗi gửi dữ liệu lên máy chủ!", isSuccess: false);
       }
     } catch (e) {

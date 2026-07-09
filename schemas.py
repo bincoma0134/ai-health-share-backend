@@ -38,6 +38,7 @@ class ServiceCreate(BaseModel):
     tags: Optional[list] = []
     service_type: Optional[str] = "RELAXATION"
     status: Optional[str] = "PENDING"
+    affiliate_rate: Optional[float] = 0.0
 
 # --- 4. CẤU TRÚC TIKTOK FEED (Thay thế Studio) ---
 class TikTokFeedCreate(BaseModel):

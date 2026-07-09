@@ -386,9 +386,9 @@ def create_service(payload: schemas.ServiceCreate, current_user = Depends(verify
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         tags_json = json.dumps(payload.tags)
-        cur.execute("""INSERT INTO services (partner_id, service_name, description, price, image_url, video_url, tags, service_type, status) 
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'PENDING') RETURNING *""",
-                    (current_user.id, payload.service_name, payload.description, payload.price, payload.image_url, payload.video_url, tags_json, payload.service_type))
+        cur.execute("""INSERT INTO services (partner_id, service_name, description, price, image_url, video_url, tags, service_type, status, affiliate_rate) 
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'PENDING', %s) RETURNING *""",
+                    (current_user.id, payload.service_name, payload.description, payload.price, payload.image_url, payload.video_url, tags_json, payload.service_type, payload.affiliate_rate))
         new_svc = cur.fetchone()
         conn.commit()
         return {"status": "success", "data": new_svc}
@@ -877,7 +877,7 @@ def update_my_service(service_id: str, payload: dict, current_user = Depends(ver
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # Bộ lọc chỉ cho phép các cột thực tế của bảng services được cập nhật
-        allowed_cols = {"service_name", "description", "price", "image_url", "video_url", "tags", "service_type"}
+        allowed_cols = {"service_name", "description", "price", "image_url", "video_url", "tags", "service_type", "affiliate_rate"}
         updates, values = ["status = 'PENDING'"], []
         
         for k, v in payload.items():
