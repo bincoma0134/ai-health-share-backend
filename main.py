@@ -2962,9 +2962,9 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
         if not partner:
             raise HTTPException(status_code=404, detail="Không tìm thấy cơ sở đối tác hợp lệ.")
             
-        # 2. Truy vấn danh sách dịch vụ đã được duyệt của cơ sở này
+        # 2. Truy vấn danh sách dịch vụ đã được duyệt của cơ sở này kèm trường affiliate_rate gốc
         query_services = """
-            SELECT id, service_name, description, price, image_url, video_url, tags, service_type, status, created_at
+            SELECT id, service_name, description, price, image_url, video_url, tags, service_type, status, created_at, affiliate_rate
             FROM services
             WHERE partner_id = %s AND status = 'APPROVED'
             ORDER BY created_at DESC;
@@ -2972,7 +2972,7 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
         cur.execute(query_services, (partner_id,))
         services = cur.fetchall()
         
-        # 3. Kéo dải cấu hình hoa hồng thực tế gắn với từng service_id từ bảng feeds (Sử dụng chuẩn hóa UUID định danh)
+        # 3. Kéo dải cấu hình hoa hồng thực tế gắn với từng service_id từ bảng feeds làm phương án fallback phụ trợ
         cur.execute("SELECT service_id, affiliate_rate FROM tiktok_feeds WHERE partner_id = %s AND service_id IS NOT NULL", (partner_id,))
         feeds = cur.fetchall()
         feed_rate_map = {str(f["service_id"]): f["affiliate_rate"] for f in feeds}
@@ -2980,8 +2980,13 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
         result = []
         for svc in services:
             svc_id = str(svc["id"])
-            # Khớp nối tỷ lệ phần trăm hoa hồng từ Video Studio (Mặc định 0.0 nếu chưa cấu hình)
-            commission_rate = feed_rate_map.get(svc_id, 0.0)
+            
+            # Thứ tự ưu tiên bọc thép: Lấy hoa hồng từ bảng services trước -> Fallback sang bảng feeds -> Mặc định về 0.0
+            commission_rate = svc.get("affiliate_rate")
+            if commission_rate is None:
+                commission_rate = feed_rate_map.get(svc_id, 0.0)
+            if commission_rate is None:
+                commission_rate = 0.0
             
             result.append({
                 "id": svc_id,
