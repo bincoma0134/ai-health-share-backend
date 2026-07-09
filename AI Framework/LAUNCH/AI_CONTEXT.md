@@ -43,3 +43,33 @@ Mọi phân tích hệ thống bắt buộc phải ưu tiên đối chiếu theo
 
 ## AI WORKFLOW
 Mọi TASK bắt buộc phải thực thi tuần tự theo quy trình 5 giai đoạn:
+
+
+## Các bảng Trong Database (Neton.tech)
+* affiliate_metrics
+* affiliate_partnerships
+* ai_chat_history
+* ai_conversations
+* appointments
+* bookings_transactions
+* community_post_comments
+* community_post_likes
+* community_posts
+* creator_upgrades
+* missions
+* notifications
+* reviews
+* services
+* svalue_transaction_logs
+* tiktok_feed_comments
+* tiktok_feed_likes
+* tiktok_feed_saves
+* user_fcm_tokens
+* user_follows
+* user_missions
+* user_svalue_wallet
+* user_vouchers
+* users
+* vouchers
+* wallets
+* withdrawal_requests

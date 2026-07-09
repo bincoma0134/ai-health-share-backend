@@ -2799,11 +2799,11 @@ async def get_affiliate_partners(current_user = Depends(verify_user_token)):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Lấy toàn bộ danh sách tài khoản là PARTNER hoặc PARTNER_ADMIN
-        cur.execute("SELECT id, username, full_name, avatar_url FROM users WHERE role IN ('PARTNER', 'PARTNER_ADMIN')")
+        # Lấy toàn bộ danh sách tài khoản đối tác có role chuẩn là PARTNER_ADMIN
+        cur.execute("SELECT id, username, full_name, avatar_url FROM users WHERE role = 'PARTNER_ADMIN'")
         partners = cur.fetchall()
         
-        # Lấy các liên kết hiện tại của Creator này để map trạng thái button UI
+        # Lấy các liên kết hiện tại của Creator này từ affiliate_partnerships để map trạng thái button UI
         cur.execute("SELECT partner_id, status FROM affiliate_partnerships WHERE creator_id = %s", (current_user.id,))
         partnerships = cur.fetchall()
         partnership_map = {str(p["partner_id"]): p["status"] for p in partnerships}
@@ -2812,13 +2812,13 @@ async def get_affiliate_partners(current_user = Depends(verify_user_token)):
         for pt in partners:
             p_id = str(pt["id"])
             
-            # Tính toán Biên độ hoa hồng thực tế dựa trên kho video của đối tác đó (Sử dụng đúng trường khóa ngoại UUID)
+            # Tính toán Biên độ hoa hồng thực tế dựa trên kho video của đối tác gắn với từng dịch vụ
             cur.execute("SELECT affiliate_rate FROM tiktok_feeds WHERE partner_id = %s AND affiliate_rate > 0", (p_id,))
             rates = cur.fetchall()
             
             if rates:
-                min_rate = min([r["affiliate_rate"] for r in rates])
-                max_rate = max([r["affiliate_rate"] for r in rates])
+                min_rate = min([float(r["affiliate_rate"]) for r in rates])
+                max_rate = max([float(r["affiliate_rate"]) for r in rates])
                 margin = f"{int(min_rate)}% - {int(max_rate)}%" if min_rate != max_rate else f"{int(min_rate)}%"
             else:
                 margin = "0%"
