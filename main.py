@@ -2950,7 +2950,7 @@ async def action_partner_affiliate(partnership_id: str, payload: schemas.Affilia
 async def get_partner_services_for_creator(partner_id: str, current_user = Depends(verify_user_token)):
     """
     [Phase 2.6] Creator xem danh mục toàn bộ dịch vụ của một Partner cụ thể,
-    gồm thông tin dịch vụ và tỷ lệ % hoa hồng lấy từ video đại diện.
+    gồm thông tin dịch vụ và tỷ lệ % hoa hồng lấy gốc trực tiếp từ bảng services.
     """
     conn = db_pool.getconn()
     try:
@@ -2963,12 +2963,12 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
         # 1. Xác thực thông tin định danh username của Partner từ id nhận được sử dụng ép kiểu UUID tường minh
-        cur.execute("SELECT id, username FROM users WHERE id = %s::uuid AND role IN ('PARTNER', 'PARTNER_ADMIN')", (partner_id,))
+        cur.execute("SELECT id, username FROM users WHERE id = %s::uuid AND role = 'PARTNER_ADMIN'", (partner_id,))
         partner = cur.fetchone()
         if not partner:
             raise HTTPException(status_code=404, detail="Không tìm thấy cơ sở đối tác hợp lệ.")
             
-        # 2. Truy vấn danh sách dịch vụ đã được duyệt của cơ sở này kèm trường affiliate_rate gốc sử dụng ép kiểu UUID tường minh
+        # 2. Truy vấn danh sách dịch vụ gốc trực tiếp từ bảng services, đảm bảo không lọc chéo sang bảng khác
         query_services = """
             SELECT id, service_name, description, price, image_url, video_url, tags, service_type, status, created_at, affiliate_rate
             FROM services
@@ -2978,19 +2978,12 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
         cur.execute(query_services, (partner_id,))
         services = cur.fetchall()
         
-        # 3. Kéo dải cấu hình hoa hồng thực tế gắn với từng service_id từ bảng feeds làm phương án fallback phụ trợ
-        cur.execute("SELECT service_id, affiliate_rate FROM tiktok_feeds WHERE partner_id = %s::uuid AND service_id IS NOT NULL", (partner_id,))
-        feeds = cur.fetchall()
-        feed_rate_map = {str(f["service_id"]): f["affiliate_rate"] for f in feeds}
-        
         result = []
         for svc in services:
             svc_id = str(svc["id"])
             
-            # Thứ tự ưu tiên bọc thép: Lấy hoa hồng từ bảng services trước -> Fallback sang bảng feeds -> Mặc định về 0.0
+            # Khai thác hoa hồng trực tiếp từ thuộc tính affiliate_rate gốc của dịch vụ
             commission_rate = svc.get("affiliate_rate")
-            if commission_rate is None:
-                commission_rate = feed_rate_map.get(svc_id, 0.0)
             if commission_rate is None:
                 commission_rate = 0.0
                 
@@ -3002,6 +2995,7 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
                     processed_tags = raw_tags
                 elif isinstance(raw_tags, str):
                     try:
+                        import json
                         processed_tags = json.loads(raw_tags)
                     except Exception:
                         processed_tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
