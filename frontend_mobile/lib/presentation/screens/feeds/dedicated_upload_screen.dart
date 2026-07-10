@@ -17,6 +17,7 @@ import 'package:dio/dio.dart'; // Đảm bảo đính kèm lõi Token hủy mạ
 import 'dart:async';
 import '../../../data/services/secure_storage_service.dart';
 import '../../../data/services/partner_api_service.dart';
+import 'package:intl/intl.dart'; // 🚀 Bổ sung thư viện format số tiền cho Bottom Sheet Affiliate
 
 
 class DedicatedUploadScreen extends StatefulWidget {
@@ -76,11 +77,17 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
   String? _selectedServiceName;
   String? _selectedVoucherCode;
   String? _selectedServiceId; // Lưu ID dịch vụ thực tế để truyền payload và gỡ liên kết
+  String? _selectedPartnerId; // 🚀 MỚI: Khóa ID của Đối tác được chọn để gửi payload
   
   // Lưu trữ danh sách thực tế của riêng Partner để hiển thị lựa chọn
   List<dynamic> _partnerAvailableServices = [];
   List<dynamic> _partnerAvailableVouchers = [];
   bool _isFetchingMetadata = false;
+
+  // 🚀 MỚI: Trạng thái lưu trữ Affiliate dành riêng cho CREATOR
+  List<dynamic> _creatorApprovedPartners = [];
+  List<dynamic> _creatorPartnerServices = [];
+  List<dynamic> _creatorPartnerVouchers = [];
   
   String _userRole = "USER"; // Sẽ tự động nạp động từ luồng trạng thái tài khoản hệ thống
   String _partnerPublishMode = "TIKTOK_FEED"; // 'TIKTOK_FEED' hoặc 'SERVICE_VIDEO'
@@ -105,6 +112,61 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
     // Nếu là Partner, chủ động tiền tải dữ liệu thương mại của cơ sở để sẵn sàng cho tab 2
     if (_userRole == "PARTNER_ADMIN" || _userRole == "PARTNER") {
       _loadPartnerMetadata();
+    } else if (_userRole == "CREATOR") {
+      // 🚀 Luồng nạp dữ liệu Affiliate tự động cho Creator
+      _loadCreatorAffiliateData();
+    }
+  }
+
+  // 🚀 MỚI: Logic kéo danh sách Đối tác đã duyệt (APPROVED) của Creator
+  Future<void> _loadCreatorAffiliateData() async {
+    try {
+      final res = await ApiClient.instance.get('/creator/affiliate/partners');
+      if (res.statusCode == 200 && mounted) {
+        final List<dynamic> allPartners = res.data['data'] ?? [];
+        setState(() {
+          _creatorApprovedPartners = allPartners.where((p) => p['status'] == 'APPROVED').toList();
+        });
+      }
+    } catch (_) {}
+  }
+
+  // 🚀 MỚI: Logic kéo danh sách Dịch vụ của Đối tác vừa được chọn
+  Future<void> _loadCreatorPartnerServices(String partnerId) async {
+    try {
+      final res = await ApiClient.instance.get('/creator/affiliate/partners/$partnerId/services');
+      if (res.statusCode == 200 && mounted) {
+        setState(() {
+          _creatorPartnerServices = res.data['data'] ?? [];
+        });
+      }
+    } catch (_) {}
+  }
+
+  // 🚀 MỚI: Logic kéo danh sách Voucher của Đối tác dựa vào Public Profile
+  Future<void> _loadCreatorPartnerVouchers(String username) async {
+    try {
+      final res = await ApiClient.instance.get('/user/public/$username');
+      if (res.statusCode == 200 && mounted) {
+        final resBody = res.data as Map<String, dynamic>?;
+        final profileData = resBody?['data'] as Map<String, dynamic>?;
+        setState(() {
+          // Lọc voucher còn hiệu lực tương tự logic của Partner
+          final now = DateTime.now();
+          final allVouchers = profileData?['vouchers'] as List<dynamic>? ?? [];
+          _creatorPartnerVouchers = allVouchers.where((v) {
+            if (v['valid_until'] == null) return false;
+            try {
+              final expireDate = DateTime.parse(v['valid_until'].toString());
+              return expireDate.isAfter(now);
+            } catch (_) {
+              return false;
+            }
+          }).toList();
+        });
+      }
+    } catch (e) {
+      debugPrint('Lỗi tải danh sách Voucher của Đối tác: $e');
     }
   }
 
@@ -490,10 +552,10 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
     final Map<String, dynamic> payload = {
       'title': _titleController.text.trim(),
       'content': _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
-      'price': _priceController.text.trim().isEmpty ? null : double.tryParse(_priceController.text.trim()),
+      'price': _priceController.text.trim().isEmpty ? null : double.tryParse(_priceController.text.replaceAll(RegExp(r'[^0-9]'), '')),
       'video_url': _finalCloudVideoUrl,
       'affiliate_rate': _commissionController.text.trim().isEmpty ? 0.0 : double.tryParse(_commissionController.text.trim()),
-      'partner_id': _selectedPartnerName, 
+      'partner_id': _userRole == "CREATOR" ? _selectedPartnerId : _selectedPartnerName, // 🚀 Bọc thép truyền chuẩn ID nếu là Creator
       'service_id': targetedServiceId, // Đính kèm ID dịch vụ mới tạo hoặc ID có sẵn được chọn liên kết
       'voucher_code': _selectedVoucherCode,
       'feed_type': (_userRole == "PARTNER_ADMIN" || _userRole == "PARTNER") ? _partnerPublishMode : "TIKTOK_FEED",
@@ -988,6 +1050,161 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
     );
   }
 
+  // 🚀 MỚI: Widget Bottom Sheet hiển thị danh sách dịch vụ kèm Hoa hồng (Dành cho Creator Affiliate)
+  void _showCreatorServicesBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final NumberFormat currencyFormatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(24),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.75,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Chọn Dịch vụ tiếp thị', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              const Text('Chi tiết tỉ lệ hoa hồng áp dụng cho từng danh mục:', style: TextStyle(color: Color(0xFF617D79), fontSize: 12)),
+              const SizedBox(height: 16),
+              Flexible(
+                child: _creatorPartnerServices.isEmpty
+                    ? const Center(child: Padding(padding: EdgeInsets.all(24.0), child: Text('Đang tải hoặc đối tác chưa cấu hình dịch vụ.', style: TextStyle(color: Color(0xFFB0C4C1)))))
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _creatorPartnerServices.length,
+                        separatorBuilder: (_, __) => const Divider(color: Color(0xFFE2ECEB)),
+                        itemBuilder: (context, index) {
+                          final s = _creatorPartnerServices[index];
+                          return InkWell(
+                            onTap: () {
+                              setState(() {
+                                _selectedServiceName = s['service_name'];
+                                _selectedServiceId = s['id'].toString();
+                                // Lấy luôn giá dịch vụ gán tạm để hiển thị cho trực quan nếu muốn
+                                final double svcPrice = double.tryParse(s['price']?.toString() ?? '0') ?? 0;
+                                final formatter = NumberFormat('#,###', 'en_US');
+                                _priceController.text = '${formatter.format(svcPrice).replaceAll(',', '.')} VND'; 
+                              });
+                              Navigator.pop(context);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 12.0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(s['service_name'] ?? 'Dịch vụ chưa rõ tên', style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 14, fontWeight: FontWeight.bold)),
+                                        const SizedBox(height: 4),
+                                        Text('Giá gốc: ${currencyFormatter.format(s['price'] ?? 0)}', style: const TextStyle(color: Color(0xFF617D79), fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF48C9B0).withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0xFF48C9B0).withOpacity(0.3)),
+                                    ),
+                                    child: Text('+${s['affiliate_rate'] ?? 0}% Hoa hồng', style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // 🚀 MỚI: Widget Bottom Sheet hiển thị danh sách Voucher kèm check điều kiện (Dành cho Creator Affiliate)
+  void _showCreatorVouchersBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(24),
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Chọn Voucher Ưu Đãi', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              const Text('Các voucher bị mờ là voucher không áp dụng cho dịch vụ bạn đang chọn.', style: TextStyle(color: Color(0xFF617D79), fontSize: 12)),
+              const SizedBox(height: 16),
+              Flexible(
+                child: _creatorPartnerVouchers.isEmpty
+                    ? const Center(child: Padding(padding: EdgeInsets.all(24.0), child: Text('Đối tác hiện chưa có voucher nào.', style: TextStyle(color: Color(0xFFB0C4C1)))))
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _creatorPartnerVouchers.length,
+                        separatorBuilder: (_, __) => const Divider(color: Color(0xFFE2ECEB)),
+                        itemBuilder: (context, index) {
+                          final v = _creatorPartnerVouchers[index];
+                          final applicableServices = v['applicable_services'] as List<dynamic>? ?? [];
+                          
+                          // 🚀 BỌC THÉP LUỒNG: Điều kiện voucher hợp lệ: 
+                          // 1. Không bị giới hạn dịch vụ (applicable_services rỗng)
+                          // 2. Nếu có giới hạn, bắt buộc BẠN PHẢI CHỌN DỊCH VỤ TRƯỚC, và Dịch vụ đó phải nằm trong danh sách.
+                          bool isEligible = true;
+                          if (applicableServices.isNotEmpty) {
+                            if (_selectedServiceId == null) {
+                              isEligible = false; // Khóa mờ nếu chưa chọn dịch vụ nào
+                            } else {
+                              isEligible = applicableServices.any((id) => id.toString() == _selectedServiceId);
+                            }
+                          }
+
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(v['code'] ?? 'VOUCHER', style: TextStyle(color: isEligible ? const Color(0xFF1A3A35) : const Color(0xFFB0C4C1), fontWeight: FontWeight.bold, fontSize: 15)),
+                            subtitle: Text('Giảm ${v['discount_value']}${v['discount_type'] == 'PERCENTAGE' ? '%' : 'đ'}', style: TextStyle(color: isEligible ? const Color(0xFF617D79) : const Color(0xFFD1D1D6), fontSize: 12)),
+                            trailing: isEligible 
+                                ? const Icon(Icons.add_circle_outline_rounded, color: Color(0xFF80BF84), size: 20)
+                                : const Icon(Icons.do_not_disturb_alt_rounded, color: Color(0xFFD1D1D6), size: 18),
+                            onTap: isEligible ? () {
+                              setState(() {
+                                _selectedVoucherCode = v['code'];
+                              });
+                              Navigator.pop(context);
+                            } : () {
+                              AppToast.show(context: context, message: 'Voucher này không áp dụng cho dịch vụ bạn đã chọn!', isSuccess: false);
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   // ==================== STEP 2: COMMERCE METADATA FORM ====================
   Widget _buildStep2Metadata() {
     final String currentRole = _userRole.trim().toUpperCase();
@@ -1172,6 +1389,25 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                   _buildTextField(controller: _titleController, hint: "Nhập tiêu đề truyền cảm hứng hoặc kiến thức y khoa..."),
                   const SizedBox(height: 14),
                   _buildTextField(controller: _descriptionController, hint: "Thêm lời khuyên, hastag hoặc tóm tắt nội dung video ngắn...", maxLines: 3),
+                  const SizedBox(height: 14),
+                  
+                  // TRƯỜNG GIÁ ĐƯỢC CHUYỂN LÊN ĐÂY
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 6),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline_rounded, size: 14, color: Color(0xFF80BF84)),
+                        const SizedBox(width: 6),
+                        const Expanded(child: Text('Giá dịch vụ (Hệ thống tự động đồng bộ từ Đối tác, không thể sửa)', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.bold))),
+                      ],
+                    ),
+                  ),
+                  _buildTextField(
+                    controller: _priceController, 
+                    hint: _selectedServiceName != null ? "Đã đồng bộ giá gốc từ Đối tác" : "Giá sẽ tự động hiển thị khi chọn Dịch vụ", 
+                    keyboardType: TextInputType.number,
+                    readOnly: true
+                  ),
                   const SizedBox(height: 24),
                   
                   _buildFormSectionTitle("Doanh thu Tiếp thị liên kết (Affiliate Engine)"),
@@ -1200,22 +1436,81 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                   _buildSelectableTile(
                     icon: Icons.maps_home_work_rounded,
                     label: "Gắn thẻ Cơ sở Wellness",
-                    value: _selectedPartnerName ?? "Chọn đối tác y tế phân phối lịch hẹn...",
-                    onTap: () => setState(() => _selectedPartnerName = "Bệnh Viện Đa Khoa Hồng Ngọc"),
+                    value: _selectedPartnerName ?? "Chọn đối tác Affiliate...",
+                    onTap: () {
+                      _showSelectionBottomSheet(
+                        title: "Chọn Đối tác liên kết (Affiliate)",
+                        items: _creatorApprovedPartners,
+                        itemTitleKey: "full_name",
+                        itemValueKey: "partner_id",
+                        onSelected: (name, id) {
+                          setState(() {
+                            _selectedPartnerName = name;
+                            _selectedPartnerId = id;
+                            // Reset Dịch vụ và Voucher khi đổi Đối tác
+                            _selectedServiceName = null;
+                            _selectedServiceId = null;
+                            _selectedVoucherCode = null;
+                            _priceController.clear();
+                            _creatorPartnerServices.clear();
+                            _creatorPartnerVouchers.clear();
+                          });
+                          _loadCreatorPartnerServices(id); // Gọi API kéo dịch vụ của Đối tác vừa chọn
+                          
+                          // 🚀 BỌC THÉP NULL SAFETY: Tránh crash hệ thống khi tìm kiếm
+                          try {
+                            final partner = _creatorApprovedPartners.firstWhere((p) => p['partner_id'] == id);
+                            if (partner['username'] != null) {
+                              _loadCreatorPartnerVouchers(partner['username']);
+                            }
+                          } catch (_) {
+                            // Không tìm thấy hoặc lỗi cấu trúc, bỏ qua an toàn
+                          }
+                        },
+                      );
+                    },
+                    onRemove: _selectedPartnerName == null ? null : () {
+                      setState(() {
+                        _selectedPartnerName = null;
+                        _selectedPartnerId = null;
+                        _selectedServiceName = null;
+                        _selectedServiceId = null;
+                        _selectedVoucherCode = null;
+                        _priceController.clear();
+                        _creatorPartnerServices.clear();
+                        _creatorPartnerVouchers.clear();
+                      });
+                    },
                   ),
                   const Divider(height: 1, color: Color(0xFFE2ECEB)),
                   _buildSelectableTile(
                     icon: Icons.medical_services_rounded,
                     label: "Liên kết Gói dịch vụ y khoa",
                     value: _selectedServiceName ?? "Nhúng gói trị liệu nền tảng...",
-                    onTap: _selectedPartnerName == null ? null : () => setState(() => _selectedServiceName = "Gói Trị Liệu Chuyên Sâu Cơ Xương Khớp"),
+                    onTap: _selectedPartnerId == null ? null : () {
+                      _showCreatorServicesBottomSheet();
+                    },
+                    onRemove: _selectedServiceName == null ? null : () {
+                      setState(() {
+                        _selectedServiceName = null;
+                        _selectedServiceId = null;
+                        _priceController.clear();
+                      });
+                    },
                   ),
                   const Divider(height: 1, color: Color(0xFFE2ECEB)),
                   _buildSelectableTile(
                     icon: Icons.local_offer_rounded,
                     label: "Đính kèm Mã ưu đãi độc quyền",
                     value: _selectedVoucherCode ?? "Chọn Voucher công khai kích thích chuyển đổi...",
-                    onTap: _selectedPartnerName == null ? null : () => setState(() => _selectedVoucherCode = "WELLNESS50K"),
+                    onTap: _selectedPartnerId == null ? null : () {
+                      _showCreatorVouchersBottomSheet();
+                    },
+                    onRemove: _selectedVoucherCode == null ? null : () {
+                      setState(() {
+                        _selectedVoucherCode = null;
+                      });
+                    },
                   ),
                 ] else ...[
                   // Mặc định hoặc USER ROLE - Khóa chặt không gian thương mại, tập trung chia sẻ nhật ký cá nhân Wellness

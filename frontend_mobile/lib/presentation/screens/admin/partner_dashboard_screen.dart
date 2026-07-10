@@ -19,6 +19,8 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
   List<dynamic> _appointments = [];
   List<dynamic> _withdrawals = [];
   List<dynamic> _vouchers = [];
+  List<dynamic> _affiliateQueue = [];
+  List<dynamic> _affiliateMetrics = [];
   
   double _balance = 0;
   double _totalEarned = 0;
@@ -51,6 +53,8 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
       PartnerApiService.fetchAppointments(),
       PartnerApiService.fetchWithdrawals(),
       PartnerApiService.fetchVouchers(),
+      PartnerApiService.fetchAffiliateQueue(),
+      PartnerApiService.fetchAffiliateMetrics(),
     ]);
 
     if (mounted) {
@@ -59,6 +63,8 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         _appointments = results[1];
         _withdrawals = results[2];
         _vouchers = results[3];
+        _affiliateQueue = results[4];
+        _affiliateMetrics = results[5];
 
         // Tính toán ví y hệt Web
         double earned = 0;
@@ -181,6 +187,49 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
     }
   }
 
+  // --- LOGIC AFFILIATE ---
+  Future<void> _handleAffiliateAction(String id, String action, {String? note}) async {
+    AppToast.show(context: context, message: 'Đang xử lý...', isSuccess: true, duration: const Duration(seconds: 1));
+    final success = await PartnerApiService.actionAffiliate(id, action, adminNote: note);
+    if (success && mounted) {
+      AppToast.show(context: context, message: 'Đã xử lý hồ sơ Affiliate!', isSuccess: true);
+      _loadAllData();
+    } else if (mounted) {
+      AppToast.show(context: context, message: 'Lỗi xử lý, vui lòng thử lại!', isSuccess: false);
+    }
+  }
+
+  void _showRejectAffiliateDialog(String id) {
+    final noteCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: const Text('Từ chối Affiliate', style: TextStyle(fontWeight: FontWeight.w900)),
+        content: TextField(
+          controller: noteCtrl,
+          decoration: const InputDecoration(hintText: 'Nhập lý do từ chối (bắt buộc)...', filled: true, fillColor: Color(0xFFF7FBF9), border: OutlineInputBorder(borderSide: BorderSide.none)),
+          maxLines: 2,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Hủy', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+            onPressed: () {
+              if (noteCtrl.text.trim().isEmpty) {
+                AppToast.show(context: context, message: 'Vui lòng nhập lý do!', isSuccess: false);
+                return;
+              }
+              Navigator.pop(ctx);
+              _handleAffiliateAction(id, 'REJECTED', note: noteCtrl.text.trim());
+            },
+            child: const Text('Từ chối'),
+          )
+        ],
+      )
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pendingAppts = _appointments.where((a) => a['status'] == 'WAITING_PARTNER').toList();
@@ -215,6 +264,8 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 _buildTabBtn('wallet', 'Rút tiền', Icons.credit_card),
                 _buildTabBtn('withdrawals', 'Lịch sử', Icons.history),
                 _buildTabBtn('vouchers', 'Ưu đãi', Icons.discount_rounded),
+                _buildTabBtn('affiliate_queue', 'Duyệt Affiliate ${_affiliateQueue.isNotEmpty ? '(${_affiliateQueue.length})' : ''}', Icons.group_add_rounded),
+                _buildTabBtn('affiliate_metrics', 'Hiệu suất Affiliate', Icons.analytics_rounded),
               ],
             ),
           ),
@@ -244,6 +295,8 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
       case 'wallet': return _buildWalletTab();
       case 'withdrawals': return _buildWithdrawalsTab();
       case 'vouchers': return _buildVouchersTab();
+      case 'affiliate_queue': return _buildAffiliateQueueTab();
+      case 'affiliate_metrics': return _buildAffiliateMetricsTab();
       default: return const SizedBox();
     }
   }
@@ -783,6 +836,349 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
               ),
             );
           }).toList(),
+      ],
+    );
+  }
+
+  // ==========================================
+  // TAB 6: DUYỆT AFFILIATE (QUEUE)
+  // ==========================================
+  Widget _buildAffiliateQueueTab() {
+    int pendingCount = _affiliateQueue.length;
+    int approvedCount = _affiliateMetrics.length;
+    int totalConversions = 0;
+    
+    for (var m in _affiliateMetrics) {
+      totalConversions += (int.tryParse(m['total_conversions']?.toString() ?? '0') ?? 0);
+    }
+
+    // XỬ LÝ DỮ LIỆU BIỂU ĐỒ 7 NGÀY QUA
+    final now = DateTime.now();
+    List<Map<String, dynamic>> chartData = [];
+    int maxChartCount = 0;
+    
+    for (int i = 6; i >= 0; i--) {
+      final targetDate = now.subtract(Duration(days: i));
+      final dateStr = DateFormat('yyyy-MM-dd').format(targetDate);
+      final displayDate = DateFormat('dd/MM').format(targetDate);
+      
+      int count = 0;
+      for (var b in _bookings) {
+        if (b['payment_status'] == 'PAID' || b['service_status'] == 'COMPLETED') {
+          final createdAt = b['created_at'];
+          if (createdAt != null) {
+            try {
+              final bDate = DateTime.parse(createdAt.toString()).toLocal();
+              if (DateFormat('yyyy-MM-dd').format(bDate) == dateStr) count++;
+            } catch (_) {}
+          }
+        }
+      }
+      if (count > maxChartCount) maxChartCount = count;
+      chartData.add({'label': displayDate, 'count': count});
+    }
+    if (maxChartCount == 0) maxChartCount = 1; // Tránh chia cho 0 khi render chiều cao
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // THỐNG KÊ AFFILIATE TỔNG QUAN VỚI WATERMARK
+        Row(
+          children: [
+            Expanded(child: _buildAffiliateStatCard('Chờ duyệt', pendingCount.toString(), Icons.hourglass_empty_rounded, Colors.amber.shade700)),
+            const SizedBox(width: 12),
+            Expanded(child: _buildAffiliateStatCard('Đang HĐ', approvedCount.toString(), Icons.check_circle_outline_rounded, _bizPrimary)),
+            const SizedBox(width: 12),
+            Expanded(child: _buildAffiliateStatCard('Đơn chốt', totalConversions.toString(), Icons.local_mall_outlined, Colors.blue.shade600)),
+          ],
+        ),
+        const SizedBox(height: 24),
+
+        // BIỂU ĐỒ BAR CHART 7 NGÀY
+        Text('Hiệu suất chốt đơn (7 ngày qua)', style: TextStyle(color: _textMain, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+        const SizedBox(height: 16),
+        Container(
+          height: 180,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: _borderColor),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: chartData.map((d) {
+              final double heightRatio = (d['count'] as int) / maxChartCount;
+              final isToday = d['label'] == DateFormat('dd/MM').format(now);
+              
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(d['count'] > 0 ? '${d['count']}' : '', style: TextStyle(color: isToday ? _bizPrimary : _textSub, fontSize: 11, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: 28,
+                    height: (90 * heightRatio) + 4, // Chiều cao min = 4px
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: isToday 
+                          ? [_bizPrimary, _bizPrimary.withOpacity(0.5)] 
+                          : [Colors.blue.shade200, Colors.blue.shade50]
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(d['label'], style: TextStyle(color: isToday ? _textMain : _textSub, fontSize: 10, fontWeight: isToday ? FontWeight.w900 : FontWeight.w600)),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 24),
+        
+        Text('Danh sách ứng tuyển', style: TextStyle(color: _textMain, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+        const SizedBox(height: 16),
+        
+        if (_affiliateQueue.isEmpty) 
+          Center(child: Padding(padding: const EdgeInsets.only(top: 40), child: Text('Không có Creator nào đang ứng tuyển.', style: TextStyle(color: _textSub, fontWeight: FontWeight.w500))))
+        else
+          ..._affiliateQueue.map((req) => Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: _borderColor)),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(radius: 24, backgroundImage: req['avatar_url'] != null ? NetworkImage(req['avatar_url']) : null, child: req['avatar_url'] == null ? const Icon(Icons.person) : null),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(req['full_name'] ?? 'Creator', style: TextStyle(color: _textMain, fontSize: 16, fontWeight: FontWeight.w800)),
+                          Text('@${req['username']}', style: TextStyle(color: _textSub, fontSize: 13, fontWeight: FontWeight.w500)),
+                        ],
+                      )
+                    ),
+                    Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(8)), child: Text('CHỜ DUYỆT', style: TextStyle(color: Colors.amber.shade700, fontSize: 9, fontWeight: FontWeight.w900))),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade50, foregroundColor: Colors.redAccent, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: () => _showRejectAffiliateDialog(req['partnership_id']), child: const Text('TỪ CHỐI', style: TextStyle(fontWeight: FontWeight.bold)))),
+                    const SizedBox(width: 12),
+                    Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: _bizPrimary, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: () => _handleAffiliateAction(req['partnership_id'], 'APPROVED'), child: const Text('PHÊ DUYỆT', style: TextStyle(fontWeight: FontWeight.bold)))),
+                  ],
+                )
+              ],
+            ),
+          )).toList(),
+      ],
+    );
+  }
+
+  Widget _buildAffiliateStatCard(String title, String value, IconData icon, Color color) {
+    return Container(
+      height: 90,
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Stack(
+        children: [
+          // Watermark Icon chìm ở góc dưới cùng bên phải
+          Positioned(
+            right: -8,
+            bottom: -8,
+            child: Icon(icon, size: 54, color: color.withOpacity(0.15)),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(value, style: TextStyle(color: color, fontSize: 24, fontWeight: FontWeight.w900, height: 1)),
+                const SizedBox(height: 6),
+                Text(title.toUpperCase(), style: TextStyle(color: _textMain, fontSize: 10, fontWeight: FontWeight.w800)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // TAB 7: HIỆU SUẤT AFFILIATE (METRICS)
+  // ==========================================
+  Widget _buildAffiliateMetricsTab() {
+    double totalGMV = 0;
+    double totalCommission = 0;
+    int totalConversions = 0;
+
+    for (var m in _affiliateMetrics) {
+      totalGMV += (double.tryParse(m['total_revenue_generated']?.toString() ?? '0') ?? 0);
+      totalCommission += (double.tryParse(m['total_commission_earned']?.toString() ?? '0') ?? 0);
+      totalConversions += (int.tryParse(m['total_conversions']?.toString() ?? '0') ?? 0);
+    }
+
+    // Tiện ích format gọn để số tiền lớn không làm vỡ UI Card
+    String shortFormat(double amount) {
+      if (amount >= 1000000000) return '${(amount / 1000000000).toStringAsFixed(1)}Tỷ';
+      if (amount >= 1000000) return '${(amount / 1000000).toStringAsFixed(1)}Tr';
+      if (amount >= 1000) return '${(amount / 1000).toStringAsFixed(1)}K';
+      return amount.toStringAsFixed(0);
+    }
+
+    // XỬ LÝ DỮ LIỆU BIỂU ĐỒ 7 NGÀY QUA (CHỈ ĐẾM ĐƠN AFFILIATE)
+    final now = DateTime.now();
+    List<Map<String, dynamic>> chartData = [];
+    int maxChartCount = 0;
+
+    for (int i = 6; i >= 0; i--) {
+      final targetDate = now.subtract(Duration(days: i));
+      final dateStr = DateFormat('yyyy-MM-dd').format(targetDate);
+      final displayDate = DateFormat('dd/MM').format(targetDate);
+
+      int count = 0;
+      for (var b in _bookings) {
+        if (b['payment_status'] == 'PAID' || b['service_status'] == 'COMPLETED') {
+          // Chỉ lấy các đơn có ghi nhận chia sẻ hoa hồng cho Affiliate
+          final affiliateRev = double.tryParse(b['affiliate_revenue']?.toString() ?? '0') ?? 0;
+          if (affiliateRev > 0) {
+            final createdAt = b['created_at'];
+            if (createdAt != null) {
+              try {
+                final bDate = DateTime.parse(createdAt.toString()).toLocal();
+                if (DateFormat('yyyy-MM-dd').format(bDate) == dateStr) count++;
+              } catch (_) {}
+            }
+          }
+        }
+      }
+      if (count > maxChartCount) maxChartCount = count;
+      chartData.add({'label': displayDate, 'count': count});
+    }
+    if (maxChartCount == 0) maxChartCount = 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // THỐNG KÊ TỔNG QUAN
+        Row(
+          children: [
+            Expanded(child: _buildAffiliateStatCard('Tổng GMV', shortFormat(totalGMV), Icons.account_balance_wallet_outlined, _bizPrimary)),
+            const SizedBox(width: 12),
+            Expanded(child: _buildAffiliateStatCard('Hoa hồng', shortFormat(totalCommission), Icons.monetization_on_outlined, Colors.amber.shade700)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: _buildAffiliateStatCard('Tổng Đơn', totalConversions.toString(), Icons.local_mall_outlined, Colors.blue.shade600)),
+            const SizedBox(width: 12),
+            Expanded(child: _buildAffiliateStatCard('Đang HĐ', _affiliateMetrics.length.toString(), Icons.group_outlined, _bizSecondary)),
+          ],
+        ),
+        const SizedBox(height: 24),
+
+        // BIỂU ĐỒ BAR CHART 7 NGÀY
+        Text('Đơn Affiliate chốt (7 ngày qua)', style: TextStyle(color: _textMain, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+        const SizedBox(height: 16),
+        Container(
+          height: 180,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: _borderColor),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: chartData.map((d) {
+              final double heightRatio = (d['count'] as int) / maxChartCount;
+              final isToday = d['label'] == DateFormat('dd/MM').format(now);
+
+              return Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(d['count'] > 0 ? '${d['count']}' : '', style: TextStyle(color: isToday ? Colors.amber.shade700 : _textSub, fontSize: 11, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: 28,
+                    height: (90 * heightRatio) + 4,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: isToday 
+                          ? [Colors.amber.shade500, Colors.amber.shade200] 
+                          : [Colors.grey.shade300, Colors.grey.shade100]
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(d['label'], style: TextStyle(color: isToday ? _textMain : _textSub, fontSize: 10, fontWeight: isToday ? FontWeight.w900 : FontWeight.w600)),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        Text('Danh sách Affiliate', style: TextStyle(color: _textMain, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+        const SizedBox(height: 16),
+        
+        if (_affiliateMetrics.isEmpty) 
+          Center(child: Padding(padding: const EdgeInsets.only(top: 40), child: Text('Chưa có Affiliate nào đang hoạt động.', style: TextStyle(color: _textSub, fontWeight: FontWeight.w500))))
+        else
+          ..._affiliateMetrics.map((m) => Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: _borderColor)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(m['creator_full_name'] ?? 'Creator', style: TextStyle(color: _textMain, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                    Text('@${m['creator_username']}', style: TextStyle(color: _bizPrimary, fontSize: 13, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Đơn thành công', style: TextStyle(color: _textSub, fontSize: 11)), const SizedBox(height: 4), Text('${m['total_conversions'] ?? 0} Đơn', style: TextStyle(color: _textMain, fontSize: 16, fontWeight: FontWeight.w900))]),
+                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text('Lượt Click link', style: TextStyle(color: _textSub, fontSize: 11)), const SizedBox(height: 4), Text('${m['total_clicks'] ?? 0}', style: TextStyle(color: _textMain, fontSize: 16, fontWeight: FontWeight.w900))]),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: _bgLight, borderRadius: BorderRadius.circular(12)),
+                  child: Row(
+                    children: [
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('GMV Mang Lại', style: TextStyle(color: _textSub, fontSize: 11)), const SizedBox(height: 4), Text(_formatCurrency(m['total_revenue_generated']), style: TextStyle(color: _bizPrimary, fontSize: 15, fontWeight: FontWeight.w900))])),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text('Hoa Hồng Đã Trả', style: TextStyle(color: _textSub, fontSize: 11)), const SizedBox(height: 4), Text(_formatCurrency(m['total_commission_earned']), style: TextStyle(color: Colors.amber.shade700, fontSize: 15, fontWeight: FontWeight.w900))])),
+                    ],
+                  ),
+                )
+              ],
+            ),
+          )).toList(),
       ],
     );
   }

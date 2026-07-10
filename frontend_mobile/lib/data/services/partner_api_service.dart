@@ -195,4 +195,39 @@ class PartnerApiService {
       throw Exception('Đã xảy ra lỗi không xác định');
     }
   }
+
+  // ==========================================
+  // QUẢN LÝ AFFILIATE (CREATOR)
+  // ==========================================
+  static Future<List<dynamic>> fetchAffiliateQueue() async {
+    try {
+      final res = await _dio.get('/partner/affiliate/queue');
+      if (res.statusCode == 200) return res.data['data'] ?? [];
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<bool> actionAffiliate(String partnershipId, String action, {String? adminNote}) async {
+    try {
+      final res = await _dio.patch('/partner/affiliate/$partnershipId/action', data: {
+        'action': action,
+        'admin_note': adminNote
+      });
+      return res.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static Future<List<dynamic>> fetchAffiliateMetrics() async {
+    try {
+      final res = await _dio.get('/partner/affiliate/metrics');
+      if (res.statusCode == 200) return res.data['data'] ?? [];
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
 }

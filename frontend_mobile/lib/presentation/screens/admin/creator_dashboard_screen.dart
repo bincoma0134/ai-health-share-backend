@@ -38,6 +38,10 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   bool _isLoadingPartnerDetail = false;
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounceSearchTimer; // 🚀 NÂNG CẤP: Bộ đệm thời gian chặn gọi hàm liên tục
+  
+  // 🚀 BỘ LỌC & SẮP XẾP AFFILIATE
+  String _selectedFilterStatus = 'ALL';
+  String _selectedSortType = 'NAME_ASC';
 
   // Khởi tạo các bộ điều khiển Form xử lý thông tin tài khoản ngân hàng thụ hưởng cho Creator
   final TextEditingController _bankNameController = TextEditingController();
@@ -54,39 +58,69 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
     super.initState();
     _loadDashboardData();
     // 🚀 TỐI ƯU RAM: Gỡ bỏ hàm _fetchAffiliatePartners() tại đây. Chuyển sang Lazy Load.
-    _searchController.addListener(_filterPartners);
+    _searchController.addListener(_onSearchChanged);
   }
 
-  void _filterPartners() {
-    // 🚀 NÂNG CẤP THUẬT TOÁN: Kỹ thuật Debouncing
-    // Hủy bỏ luồng thực thi cũ nếu người dùng vẫn đang tiếp tục gõ phím
+  // Hàm bóc tách % Hoa hồng cao nhất từ chuỗi (Ví dụ: "10% - 20%" -> 20.0)
+  double _extractMaxMargin(String marginStr) {
+    if (marginStr.isEmpty || marginStr == '0%') return 0.0;
+    try {
+      final parts = marginStr.split('-');
+      final lastPart = parts.last.replaceAll('%', '').trim();
+      return double.parse(lastPart);
+    } catch (e) {
+      return 0.0;
+    }
+  }
+
+  void _applyFiltersAndSort() {
+    final query = _searchController.text.trim().toLowerCase();
+    setState(() {
+      _currentDisplayLimit = 50;
+      
+      // 1. Lọc theo Tên/Username và Trạng thái
+      var temp = _affiliatePartners.where((partner) {
+        final name = (partner['full_name'] ?? '').toString().toLowerCase();
+        final username = (partner['username'] ?? '').toString().toLowerCase();
+        final matchesQuery = query.isEmpty || name.contains(query) || username.contains(query);
+        
+        final status = partner['status'] ?? 'NOT_APPLIED';
+        final matchesStatus = _selectedFilterStatus == 'ALL' || status == _selectedFilterStatus;
+        
+        return matchesQuery && matchesStatus;
+      }).toList();
+
+      // 2. Thuật toán Sắp xếp động trên RAM
+      temp.sort((a, b) {
+        if (_selectedSortType.startsWith('NAME')) {
+          final nameA = (a['full_name'] ?? '').toString();
+          final nameB = (b['full_name'] ?? '').toString();
+          return _selectedSortType == 'NAME_ASC' ? nameA.compareTo(nameB) : nameB.compareTo(nameA);
+        } else if (_selectedSortType.startsWith('MARGIN')) {
+          final marginA = _extractMaxMargin(a['commission_margin'] ?? '');
+          final marginB = _extractMaxMargin(b['commission_margin'] ?? '');
+          return _selectedSortType == 'MARGIN_DESC' ? marginB.compareTo(marginA) : marginA.compareTo(marginB);
+        }
+        return 0;
+      });
+
+      _filteredAffiliatePartners = temp;
+    });
+  }
+
+  void _onSearchChanged() {
     if (_debounceSearchTimer?.isActive ?? false) {
       _debounceSearchTimer!.cancel();
     }
-    
-    // Chỉ kích hoạt render lại giao diện khi người dùng đã dừng gõ phím được 400ms
     _debounceSearchTimer = Timer(const Duration(milliseconds: 400), () {
-      if (!mounted) return;
-      final query = _searchController.text.trim().toLowerCase();
-      setState(() {
-        _currentDisplayLimit = 50; // 🚀 RESET PAGINATION: Đưa giới hạn hiển thị về 50 với kết quả Search mới
-        if (query.isEmpty) {
-          _filteredAffiliatePartners = List.from(_affiliatePartners);
-        } else {
-          _filteredAffiliatePartners = _affiliatePartners.where((partner) {
-            final name = (partner['full_name'] ?? '').toString().toLowerCase();
-            final username = (partner['username'] ?? '').toString().toLowerCase();
-            return name.contains(query) || username.contains(query);
-          }).toList();
-        }
-      });
+      if (mounted) _applyFiltersAndSort();
     });
   }
 
   @override
   void dispose() {
-    _debounceSearchTimer?.cancel(); // Giải phóng luồng đệm trong RAM
-    _searchController.removeListener(_filterPartners);
+    _debounceSearchTimer?.cancel();
+    _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _bankNameController.dispose();
     _accountNumberController.dispose();
@@ -151,7 +185,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
       if (response != null && response.statusCode == 200) {
         setState(() {
           _affiliatePartners = response.data['data'] ?? [];
-          _filterPartners(); // Khởi tạo dữ liệu hiển thị lọc mặc định
+          _applyFiltersAndSort(); // 🚀 Áp dụng thuật toán Filter & Sort khởi tạo
         });
       }
     } catch (e) {
@@ -1361,14 +1395,83 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
             fillColor: Colors.white,
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2ECEB))),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2ECEB))),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFFF7A8A))),
-          ),
-          style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 14, fontWeight: FontWeight.w600),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2ECEB))),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFFF7A8A))),
         ),
-        const SizedBox(height: 20),
+        style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 14, fontWeight: FontWeight.w600),
+      ),
+      const SizedBox(height: 12),
 
-        if (_isLoadingAffiliate)
+      // 🚀 BỘ ĐIỀU KHIỂN BỘ LỌC VÀ SẮP XẾP CAO CẤP
+      Row(
+        children: [
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2ECEB)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  value: _selectedFilterStatus,
+                  icon: const Icon(Icons.filter_list_rounded, color: Color(0xFF617D79), size: 18),
+                  style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 12, fontWeight: FontWeight.w600),
+                  onChanged: (String? newValue) {
+                    if (newValue != null) {
+                      setState(() => _selectedFilterStatus = newValue);
+                      _applyFiltersAndSort();
+                    }
+                  },
+                  items: const [
+                    DropdownMenuItem(value: 'ALL', child: Text('Tất cả trạng thái')),
+                    DropdownMenuItem(value: 'NOT_APPLIED', child: Text('Chưa ứng tuyển')),
+                    DropdownMenuItem(value: 'PENDING', child: Text('Đang chờ duyệt')),
+                    DropdownMenuItem(value: 'APPROVED', child: Text('Đã liên kết (Affiliate)')),
+                    DropdownMenuItem(value: 'REJECTED', child: Text('Bị từ chối')),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2ECEB)),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  value: _selectedSortType,
+                  icon: const Icon(Icons.sort_rounded, color: Color(0xFF617D79), size: 18),
+                  style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 12, fontWeight: FontWeight.w600),
+                  onChanged: (String? newValue) {
+                    if (newValue != null) {
+                      setState(() => _selectedSortType = newValue);
+                      _applyFiltersAndSort();
+                    }
+                  },
+                  items: const [
+                    DropdownMenuItem(value: 'NAME_ASC', child: Text('Tên (A - Z)')),
+                    DropdownMenuItem(value: 'NAME_DESC', child: Text('Tên (Z - A)')),
+                    DropdownMenuItem(value: 'MARGIN_DESC', child: Text('Hoa hồng cao nhất')),
+                    DropdownMenuItem(value: 'MARGIN_ASC', child: Text('Hoa hồng thấp nhất')),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 20),
+
+      if (_isLoadingAffiliate)
           ShimmerWrapper(
             child: Column(
               children: List.generate(3, (index) => Padding(
