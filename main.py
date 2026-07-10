@@ -2794,59 +2794,64 @@ async def get_affiliate_partners(current_user = Depends(verify_user_token)):
     """
     [Phase 2.6] Creator theo dõi danh sách Cơ sở đối tác kèm biên độ % hoa hồng động
     và trạng thái ứng tuyển của bản thân tương ứng với từng đối tác.
-    🚀 TỐI ƯU HÓA: Khắc phục lỗi N+1 Query gây nghẽn cổ chai (10-20s load time).
+    🚀 TỐI ƯU HÓA: In-Memory Mapping (Batch Fetching) giải quyết N+1 mà không dùng JOIN phức tạp.
     """
     conn = db_pool.getconn()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # 🚀 ROOT CAUSE FIX: Thay thế vòng lặp N+1 Query bằng 1 câu lệnh JOIN SQL duy nhất siêu tốc
-        query = """
-            SELECT 
-                u.id as partner_id,
-                u.username,
-                u.full_name,
-                u.avatar_url,
-                COALESCE(MIN(s.affiliate_rate), 0) as min_rate,
-                COALESCE(MAX(s.affiliate_rate), 0) as max_rate,
-                COALESCE(ap.status, 'NOT_APPLIED') as applied_status
-            FROM users u
-            LEFT JOIN services s 
-                ON u.id = s.partner_id 
-                AND s.status = 'APPROVED' 
-                AND s.affiliate_rate > 0 
-                AND s.is_deleted = false
-            LEFT JOIN affiliate_partnerships ap 
-                ON u.id = ap.partner_id 
-                AND ap.creator_id = %s
-            WHERE u.role = 'PARTNER_ADMIN'
-            GROUP BY u.id, u.username, u.full_name, u.avatar_url, ap.status
-            ORDER BY u.created_at DESC
-        """
-        cur.execute(query, (current_user.id,))
+        # Lấy toàn bộ danh sách tài khoản đối tác có role chuẩn là PARTNER_ADMIN
+        cur.execute("SELECT id, username, full_name, avatar_url FROM users WHERE role = 'PARTNER_ADMIN'")
         partners = cur.fetchall()
+        
+        # Lấy các liên kết hiện tại của Creator này từ affiliate_partnerships
+        cur.execute("SELECT partner_id, status FROM affiliate_partnerships WHERE creator_id = %s", (current_user.id,))
+        partnerships = cur.fetchall()
+        partnership_map = {str(p["partner_id"]): p["status"] for p in partnerships}
+        
+        # 🚀 THUẬT TOÁN MỚI: Batch Fetching & In-Memory Mapping (O(1) Lookup)
+        # Chuyển N queries thành 1 query duy nhất bằng mệnh đề IN, sau đó gom nhóm trên RAM bằng Dictionary
+        rates_map = {}
+        if partners:
+            partner_ids = tuple(str(pt["id"]) for pt in partners)
+            cur.execute("""
+                SELECT partner_id, affiliate_rate 
+                FROM services 
+                WHERE partner_id::text IN %s AND status = 'APPROVED' AND affiliate_rate > 0
+            """, (partner_ids,))
+            all_rates = cur.fetchall()
+            
+            # Ánh xạ dữ liệu vào Hash Map (Dictionary)
+            for r in all_rates:
+                pid = str(r["partner_id"])
+                if pid not in rates_map:
+                    rates_map[pid] = []
+                rates_map[pid].append(float(r["affiliate_rate"]))
         
         result = []
         for pt in partners:
-            min_rate = float(pt["min_rate"])
-            max_rate = float(pt["max_rate"])
+            p_id = str(pt["id"])
             
-            if min_rate == 0 and max_rate == 0:
-                margin = "0%"
-            elif min_rate == max_rate:
-                margin = f"{int(min_rate)}%"
+            # Truy xuất O(1) từ Hash Map thay vì gọi Database
+            rates = rates_map.get(p_id, [])
+            
+            if rates:
+                min_rate = min(rates)
+                max_rate = max(rates)
+                margin = f"{int(min_rate)}% - {int(max_rate)}%" if min_rate != max_rate else f"{int(min_rate)}%"
             else:
-                margin = f"{int(min_rate)}% - {int(max_rate)}%"
+                margin = "0%"
                 
+            status = partnership_map.get(p_id, "NOT_APPLIED")
+            
             result.append({
-                "partner_id": str(pt["partner_id"]),
+                "partner_id": p_id,
                 "username": pt["username"],
                 "full_name": pt["full_name"],
                 "avatar_url": pt["avatar_url"],
                 "commission_margin": margin,
-                "status": pt["applied_status"]
+                "status": status
             })
-            
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
