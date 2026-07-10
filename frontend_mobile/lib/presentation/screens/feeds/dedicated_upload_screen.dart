@@ -466,7 +466,8 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
         'video_url': _finalCloudVideoUrl,
         'tags': [],
         'service_type': 'RELAXATION',
-        'status': 'PENDING'
+        'status': 'PENDING',
+        'affiliate_rate': _commissionController.text.trim().isEmpty ? 0.0 : double.tryParse(_commissionController.text.trim()),
       };
 
       try {

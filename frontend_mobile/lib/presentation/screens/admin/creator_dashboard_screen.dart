@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
+import 'dart:async'; // 🚀 Bổ sung thư viện xử lý luồng bất đồng bộ Timer
 import '../../../data/services/creator_api_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../widgets/mini_video_player.dart';
+import '../../widgets/app_toast.dart';
+import '../../widgets/shimmer_wrapper.dart';
 import 'package:dio/dio.dart';
 
 class CreatorDashboardScreen extends StatefulWidget {
@@ -27,9 +30,14 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   
   // Trạng thái lưu trữ cho phân hệ Affiliate (Phase 2.6)
   List<dynamic> _affiliatePartners = [];
+  List<dynamic> _filteredAffiliatePartners = [];
   bool _isLoadingAffiliate = false;
+  bool _hasLoadedAffiliateData = false; // 🚀 LAZY LOAD: Cờ kiểm soát chỉ tải API khi cần
+  int _currentDisplayLimit = 50; // 🚀 CLIENT-PAGINATION: Giới hạn Render UI tránh Crash
   Map<String, dynamic>? _selectedPartnerDetail;
   bool _isLoadingPartnerDetail = false;
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _debounceSearchTimer; // 🚀 NÂNG CẤP: Bộ đệm thời gian chặn gọi hàm liên tục
 
   // Khởi tạo các bộ điều khiển Form xử lý thông tin tài khoản ngân hàng thụ hưởng cho Creator
   final TextEditingController _bankNameController = TextEditingController();
@@ -45,11 +53,41 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   void initState() {
     super.initState();
     _loadDashboardData();
-    _fetchAffiliatePartners();
+    // 🚀 TỐI ƯU RAM: Gỡ bỏ hàm _fetchAffiliatePartners() tại đây. Chuyển sang Lazy Load.
+    _searchController.addListener(_filterPartners);
+  }
+
+  void _filterPartners() {
+    // 🚀 NÂNG CẤP THUẬT TOÁN: Kỹ thuật Debouncing
+    // Hủy bỏ luồng thực thi cũ nếu người dùng vẫn đang tiếp tục gõ phím
+    if (_debounceSearchTimer?.isActive ?? false) {
+      _debounceSearchTimer!.cancel();
+    }
+    
+    // Chỉ kích hoạt render lại giao diện khi người dùng đã dừng gõ phím được 400ms
+    _debounceSearchTimer = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      final query = _searchController.text.trim().toLowerCase();
+      setState(() {
+        _currentDisplayLimit = 50; // 🚀 RESET PAGINATION: Đưa giới hạn hiển thị về 50 với kết quả Search mới
+        if (query.isEmpty) {
+          _filteredAffiliatePartners = List.from(_affiliatePartners);
+        } else {
+          _filteredAffiliatePartners = _affiliatePartners.where((partner) {
+            final name = (partner['full_name'] ?? '').toString().toLowerCase();
+            final username = (partner['username'] ?? '').toString().toLowerCase();
+            return name.contains(query) || username.contains(query);
+          }).toList();
+        }
+      });
+    });
   }
 
   @override
   void dispose() {
+    _debounceSearchTimer?.cancel(); // Giải phóng luồng đệm trong RAM
+    _searchController.removeListener(_filterPartners);
+    _searchController.dispose();
     _bankNameController.dispose();
     _accountNumberController.dispose();
     _accountNameController.dispose();
@@ -65,17 +103,13 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
     final String amountStr = _amountController.text.trim();
 
     if (bankName.isEmpty || accountNumber.isEmpty || accountName.isEmpty || amountStr.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng điền đầy đủ tất cả các trường thông tin thụ hưởng!')),
-      );
+      AppToast.show(context: context, message: 'Vui lòng điền đầy đủ tất cả các trường thông tin thụ hưởng!', isSuccess: false);
       return;
     }
 
     final double? amount = double.tryParse(amountStr);
     if (amount == null || amount < 50000) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Số tiền rút yêu cầu tối thiểu phải từ 50,000 VND trở lên.')),
-      );
+      AppToast.show(context: context, message: 'Số tiền rút yêu cầu tối thiểu phải từ 50,000 VND trở lên.', isSuccess: false);
       return;
     }
 
@@ -90,24 +124,18 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
 
       if (mounted) {
         if (response != null && response.statusCode == 200) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Gửi đơn yêu cầu quyết toán số dư thành công! Đang chờ hệ thống phê duyệt.')),
-          );
+          AppToast.show(context: context, message: 'Gửi đơn yêu cầu quyết toán số dư thành công! Đang chờ hệ thống phê duyệt.', isSuccess: true);
           _amountController.clear();
           // Tái tải lại nguồn sự thật dữ liệu tổng thể để cập nhật dòng tiền và danh sách lịch sử lệnh rút
           _loadDashboardData();
         } else {
           final Map<String, dynamic>? errData = response?.data as Map<String, dynamic>?;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(errData?['detail'] ?? 'Có lỗi xảy ra trong quá trình xử lý rút tiền!')),
-          );
+          AppToast.show(context: context, message: errData?['detail'] ?? 'Có lỗi xảy ra trong quá trình xử lý rút tiền!', isSuccess: false);
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lỗi kết nối hoặc số dư khả dụng tài khoản không đủ!')),
-        );
+        AppToast.show(context: context, message: 'Lỗi kết nối hoặc số dư khả dụng tài khoản không đủ!', isSuccess: false);
       }
     } finally {
       if (mounted) setState(() => _isSubmittingWithdrawal = false);
@@ -123,12 +151,11 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
       if (response != null && response.statusCode == 200) {
         setState(() {
           _affiliatePartners = response.data['data'] ?? [];
+          _filterPartners(); // Khởi tạo dữ liệu hiển thị lọc mặc định
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không thể tải danh sách đối tác: $e')),
-      );
+      AppToast.show(context: context, message: 'Không thể tải danh sách đối tác: $e', isSuccess: false);
     } finally {
       setState(() {
         _isLoadingAffiliate = false;
@@ -143,15 +170,11 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
         data: {'partner_id': partnerId},
       );
       if (response != null && response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Gửi yêu cầu ứng tuyển Affiliate thành công!')),
-        );
+        AppToast.show(context: context, message: 'Gửi yêu cầu ứng tuyển Affiliate thành công!', isSuccess: true);
         _fetchAffiliatePartners();
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Lỗi ứng tuyển: $e')),
-      );
+      AppToast.show(context: context, message: 'Lỗi ứng tuyển: $e', isSuccess: false);
     }
   }
 
@@ -172,9 +195,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
         _showPartnerServicesBottomSheet();
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không thể tải danh sách dịch vụ: $e')),
-      );
+      AppToast.show(context: context, message: 'Không thể tải danh sách dịch vụ: $e', isSuccess: false);
     } finally {
       setState(() {
         _isLoadingPartnerDetail = false;
@@ -343,7 +364,26 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
           ),
         ),
         child: _isLoading 
-          ? Center(child: CircularProgressIndicator(color: _crtPrimary))
+          ? Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: ShimmerWrapper(
+                child: Column(
+                  children: [
+                    Container(width: double.infinity, height: 100.0, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(16.0))),
+                    const SizedBox(height: 16.0),
+                    Container(width: double.infinity, height: 200.0, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(24.0))),
+                    const SizedBox(height: 16.0),
+                    Row(
+                      children: [
+                        Expanded(child: Container(height: 120.0, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(16.0)))),
+                        const SizedBox(width: 12.0),
+                        Expanded(child: Container(height: 120.0, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(16.0)))),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            )
           : RefreshIndicator(
               color: _crtPrimary,
               onRefresh: _loadDashboardData,
@@ -537,7 +577,14 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   Widget _buildSwitchTabButton({required String title, required String tabKey}) {
     final bool isSelected = _activeTab == tabKey;
     return GestureDetector(
-      onTap: () => setState(() => _activeTab = tabKey),
+      onTap: () {
+        setState(() => _activeTab = tabKey);
+        // 🚀 LAZY LOAD: Chỉ khởi động API kéo toàn bộ dữ liệu Partner khi mở tab Affiliate lần đầu
+        if (tabKey == 'affiliate' && !_hasLoadedAffiliateData) {
+          _hasLoadedAffiliateData = true;
+          _fetchAffiliatePartners();
+        }
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1289,35 +1336,6 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   }
 
   Widget _buildCreatorAffiliateSection() {
-    if (_isLoadingAffiliate) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: CircularProgressIndicator(color: _crtPrimary),
-        ),
-      );
-    }
-
-    if (_affiliatePartners.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            children: [
-              const Icon(Icons.business_center_outlined, size: 48, color: Color(0xFFB0C4C1)),
-              const SizedBox(height: 12),
-              const Text(
-                'Không tìm thấy cơ sở đối tác nào khả dụng.',
-                style: TextStyle(color: Color(0xFF617D79), fontSize: 13, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 12),
-              TextButton(onPressed: _fetchAffiliatePartners, child: const Text('Tải lại dữ liệu'))
-            ],
-          ),
-        ),
-      );
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1331,95 +1349,176 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
           style: TextStyle(color: Color(0xFF617D79), fontSize: 12, fontWeight: FontWeight.w500),
         ),
         const SizedBox(height: 16),
-        ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _affiliatePartners.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final partner = _affiliatePartners[index];
-            final String status = partner['status'] ?? 'NOT_APPLIED';
-            final String margin = partner['commission_margin'] ?? '0%';
+        
+        // Khối Thanh tìm kiếm (Search Bar)
+        TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: 'Tìm theo tên hoặc username đối tác...',
+            hintStyle: const TextStyle(color: Color(0xFFB0C4C1), fontSize: 13),
+            prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF617D79)),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2ECEB))),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2ECEB))),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFFF7A8A))),
+          ),
+          style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 20),
 
-            return Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFE2ECEB)),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 8, offset: const Offset(0, 2))],
+        if (_isLoadingAffiliate)
+          ShimmerWrapper(
+            child: Column(
+              children: List.generate(3, (index) => Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Container(
+                  width: double.infinity,
+                  height: 130,
+                  decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(20)),
+                ),
+              )),
+            ),
+          )
+        else if (_filteredAffiliatePartners.isEmpty)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                children: [
+                  const Icon(Icons.business_center_outlined, size: 48, color: Color(0xFFB0C4C1)),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Không tìm thấy cơ sở đối tác nào phù hợp.',
+                    style: TextStyle(color: Color(0xFF617D79), fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(onPressed: _fetchAffiliatePartners, child: const Text('Tải lại dữ liệu'))
+                ],
               ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => _fetchPartnerServices(partner['partner_id'].toString(), partner['full_name'] ?? 'Đối tác'),
+            ),
+          )
+        else ...[
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            // 🚀 GIẢI PHÓNG RAM: Ép Flutter thu hồi bộ nhớ của các item khuất màn hình thay vì neo cứng
+            addAutomaticKeepAlives: false,
+            addRepaintBoundaries: false,
+            // 🚀 CLIENT-PAGINATION: Thuật toán chỉ chèn khối lượng giao diện (Widget) giới hạn vào RAM
+            itemCount: _filteredAffiliatePartners.length > _currentDisplayLimit ? _currentDisplayLimit : _filteredAffiliatePartners.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final partner = _filteredAffiliatePartners[index];
+              final String status = partner['status'] ?? 'NOT_APPLIED';
+              final String margin = partner['commission_margin'] ?? '0%';
+
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 22,
-                              backgroundColor: const Color(0xFFF7FBF9),
-                              backgroundImage: partner['avatar_url'] != null && partner['avatar_url'].toString().isNotEmpty
-                                  ? NetworkImage(partner['avatar_url'])
-                                  : null,
-                              child: partner['avatar_url'] == null || partner['avatar_url'].toString().isEmpty
-                                  ? const Icon(Icons.local_hospital_rounded, color: Color(0xFF617D79))
-                                  : null,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
+                  border: Border.all(color: const Color(0xFFE2ECEB)),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 8, offset: const Offset(0, 2))],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => _fetchPartnerServices(partner['partner_id'].toString(), partner['full_name'] ?? 'Đối tác'),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 22,
+                                backgroundColor: const Color(0xFFF7FBF9),
+                                backgroundImage: partner['avatar_url'] != null && partner['avatar_url'].toString().isNotEmpty
+                                    ? NetworkImage(partner['avatar_url'])
+                                    : null,
+                                child: partner['avatar_url'] == null || partner['avatar_url'].toString().isEmpty
+                                    ? const Icon(Icons.local_hospital_rounded, color: Color(0xFF617D79))
+                                    : null,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      partner['full_name'] ?? 'Tên đối tác',
+                                      style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 15, fontWeight: FontWeight.bold),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '@${partner['username'] ?? 'username'}',
+                                      style: const TextStyle(color: Color(0xFFB0C4C1), fontSize: 12, fontWeight: FontWeight.w500),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12.0),
+                            child: Divider(height: 1, color: Color(0xFFF0F4F3)),
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    partner['full_name'] ?? 'Tên đối tác',
-                                    style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 15, fontWeight: FontWeight.bold),
+                                  const Text(
+                                    'Biên độ hoa hồng',
+                                    style: TextStyle(color: Color(0xFF617D79), fontSize: 11, fontWeight: FontWeight.w500),
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    '@${partner['username'] ?? 'username'}',
-                                    style: const TextStyle(color: Color(0xFFB0C4C1), fontSize: 12, fontWeight: FontWeight.w500),
+                                    margin,
+                                    style: const TextStyle(color: Color(0xFF48C9B0), fontSize: 15, fontWeight: FontWeight.w900),
                                   ),
                                 ],
                               ),
-                            ),
-                          ],
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 12.0),
-                          child: Divider(height: 1, color: Color(0xFFF0F4F3)),
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Biên độ hoa hồng',
-                                  style: TextStyle(color: Color(0xFF617D79), fontSize: 11, fontWeight: FontWeight.w500),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  margin,
-                                  style: const TextStyle(color: Color(0xFF48C9B0), fontSize: 15, fontWeight: FontWeight.w900),
-                                ),
-                              ],
-                            ),
-                            _buildAffiliateActionButton(partner['partner_id'].toString(), status),
-                          ],
-                        ),
-                      ],
+                              _buildAffiliateActionButton(partner['partner_id'].toString(), status),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
+              );
+            },
+          ),
+          
+          // 🚀 NÚT TẢI THÊM (CLIENT-SIDE PAGINATION)
+          if (_filteredAffiliatePartners.length > _currentDisplayLimit)
+            Padding(
+              padding: const EdgeInsets.only(top: 16.0),
+              child: Center(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: _crtPrimary.withOpacity(0.5)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _currentDisplayLimit += 50;
+                    });
+                  },
+                  icon: Icon(Icons.keyboard_arrow_down_rounded, color: _crtPrimary),
+                  label: Text(
+                    'Tải thêm đối tác (${_filteredAffiliatePartners.length - _currentDisplayLimit} kết quả ẩn)',
+                    style: TextStyle(color: _crtPrimary, fontWeight: FontWeight.bold),
+                  ),
+                ),
               ),
-            );
-          },
-        ),
+            ),
+        ],
       ],
     );
   }

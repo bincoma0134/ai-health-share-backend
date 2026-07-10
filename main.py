@@ -2794,45 +2794,59 @@ async def get_affiliate_partners(current_user = Depends(verify_user_token)):
     """
     [Phase 2.6] Creator theo dõi danh sách Cơ sở đối tác kèm biên độ % hoa hồng động
     và trạng thái ứng tuyển của bản thân tương ứng với từng đối tác.
+    🚀 TỐI ƯU HÓA: Khắc phục lỗi N+1 Query gây nghẽn cổ chai (10-20s load time).
     """
     conn = db_pool.getconn()
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Lấy toàn bộ danh sách tài khoản đối tác có role chuẩn là PARTNER_ADMIN
-        cur.execute("SELECT id, username, full_name, avatar_url FROM users WHERE role = 'PARTNER_ADMIN'")
+        # 🚀 ROOT CAUSE FIX: Thay thế vòng lặp N+1 Query bằng 1 câu lệnh JOIN SQL duy nhất siêu tốc
+        query = """
+            SELECT 
+                u.id as partner_id,
+                u.username,
+                u.full_name,
+                u.avatar_url,
+                COALESCE(MIN(s.affiliate_rate), 0) as min_rate,
+                COALESCE(MAX(s.affiliate_rate), 0) as max_rate,
+                COALESCE(ap.status, 'NOT_APPLIED') as applied_status
+            FROM users u
+            LEFT JOIN services s 
+                ON u.id = s.partner_id 
+                AND s.status = 'APPROVED' 
+                AND s.affiliate_rate > 0 
+                AND s.is_deleted = false
+            LEFT JOIN affiliate_partnerships ap 
+                ON u.id = ap.partner_id 
+                AND ap.creator_id = %s
+            WHERE u.role = 'PARTNER_ADMIN'
+            GROUP BY u.id, u.username, u.full_name, u.avatar_url, ap.status
+            ORDER BY u.created_at DESC
+        """
+        cur.execute(query, (current_user.id,))
         partners = cur.fetchall()
-        
-        # Lấy các liên kết hiện tại của Creator này từ affiliate_partnerships để map trạng thái button UI
-        cur.execute("SELECT partner_id, status FROM affiliate_partnerships WHERE creator_id = %s", (current_user.id,))
-        partnerships = cur.fetchall()
-        partnership_map = {str(p["partner_id"]): p["status"] for p in partnerships}
         
         result = []
         for pt in partners:
-            p_id = str(pt["id"])
+            min_rate = float(pt["min_rate"])
+            max_rate = float(pt["max_rate"])
             
-            # Tính toán Biên độ hoa hồng thực tế dựa trên bảng services của chính đối tác đó
-            cur.execute("SELECT affiliate_rate FROM services WHERE partner_id = %s AND status = 'APPROVED' AND affiliate_rate > 0", (p_id,))
-            rates = cur.fetchall()
-            
-            if rates:
-                min_rate = min([float(r["affiliate_rate"]) for r in rates])
-                max_rate = max([float(r["affiliate_rate"]) for r in rates])
-                margin = f"{int(min_rate)}% - {int(max_rate)}%" if min_rate != max_rate else f"{int(min_rate)}%"
-            else:
+            if min_rate == 0 and max_rate == 0:
                 margin = "0%"
+            elif min_rate == max_rate:
+                margin = f"{int(min_rate)}%"
+            else:
+                margin = f"{int(min_rate)}% - {int(max_rate)}%"
                 
-            status = partnership_map.get(p_id, "NOT_APPLIED")
-            
             result.append({
-                "partner_id": p_id,
+                "partner_id": str(pt["partner_id"]),
                 "username": pt["username"],
                 "full_name": pt["full_name"],
                 "avatar_url": pt["avatar_url"],
                 "commission_margin": margin,
-                "status": status
+                "status": pt["applied_status"]
             })
+            
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
