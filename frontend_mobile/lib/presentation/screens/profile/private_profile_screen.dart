@@ -987,20 +987,76 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 6))],
+                    InkWell(
+          onTap: () => context.push('/wellness-profile'),
+          borderRadius: BorderRadius.circular(24),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFF1A3A35).withOpacity(0.4), width: 1.2),
+              boxShadow: [
+                BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.12), blurRadius: 24, offset: const Offset(0, 8)),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        const Color(0xFF80BF84).withOpacity(0.25), // Đổi ánh sáng lõi sang màu xanh thương hiệu
+                        Colors.transparent,
+                      ],
+                      stops: const [0.3, 1.0],
+                    ),
+                    border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.6), width: 1.5), // Viền icon xanh thương hiệu
+                    boxShadow: [
+                      BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.4), blurRadius: 12), // Đổi màu bóng đổ tỏa sáng sang xanh thương hiệu
+                    ],
+                  ),
+                  child: const Icon(Icons.all_inclusive_rounded, color: Color(0xFF80BF84), size: 22),
+                ),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hành trình Wellness của tôi',
+                        style: TextStyle(color: Color(0xFF1A3A35), fontSize: 15.5, fontWeight: FontWeight.w900, letterSpacing: -0.3),
                       ),
-                      child: Column(
-                        children: [
-                          _buildHubRowTile(
-                            icon: Icons.stars_rounded,
-                            iconColor: const Color(0xFF4CAF50),
-                            iconBg: const Color(0xFFE8F5E9),
-                            title: 'SValue & Ví Voucher',
+                      SizedBox(height: 4),
+                      Text(
+                        'Khám phá hành trình',
+                        style: TextStyle(color: Color(0xFF617D79), fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF80BF84), size: 14),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 6))],
+          ),
+          child: Column(
+            children: [
+              _buildHubRowTile(
+                icon: Icons.stars_rounded,
+                iconColor: const Color(0xFF80BF84),
+                iconBg: const Color(0xFFF4F9F6),
+                title: 'SValue & Ví Voucher',
                             subtitle: 'Chuỗi điểm danh ${profile['streak_count'] ?? 0} ngày liên tiếp',
                             value: profile['svalue_balance']?.toString() ?? '0',
                             onTap: () => context.push('/promo'),
@@ -1011,7 +1067,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                             iconColor: const Color(0xFF2196F3),
                             iconBg: const Color(0xFFE3F2FD),
                             title: 'Ví thanh toán bảo chứng',
-                            subtitle: 'Bảo vệ dòng tiền ký gửi Escrow PayOS',
+                            subtitle: 'Bảo vệ dòng tiền',
                             value: '••••••',
                             onTap: () => context.push('/wallet'),
                           ),
@@ -1046,7 +1102,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('Lịch trình đặt lịch hẹn y tế', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+                                  const Text('Lịch trình đặt lịch', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
                                   const SizedBox(height: 2),
                                   Text(
                                     stats['bookings_count'] != null && stats['bookings_count'] > 0

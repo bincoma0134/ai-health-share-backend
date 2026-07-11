@@ -269,3 +269,8 @@ class AffiliateMetricResponse(BaseModel):
     total_revenue_generated: float
     total_commission_earned: float
     last_activity_at: str
+
+# --- 15. HỆ SINH THÁI SINH LỰC (WELLNESS ECOSYSTEM PHASE 3) ---
+class WellnessLogCreate(BaseModel):
+    mood_state: str
+    body_focus: Optional[str] = None

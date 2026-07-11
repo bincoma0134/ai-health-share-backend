@@ -3259,25 +3259,12 @@ async def get_partner_affiliate_metrics(current_user = Depends(verify_user_token
         db_pool.putconn(conn)
 
 # =========================================================================================
-# 🚀 [PHASE 3.0] TRẠM THEO DÕI HÀNH TRÌNH SỨC KHỎE (WELLNESS JOURNEY DASHBOARD)
-# Chứa Logic 1 (Metrics Aggregator) và Logic 2 (Dynamic Vitality State)
-# Đặt cách ly hoàn toàn ở cuối file, không tác động đến các luồng API phía trên
+# 🚀 [PHASE 3.0] HỆ SINH THÁI SINH LỰC (VITALITY ECOSYSTEM)
+# Gồm: Metrics Aggregator, Logic Suy giảm (Decay), Danh hiệu & Nhật ký Vi mô (Micro-Mood)
 # =========================================================================================
 
-class WellnessStateResponse(BaseModel):
-    total_wellness_minutes: int
-    total_sessions: int
-    focus_areas: List[str]
-    vitality_score: int
-    state_text: str
-    recommendation: str
-    metrics_breakdown: dict
-
-@app.get("/user/wellness/profile", response_model=dict)
+@app.get("/user/wellness/profile", tags=["Wellness"])
 def get_user_wellness_profile(current_user = Depends(verify_user_token)):
-    """
-    [Logic 1 & 2] Tự động tổng hợp chỉ số sinh học ngầm & Tính trạng thái năng lượng
-    """
     if not db_pool:
         raise HTTPException(status_code=500, detail="Database pool không hoạt động")
     
@@ -3285,8 +3272,7 @@ def get_user_wellness_profile(current_user = Depends(verify_user_token)):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # 1. LOGIC 1: BỘ TỔNG HỢP CHỈ SỐ SINH HỌC NGẦM (Wellness Metrics Aggregator)
-        # Quét toàn bộ lịch hẹn 'COMPLETED' của User, gom nhóm theo loại dịch vụ để tính tổng thời lượng
+        # 1. BỘ TỔNG HỢP CHỈ SỐ SINH HỌC
         query_agg = """
             SELECT s.service_type, COUNT(a.id) as total_sessions
             FROM appointments a
@@ -3301,54 +3287,65 @@ def get_user_wellness_profile(current_user = Depends(verify_user_token)):
         focus_areas = []
         metrics_breakdown = {}
         
-        # Giả định trung bình mỗi buổi dịch vụ / thiền / trị liệu kéo dài 60 phút
         for row in aggregates:
             stype = row['service_type'] or "GENERAL"
             count = row['total_sessions']
             total_sessions += count
-            
-            if stype not in focus_areas:
-                focus_areas.append(stype)
-                
-            metrics_breakdown[stype] = {
-                "sessions": count,
-                "minutes": count * 60
-            }
+            if stype not in focus_areas: focus_areas.append(stype)
+            metrics_breakdown[stype] = {"sessions": count, "minutes": count * 60}
             
         total_wellness_minutes = total_sessions * 60
         
-        # Đồng bộ trạng thái ngầm vào database (Sync State)
-        cur.execute("SELECT id FROM user_wellness_profiles WHERE user_id = %s;", (current_user.id,))
-        if cur.fetchone():
-            cur.execute("""
-                UPDATE user_wellness_profiles 
-                SET focus_areas = %s, total_wellness_minutes = %s, updated_at = NOW()
-                WHERE user_id = %s;
-            """, (focus_areas, total_wellness_minutes, current_user.id))
-        else:
-            cur.execute("""
-                INSERT INTO user_wellness_profiles (user_id, focus_areas, total_wellness_minutes)
-                VALUES (%s, %s, %s);
-            """, (current_user.id, focus_areas, total_wellness_minutes))
-            
-        conn.commit()
+        # 2. THUẬT TOÁN SUY GIẢM SINH LỰC & ĐIỂM CHUẨN (Decay Logic)
+        cur.execute("SELECT balance, streak_count, last_checkin_at FROM user_svalue_wallet WHERE user_id = %s", (current_user.id,))
+        wallet = cur.fetchone()
         
-        # 2. LOGIC 2: TÍNH TOÁN TRẠNG THÁI NĂNG LƯỢNG THÍCH ỨNG (Dynamic Vitality State)
-        # Thuật toán tính điểm tinh gọn: Mỗi buổi hoàn thành mang lại 10 điểm năng lượng sinh học (Tối đa 100)
-        vitality_score = min(100, total_sessions * 10)
+        streak_count = wallet['streak_count'] if wallet and wallet.get('streak_count') else 0
+        last_checkin_at = wallet['last_checkin_at'] if wallet and wallet.get('last_checkin_at') else None
+        
+        decay_points = 0
+        if last_checkin_at:
+            # Chuyển đổi timestamp an toàn
+            if last_checkin_at.tzinfo:
+                last_checkin_at = last_checkin_at.replace(tzinfo=None)
+            days_missed = (datetime.utcnow() - last_checkin_at).days
+            if days_missed > 7:
+                decay_points = (days_missed - 7) * 2 # Mất 2 điểm/ngày nếu bỏ bê hơn 1 tuần
+                
+        # Công thức: Điểm cơ bản (50) + Phiên trị liệu (x5) + Điểm danh (x2) - Suy giảm
+        raw_vitality = 50 + (total_sessions * 5) + (streak_count * 2) - decay_points
+        vitality_score = max(0, min(100, raw_vitality)) # Khóa biên độ an toàn 0-100
         
         if vitality_score <= 20:
-            state_text = "Cần kích hoạt năng lượng"
-            recommendation = "Hãy dành thời gian trải nghiệm các dịch vụ thư giãn để giải tỏa căng thẳng và khôi phục nhịp điệu sinh học."
+            state_text = "Cần nạp lại năng lượng"
+            recommendation = "Sinh lực đang cạn kiệt do thời gian dài bạn chưa chăm sóc bản thân. Hãy lên một lịch hẹn massage ngay tuần này nhé."
         elif vitality_score <= 50:
             state_text = "Đang trên đà hồi phục"
-            recommendation = "Bạn đang đi đúng hướng! Hãy duy trì đều đặn các liệu pháp để tối ưu hóa sự cân bằng giữa cơ thể và tâm trí."
+            recommendation = "Bạn đang đi đúng hướng! Hãy duy trì chuỗi mở app và trải nghiệm dịch vụ để tối ưu hóa cơ thể."
         elif vitality_score <= 80:
-            state_text = "Trạng thái cân bằng tốt"
-            recommendation = "Cơ thể và tinh thần đang đạt trạng thái hòa hợp cao. Rất tuyệt vời, hãy tiếp tục duy trì!"
+            state_text = "Cân bằng sinh học tốt"
+            recommendation = "Cơ thể và tâm trí đang duy trì trạng thái tích cực. Rất tuyệt vời!"
         else:
             state_text = "Năng lượng tối ưu Premium"
-            recommendation = "Trạng thái Wellness hoàn hảo. Bạn đã làm chủ được nhịp sống lành mạnh và bảo vệ cơ thể ở mức tốt nhất."
+            recommendation = "Tuyệt hảo! Cột mốc sinh lực cao nhất minh chứng cho việc bạn rất yêu thương bản thân."
+
+        # 3. THUẬT TOÁN DANH HIỆU (Milestone Unlocks)
+        milestone = "Tập Sự Sức Khỏe"
+        if total_wellness_minutes >= 1000:
+            milestone = "Đại Sứ Wellness Premium"
+        elif total_wellness_minutes >= 500:
+            milestone = "Chiến Thần Thư Giãn"
+        elif total_wellness_minutes >= 200:
+            milestone = "Học Giả Phục Hồi"
+
+        # Đồng bộ ngầm trạng thái
+        cur.execute("SELECT id FROM user_wellness_profiles WHERE user_id = %s;", (current_user.id,))
+        if cur.fetchone():
+            cur.execute("UPDATE user_wellness_profiles SET focus_areas = %s, total_wellness_minutes = %s, updated_at = NOW() WHERE user_id = %s;", (focus_areas, total_wellness_minutes, current_user.id))
+        else:
+            cur.execute("INSERT INTO user_wellness_profiles (user_id, focus_areas, total_wellness_minutes) VALUES (%s, %s, %s);", (current_user.id, focus_areas, total_wellness_minutes))
+            
+        conn.commit()
             
         return {
             "status": "success",
@@ -3359,11 +3356,66 @@ def get_user_wellness_profile(current_user = Depends(verify_user_token)):
                 "vitality_score": vitality_score,
                 "state_text": state_text,
                 "recommendation": recommendation,
-                "metrics_breakdown": metrics_breakdown
+                "metrics_breakdown": metrics_breakdown,
+                "milestone_badge": milestone,
+                "decay_points_lost": decay_points
             }
         }
     except Exception as e:
         conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Lỗi truy xuất Wellness Profile: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Lỗi truy xuất Wellness: {str(e)}")
+    finally:
+        db_pool.putconn(conn)
+
+@app.post("/user/wellness/logs", tags=["Wellness"])
+def create_wellness_log(payload: schemas.WellnessLogCreate, current_user = Depends(verify_user_token)):
+    """API lưu trữ Nhật ký cảm xúc/thể trạng vi mô (Micro-Mood Tracker)"""
+    if not db_pool: raise HTTPException(status_code=500, detail="Database error")
+    conn = db_pool.getconn()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Fallback tự động khởi tạo bảng nếu SQL Admin chưa chạy
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_wellness_logs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                mood_state VARCHAR(50) NOT NULL,
+                body_focus VARCHAR(100),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        cur.execute("""
+            INSERT INTO user_wellness_logs (user_id, mood_state, body_focus) 
+            VALUES (%s, %s, %s) RETURNING *
+        """, (current_user.id, payload.mood_state, payload.body_focus))
+        new_log = cur.fetchone()
+        conn.commit()
+        return {"status": "success", "message": "Ghi nhận thể trạng thành công!", "data": new_log}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db_pool.putconn(conn)
+
+@app.get("/user/wellness/logs", tags=["Wellness"])
+def get_wellness_logs(current_user = Depends(verify_user_token)):
+    """API truy xuất chuỗi đồ thị Nhật ký cảm xúc 30 ngày gần nhất"""
+    if not db_pool: raise HTTPException(status_code=500, detail="Database error")
+    conn = db_pool.getconn()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT id, mood_state, body_focus, created_at 
+            FROM user_wellness_logs 
+            WHERE user_id = %s 
+            ORDER BY created_at DESC LIMIT 30
+        """, (current_user.id,))
+        logs = cur.fetchall()
+        for log in logs:
+            log["created_at"] = log["created_at"].isoformat() if log["created_at"] else None
+        return {"status": "success", "data": logs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         db_pool.putconn(conn)
