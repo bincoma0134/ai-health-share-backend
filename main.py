@@ -799,7 +799,7 @@ def get_public_profile(username: str, request: Request, conn=Depends(get_db_conn
         # Lấy danh sách Voucher của riêng đối tác này (Chỉ hiển thị mã đã duyệt và còn hạn)
         cur.execute("""
             SELECT * FROM vouchers 
-            WHERE issuer_id = %s AND issuer_type = 'PARTNER' AND status = 'APPROVED' AND valid_until > NOW()
+            WHERE issuer_id = %s AND issuer_type IN ('PARTNER', 'PARTNER_ADMIN') AND status = 'APPROVED' AND valid_until > NOW()
             ORDER BY created_at DESC
         """, (target_id,))
         vouchers = cur.fetchall()
@@ -1343,8 +1343,16 @@ def get_moderation_queue(current_user = Depends(verify_user_token), conn=Depends
         s_data = cur.fetchall()
         
         cur.execute("""
-            SELECT v.*, 'video' as type, v.title as title, v.content as description, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url) as author
-            FROM tiktok_feeds v LEFT JOIN users u ON v.author_id = u.id WHERE v.status::text IN ('PENDING', 'PENDING_DELETE', 'PENDING_UPDATE')
+            SELECT v.*, 'video' as type, v.title as title, v.content as description, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url) as author,
+                   CASE WHEN s.id IS NOT NULL THEN json_build_object('id', s.id, 'service_name', s.service_name, 'price', s.price) ELSE NULL END as linked_service,
+                   CASE WHEN pu.id IS NOT NULL THEN json_build_object('id', pu.id, 'username', pu.username, 'full_name', pu.full_name) ELSE NULL END as linked_partner,
+                   CASE WHEN vc.code IS NOT NULL THEN json_build_object('code', vc.code, 'discount_type', vc.discount_type, 'discount_value', vc.discount_value, 'max_discount_amount', vc.max_discount_amount) ELSE NULL END as linked_voucher
+            FROM tiktok_feeds v 
+            LEFT JOIN users u ON v.author_id = u.id 
+            LEFT JOIN services s ON v.service_id = s.id
+            LEFT JOIN users pu ON v.partner_id = pu.id
+            LEFT JOIN vouchers vc ON v.voucher_code = vc.code
+            WHERE v.status::text IN ('PENDING', 'PENDING_DELETE', 'PENDING_UPDATE')
         """)
         v_data = cur.fetchall()
 
@@ -1400,8 +1408,16 @@ def get_moderation_history(current_user = Depends(verify_user_token), conn=Depen
         s_data = cur.fetchall()
         
         cur.execute("""
-            SELECT v.*, 'video' as type, v.title as title, v.content as description, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url) as author
-            FROM tiktok_feeds v LEFT JOIN users u ON v.author_id = u.id WHERE v.status::text IN ('APPROVED', 'REJECTED', 'DELETED') AND (v.moderated_by = %s OR v.moderated_by IS NULL)
+            SELECT v.*, 'video' as type, v.title as title, v.content as description, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url) as author,
+                   CASE WHEN s.id IS NOT NULL THEN json_build_object('id', s.id, 'service_name', s.service_name, 'price', s.price) ELSE NULL END as linked_service,
+                   CASE WHEN pu.id IS NOT NULL THEN json_build_object('id', pu.id, 'username', pu.username, 'full_name', pu.full_name) ELSE NULL END as linked_partner,
+                   CASE WHEN vc.code IS NOT NULL THEN json_build_object('code', vc.code, 'discount_type', vc.discount_type, 'discount_value', vc.discount_value, 'max_discount_amount', vc.max_discount_amount) ELSE NULL END as linked_voucher
+            FROM tiktok_feeds v 
+            LEFT JOIN users u ON v.author_id = u.id 
+            LEFT JOIN services s ON v.service_id = s.id
+            LEFT JOIN users pu ON v.partner_id = pu.id
+            LEFT JOIN vouchers vc ON v.voucher_code = vc.code
+            WHERE v.status::text IN ('APPROVED', 'REJECTED', 'DELETED') AND (v.moderated_by = %s OR v.moderated_by IS NULL)
         """, (current_user.id,))
         v_data = cur.fetchall()
         

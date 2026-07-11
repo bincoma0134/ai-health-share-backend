@@ -177,7 +177,12 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
       // Tận dụng cổng API Service chuẩn hóa của Partner Private Profile
       final results = await Future.wait([
         PartnerApiService.fetchMyServices().catchError((_) => []),
-        ApiClient.instance.get('/partner/vouchers').then((res) => res.data is List ? res.data : []).catchError((_) => []),
+        ApiClient.instance.get('/partner/vouchers').then((res) {
+          if (res.data is Map && res.data.containsKey('data')) {
+            return res.data['data'] is List ? res.data['data'] : [];
+          }
+          return res.data is List ? res.data : [];
+        }).catchError((_) => []),
       ]);
 
       if (mounted) {
@@ -1134,6 +1139,108 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
     );
   }
 
+  // 🚀 MỚI: Widget Bottom Sheet hiển thị danh sách Voucher kèm check điều kiện (Dành cho Đối tác)
+  void _showPartnerVouchersBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(24),
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Chọn Voucher Cơ Sở', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              const Text('Các voucher bị mờ do chưa đạt đơn tối thiểu hoặc không áp dụng cho dịch vụ hiện tại.', style: TextStyle(color: Color(0xFF617D79), fontSize: 12)),
+              const SizedBox(height: 16),
+              Flexible(
+                child: _partnerAvailableVouchers.isEmpty
+                    ? const Center(child: Padding(padding: EdgeInsets.all(24.0), child: Text('Cơ sở hiện chưa có voucher nào.', style: TextStyle(color: Color(0xFFB0C4C1)))))
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _partnerAvailableVouchers.length,
+                        separatorBuilder: (_, __) => const Divider(color: Color(0xFFE2ECEB)),
+                        itemBuilder: (context, index) {
+                          final v = _partnerAvailableVouchers[index];
+                          
+                          List<dynamic> applicableServices = [];
+                          final rawServices = v['applicable_services'];
+                          if (rawServices is List) {
+                            applicableServices = rawServices;
+                          } else if (rawServices is String && rawServices.isNotEmpty) {
+                            applicableServices = rawServices.replaceAll(RegExp(r'[{}[\]]'), '').split(',').map((e) => e.trim().replaceAll('"', '').replaceAll("'", "")).where((e) => e.isNotEmpty).toList();
+                          }
+                          
+                          double selectedServicePrice = double.tryParse(_priceController.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0.0;
+                              final double minOrderValue = double.tryParse(v['min_order_value']?.toString() ?? '0') ?? 0.0;
+                              final double maxDiscountAmount = double.tryParse(v['max_discount_amount']?.toString() ?? '0') ?? 0.0;
+
+                              // 🚀 ĐỒNG BỘ LOGIC CREATOR
+                              bool isEligible = true;
+                              String ineligibleReason = '';
+                              
+                              if (_selectedServiceId == null && selectedServicePrice <= 0) {
+                                 isEligible = false;
+                                 ineligibleReason = 'Vui lòng nhập giá hoặc chọn Gói dịch vụ trước để áp dụng ưu đãi!';
+                              } else {
+                                 if (applicableServices.isNotEmpty && _selectedServiceId == null) {
+                                   isEligible = false;
+                                   ineligibleReason = 'Voucher này chỉ áp dụng khi nhúng gói dịch vụ cụ thể!';
+                                 } else if (applicableServices.isNotEmpty && !applicableServices.any((id) => id.toString() == _selectedServiceId)) {
+                                   isEligible = false;
+                                   ineligibleReason = 'Voucher không áp dụng cho gói dịch vụ này!';
+                                 } else if (selectedServicePrice < minOrderValue) {
+                                   isEligible = false;
+                                   final formatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
+                                   ineligibleReason = 'Chưa đạt giá trị tối thiểu ${formatter.format(minOrderValue)}!';
+                                 }
+                              }
+
+                              final formatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
+                              String discountText = 'Giảm ${v['discount_value'] ?? 0}${v['discount_type'] == 'PERCENTAGE' ? '%' : 'đ'}';
+                              if (v['discount_type'] == 'PERCENTAGE' && maxDiscountAmount > 0) {
+                                discountText += ' (Tối đa ${formatter.format(maxDiscountAmount)})';
+                              }
+                              if (minOrderValue > 0) {
+                                discountText += '\nĐơn tối thiểu: ${formatter.format(minOrderValue)}';
+                              } 
+
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(v['code']?.toString() ?? 'VOUCHER', style: TextStyle(color: isEligible ? const Color(0xFF1A3A35) : const Color(0xFFB0C4C1), fontWeight: FontWeight.bold, fontSize: 15)),
+                            subtitle: Text(discountText, style: TextStyle(color: isEligible ? const Color(0xFF617D79) : const Color(0xFFD1D1D6), fontSize: 12)),
+                            isThreeLine: minOrderValue > 0,
+                            trailing: isEligible 
+                                ? const Icon(Icons.add_circle_outline_rounded, color: Color(0xFF80BF84), size: 20)
+                                : const Icon(Icons.do_not_disturb_alt_rounded, color: Color(0xFFD1D1D6), size: 18),
+                            onTap: isEligible ? () {
+                              setState(() {
+                                _selectedVoucherCode = v['code']?.toString();
+                              });
+                              Navigator.pop(context);
+                            } : () {
+                              AppToast.show(context: context, message: ineligibleReason, isSuccess: false);
+                            },
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+
   // 🚀 MỚI: Widget Bottom Sheet hiển thị danh sách Voucher kèm check điều kiện (Dành cho Creator Affiliate)
   void _showCreatorVouchersBottomSheet() {
     showModalBottomSheet(
@@ -1165,34 +1272,73 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                         separatorBuilder: (_, __) => const Divider(color: Color(0xFFE2ECEB)),
                         itemBuilder: (context, index) {
                           final v = _creatorPartnerVouchers[index];
-                          final applicableServices = v['applicable_services'] as List<dynamic>? ?? [];
                           
+                          // 🚀 BỌC THÉP ÉP KIỂU: Cứu hộ lỗi màn hình đỏ do Backend trả về chuỗi thay vì Mảng (Type 'String' is not a subtype of type 'List<dynamic>')
+                          List<dynamic> applicableServices = [];
+                          final rawServices = v['applicable_services'];
+                          if (rawServices is List) {
+                            applicableServices = rawServices;
+                          } else if (rawServices is String && rawServices.isNotEmpty) {
+                            // Xử lý chuỗi Postgres Array "{id1, id2}" hoặc JSON String "['id']"
+                            applicableServices = rawServices.replaceAll(RegExp(r'[{}[\]]'), '').split(',').map((e) => e.trim().replaceAll('"', '').replaceAll("'", "")).where((e) => e.isNotEmpty).toList();
+                          }
+                          
+                          double selectedServicePrice = 0.0;
+                          if (_selectedServiceId != null) {
+                            try {
+                              final selectedSvc = _creatorPartnerServices.firstWhere((s) => s['id'].toString() == _selectedServiceId);
+                              selectedServicePrice = double.tryParse(selectedSvc['price']?.toString() ?? '0') ?? 0.0;
+                            } catch (_) {}
+                          }
+
+                          final double minOrderValue = double.tryParse(v['min_order_value']?.toString() ?? '0') ?? 0.0;
+                          final double maxDiscountAmount = double.tryParse(v['max_discount_amount']?.toString() ?? '0') ?? 0.0;
+
                           // 🚀 BỌC THÉP LUỒNG: Điều kiện voucher hợp lệ: 
-                          // 1. Không bị giới hạn dịch vụ (applicable_services rỗng)
-                          // 2. Nếu có giới hạn, bắt buộc BẠN PHẢI CHỌN DỊCH VỤ TRƯỚC, và Dịch vụ đó phải nằm trong danh sách.
+                          // 1. Phải chọn dịch vụ trước để đối chiếu giá trị đơn.
+                          // 2. Không bị giới hạn dịch vụ (applicable_services) hoặc nằm trong danh sách áp dụng.
+                          // 3. Đạt giá trị tối thiểu (min_order_value).
                           bool isEligible = true;
-                          if (applicableServices.isNotEmpty) {
-                            if (_selectedServiceId == null) {
-                              isEligible = false; // Khóa mờ nếu chưa chọn dịch vụ nào
-                            } else {
-                              isEligible = applicableServices.any((id) => id.toString() == _selectedServiceId);
-                            }
+                          String ineligibleReason = '';
+                          
+                          if (_selectedServiceId == null) {
+                             isEligible = false;
+                             ineligibleReason = 'Vui lòng chọn Gói dịch vụ y khoa trước để áp dụng ưu đãi!';
+                          } else {
+                             if (applicableServices.isNotEmpty && !applicableServices.any((id) => id.toString() == _selectedServiceId)) {
+                               isEligible = false;
+                               ineligibleReason = 'Voucher không áp dụng cho gói dịch vụ này!';
+                             } else if (selectedServicePrice < minOrderValue) {
+                               isEligible = false;
+                               final formatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
+                               ineligibleReason = 'Chưa đạt giá trị tối thiểu ${formatter.format(minOrderValue)}!';
+                             }
+                          }
+
+                          final formatter = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
+                          String discountText = 'Giảm ${v['discount_value'] ?? 0}${v['discount_type'] == 'PERCENTAGE' ? '%' : 'đ'}';
+                          if (v['discount_type'] == 'PERCENTAGE' && maxDiscountAmount > 0) {
+                            discountText += ' (Tối đa ${formatter.format(maxDiscountAmount)})';
+                          }
+                          if (minOrderValue > 0) {
+                            discountText += '\nĐơn tối thiểu: ${formatter.format(minOrderValue)}';
                           }
 
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
-                            title: Text(v['code'] ?? 'VOUCHER', style: TextStyle(color: isEligible ? const Color(0xFF1A3A35) : const Color(0xFFB0C4C1), fontWeight: FontWeight.bold, fontSize: 15)),
-                            subtitle: Text('Giảm ${v['discount_value']}${v['discount_type'] == 'PERCENTAGE' ? '%' : 'đ'}', style: TextStyle(color: isEligible ? const Color(0xFF617D79) : const Color(0xFFD1D1D6), fontSize: 12)),
+                            title: Text(v['code']?.toString() ?? 'VOUCHER', style: TextStyle(color: isEligible ? const Color(0xFF1A3A35) : const Color(0xFFB0C4C1), fontWeight: FontWeight.bold, fontSize: 15)),
+                            subtitle: Text(discountText, style: TextStyle(color: isEligible ? const Color(0xFF617D79) : const Color(0xFFD1D1D6), fontSize: 12)),
+                            isThreeLine: minOrderValue > 0,
                             trailing: isEligible 
                                 ? const Icon(Icons.add_circle_outline_rounded, color: Color(0xFF80BF84), size: 20)
                                 : const Icon(Icons.do_not_disturb_alt_rounded, color: Color(0xFFD1D1D6), size: 18),
                             onTap: isEligible ? () {
                               setState(() {
-                                _selectedVoucherCode = v['code'];
+                                _selectedVoucherCode = v['code']?.toString();
                               });
                               Navigator.pop(context);
                             } : () {
-                              AppToast.show(context: context, message: 'Voucher này không áp dụng cho dịch vụ bạn đã chọn!', isSuccess: false);
+                              AppToast.show(context: context, message: ineligibleReason, isSuccess: false);
                             },
                           );
                         },
@@ -1312,11 +1458,79 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                     style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.bold)
                   ),
                   const SizedBox(height: 6),
-                  _buildTextField(
-                    controller: _priceController, 
-                    hint: _selectedServiceName != null ? "Sử dụng giá của gói dịch vụ đã ghim" : "Nhập giá bán dịch vụ y khoa (VND)...", 
-                    keyboardType: TextInputType.number,
-                    readOnly: _selectedServiceName != null // Tự động khóa cứng nếu đã chọn liên kết dịch vụ y khoa
+                  Builder(
+                    builder: (context) {
+                      double originalPrice = double.tryParse(_priceController.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0.0;
+                      double discountAmount = 0.0;
+                      bool hasValidVoucher = false;
+
+                      if (_selectedVoucherCode != null && originalPrice > 0) {
+                        try {
+                          final v = _partnerAvailableVouchers.firstWhere((element) => element['code']?.toString() == _selectedVoucherCode);
+                          double discountValue = double.tryParse(v['discount_value']?.toString() ?? '0') ?? 0.0;
+                          double maxDiscount = double.tryParse(v['max_discount_amount']?.toString() ?? '0') ?? 0.0;
+                          
+                          if (v['discount_type'] == 'PERCENTAGE') {
+                            discountAmount = (discountValue / 100) * originalPrice;
+                            if (maxDiscount > 0 && discountAmount > maxDiscount) {
+                              discountAmount = maxDiscount;
+                            }
+                          } else {
+                            discountAmount = discountValue;
+                          }
+                          if (discountAmount > 0) {
+                            hasValidVoucher = true;
+                          }
+                        } catch (_) {}
+                      }
+
+                      if (hasValidVoucher) {
+                        final double finalPrice = (originalPrice - discountAmount).clamp(0.0, double.infinity);
+                        final currencyFormatter = NumberFormat('#,###', 'vi_VN');
+
+                        return Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F5),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE2ECEB), width: 1.2),
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                '${currencyFormatter.format(originalPrice)} VND',
+                                style: TextStyle(
+                                  color: const Color(0xFF1A3A35).withOpacity(0.4),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  decoration: TextDecoration.lineThrough,
+                                  decorationColor: const Color(0xFF1A3A35).withOpacity(0.4),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Icon(Icons.arrow_forward_rounded, size: 16, color: Color(0xFF80BF84)),
+                              const SizedBox(width: 12),
+                              Text(
+                                '${currencyFormatter.format(finalPrice)} VND',
+                                style: const TextStyle(
+                                  color: Color(0xFF1A3A35),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      return _buildTextField(
+                        controller: _priceController, 
+                        hint: _selectedServiceName != null ? "Sử dụng giá của gói dịch vụ đã ghim" : "Nhập giá bán dịch vụ y khoa (VND)...", 
+                        keyboardType: TextInputType.number,
+                        readOnly: _selectedServiceName != null || hasValidVoucher // Tự động khóa cứng nếu đã chọn dịch vụ hoặc áp dụng voucher
+                      );
+                    },
                   ),
                   const SizedBox(height: 14),
                   
@@ -1339,20 +1553,30 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                     label: "Liên kết Gói dịch vụ y khoa",
                     value: _selectedServiceName ?? "Nhúng gói trị liệu nền tảng...",
                     onTap: () {
+                      // 🚀 ĐỒNG BỘ UI: Map lại danh sách dịch vụ để hiển thị rõ Giá tiền (Dấu chấm hàng nghìn)
+                      final formattedServices = _partnerAvailableServices.map((s) {
+                        final double price = double.tryParse(s['price']?.toString() ?? '0') ?? 0;
+                        final String priceStr = NumberFormat('#,###', 'en_US').format(price).replaceAll(',', '.');
+                        return {
+                          ...s,
+                          'display_name': "${s['service_name']} ($priceStr VND)",
+                        };
+                      }).toList();
+
                       _showSelectionBottomSheet(
                         title: "Chọn Gói dịch vụ y khoa của bạn",
-                        items: _partnerAvailableServices,
-                        itemTitleKey: "service_name",
+                        items: formattedServices,
+                        itemTitleKey: "display_name", // Sử dụng key mới bọc giá tiền
                         itemValueKey: "id",
-                        onSelected: (name, id) {
-                          // Truy vết lấy đúng bản ghi dịch vụ để trích xuất trường price gán cứng vào bộ điều khiển
+                        onSelected: (displayName, id) {
                           final selectedSvc = _partnerAvailableServices.firstWhere((element) => element['id'].toString() == id);
                           final double svcPrice = double.tryParse(selectedSvc['price']?.toString() ?? '0') ?? 0;
+                          final String priceStr = NumberFormat('#,###', 'en_US').format(svcPrice).replaceAll(',', '.');
                           
                           setState(() {
-                            _selectedServiceName = name;
+                            _selectedServiceName = selectedSvc['service_name']; // Vẫn lưu tên gốc
                             _selectedServiceId = id;
-                            _priceController.text = svcPrice.toInt().toString(); // Khóa và gán cứng giá của dịch vụ
+                            _priceController.text = '$priceStr VND'; // Khóa và gán cứng giá trị có format
                           });
                         },
                       );
@@ -1371,17 +1595,17 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                     label: "Đính kèm Mã ưu đãi độc quyền",
                     value: _selectedVoucherCode ?? "Chọn Voucher cơ sở kích thích đặt hẹn...",
                     onTap: () {
-                      _showSelectionBottomSheet(
-                        title: "Chọn Voucher đang phát hành",
-                        items: _partnerAvailableVouchers,
-                        itemTitleKey: "code",
-                        itemValueKey: "code",
-                        onSelected: (code, val) {
-                          setState(() {
-                            _selectedVoucherCode = code;
-                          });
-                        },
-                      );
+                      double currentPrice = double.tryParse(_priceController.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0.0;
+                      if (currentPrice <= 0 && _selectedServiceId == null) {
+                        AppToast.show(context: context, message: 'Vui lòng nhập giá dịch vụ hoặc liên kết gói dịch vụ trước khi chọn Voucher!', isSuccess: false);
+                        return;
+                      }
+                      _showPartnerVouchersBottomSheet();
+                    },
+                    onRemove: _selectedVoucherCode == null ? null : () {
+                      setState(() {
+                        _selectedVoucherCode = null;
+                      });
                     },
                   ),
                 ] else if (isCreatorRole) ...[
@@ -1402,11 +1626,87 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                       ],
                     ),
                   ),
-                  _buildTextField(
-                    controller: _priceController, 
-                    hint: _selectedServiceName != null ? "Đã đồng bộ giá gốc từ Đối tác" : "Giá sẽ tự động hiển thị khi chọn Dịch vụ", 
-                    keyboardType: TextInputType.number,
-                    readOnly: true
+                  Builder(
+                    builder: (context) {
+                      double originalPrice = 0.0;
+                      if (_selectedServiceId != null) {
+                        try {
+                          final selectedSvc = _creatorPartnerServices.firstWhere((s) => s['id'].toString() == _selectedServiceId);
+                          originalPrice = double.tryParse(selectedSvc['price']?.toString() ?? '0') ?? 0.0;
+                        } catch (_) {}
+                      }
+
+                      double discountAmount = 0.0;
+                      bool hasValidVoucher = false;
+                      if (_selectedVoucherCode != null && _selectedServiceId != null) {
+                        try {
+                          final v = _creatorPartnerVouchers.firstWhere((element) => element['code']?.toString() == _selectedVoucherCode);
+                          double discountValue = double.tryParse(v['discount_value']?.toString() ?? '0') ?? 0.0;
+                          double maxDiscount = double.tryParse(v['max_discount_amount']?.toString() ?? '0') ?? 0.0;
+                          
+                          if (v['discount_type'] == 'PERCENTAGE') {
+                            discountAmount = (discountValue / 100) * originalPrice;
+                            if (maxDiscount > 0 && discountAmount > maxDiscount) {
+                              discountAmount = maxDiscount;
+                            }
+                          } else {
+                            discountAmount = discountValue;
+                          }
+                          if (discountAmount > 0) {
+                            hasValidVoucher = true;
+                          }
+                        } catch (_) {}
+                      }
+
+                      if (hasValidVoucher) {
+                            final double finalPrice = (originalPrice - discountAmount).clamp(0.0, double.infinity);
+                            
+                            // 🚀 BỌC THÉP FORMAT GIÁ: Ép dấu chấm hàng nghìn chuẩn xác
+                            String formatPrice(double p) => NumberFormat('#,###', 'en_US').format(p).replaceAll(',', '.');
+
+                            return Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F5),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: const Color(0xFFE2ECEB), width: 1.2),
+                              ),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    '${formatPrice(originalPrice)} VND',
+                                    style: TextStyle(
+                                      color: const Color(0xFF1A3A35).withOpacity(0.4),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      decoration: TextDecoration.lineThrough,
+                                      decorationColor: const Color(0xFF1A3A35).withOpacity(0.4),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Icon(Icons.arrow_forward_rounded, size: 16, color: Color(0xFF80BF84)),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    '${formatPrice(finalPrice)} VND',
+                                    style: const TextStyle(
+                                      color: Color(0xFF1A3A35),
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+
+                          return _buildTextField(
+                            controller: _priceController, 
+                            hint: _selectedServiceName != null ? "Sử dụng giá của gói dịch vụ đã ghim" : "Nhập giá bán dịch vụ y khoa (VND)...", 
+                            keyboardType: TextInputType.number,
+                            readOnly: _selectedServiceName != null // Bỏ khóa voucher, chỉ khóa khi nhúng dịch vụ
+                          );
+                    },
                   ),
                   const SizedBox(height: 24),
                   
