@@ -1000,7 +1000,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                             icon: Icons.stars_rounded,
                             iconColor: const Color(0xFF4CAF50),
                             iconBg: const Color(0xFFE8F5E9),
-                            title: 'Điểm SValue tích lũy',
+                            title: 'SValue & Ví Voucher',
                             subtitle: 'Chuỗi điểm danh ${profile['streak_count'] ?? 0} ngày liên tiếp',
                             value: profile['svalue_balance']?.toString() ?? '0',
                             onTap: () => context.push('/promo'),

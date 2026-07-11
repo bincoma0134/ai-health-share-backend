@@ -10,6 +10,7 @@ import '../../presentation/screens/ai/partner_ai_context_screen.dart';
 import '../../presentation/screens/promo/promo_screen.dart';
 import '../../presentation/screens/calendar/calendar_screen.dart';
 import '../../presentation/screens/profile/private_profile_screen.dart';
+import '../../presentation/screens/profile/user_wellness_profile_screen.dart';
 import '../../presentation/screens/wallet_screen.dart'; // Bổ sung Import Ví điện tử
 import '../../presentation/screens/admin/admin_dashboard_screen.dart';
 import '../../presentation/screens/admin/moderator_dashboard_screen.dart';
@@ -142,6 +143,12 @@ final GoRouter appRouter = GoRouter(
           partnerName: partnerName,
         );
       },
+    ),
+    // TUYẾN ĐƯỜNG SỨC KHỎE TOÀN DIỆN (WELLNESS PROFILE)
+    GoRoute(
+      path: '/wellness-profile',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) => const UserWellnessProfileScreen(),
     ),
     // TUYẾN ĐƯỜNG PARTNER AI CONTEXT (Dành cho cơ sở thiết lập định hướng AI)
     GoRoute(

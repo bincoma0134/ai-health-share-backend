@@ -443,9 +443,6 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
             _trimStartPercent = 0.0;
             _trimEndPercent = 1.0;
           });
-
-          // 🚀 KHỞI ĐỘNG LUỒNG TIỀN TẢI LÊN NGẦM SƠ BỘ: Đẩy tệp thô lên trước để chiếm băng thông
-          _startBackgroundProcessing();
         }
       } catch (e) {
         if (mounted) {
@@ -489,7 +486,6 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
       return;
     }
 
-    // 🛡️ VALIDATION HOÀN THIỆN ĐỐI VỚI VAI TRÒ PARTNER / PARTNER ADMIN KHI ĐĂNG VIDEO DỊCH VỤ
     if ((_userRole == "PARTNER_ADMIN" || _userRole == "PARTNER") && _partnerPublishMode == "SERVICE_VIDEO") {
       if (_priceController.text.trim().isEmpty) {
         AppToast.show(context: context, message: "Lỗi: Vai trò Đối tác đăng Video dịch vụ bắt buộc phải nhập Giá bán!", isSuccess: false);
@@ -501,89 +497,117 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
       }
     }
 
-    // ĐỒNG BỘ ĐIỂM CHẶN CUỐI CÙNG: Chỉ kiểm tra cờ tải lên ngầm tại thời điểm xuất bản biểu mẫu
-    final bool isUpToDate = (_trimStartPercent == _lastUploadedStartPercent) && (_trimEndPercent == _lastUploadedEndPercent);
-    
-    if (_isUploadingNgam || !isUpToDate || _finalCloudVideoUrl.isEmpty) {
-      // Nếu người dùng điền biểu mẫu quá nhanh mà luồng ngầm chưa xử lý xong byte cuối, hiển thị tiến trình thực tế
-      AppToast.show(
-        context: context, 
-        message: "Hệ thống đang hoàn tất truyền tải video phân đoạn (${(_uploadNgamProgress * 100).toInt()}%). Vui lòng đợi trong giây lát!", 
-        isSuccess: false
-      );
-      
-      // Khởi động lại luồng xử lý nếu phát hiện sự sai lệch cấu hình biên do bị hủy giữa chừng
-      if (!isUpToDate && !_isUploadingNgam) {
-        _startBackgroundProcessing();
-      }
+    if (_localVideoOriginalPath.isEmpty) {
+      AppToast.show(context: context, message: "Vui lòng chọn video trước khi đăng tải!", isSuccess: false);
       return;
     }
 
-    setState(() => _isSubmitting = true);
-
+    // Capture state values before popping the context
+    final String title = _titleController.text.trim();
+    final String content = _descriptionController.text.trim();
+    final double? price = _priceController.text.trim().isEmpty ? null : double.tryParse(_priceController.text.replaceAll(RegExp(r'[^0-9]'), ''));
+    final double? affiliateRate = _commissionController.text.trim().isEmpty ? 0.0 : double.tryParse(_commissionController.text.trim());
+    final String? partnerId = _userRole == "CREATOR" ? _selectedPartnerId : _selectedPartnerName;
+    final String? voucherCode = _selectedVoucherCode;
+    final String feedType = (_userRole == "PARTNER_ADMIN" || _userRole == "PARTNER") ? _partnerPublishMode : "TIKTOK_FEED";
+    final String localVideoPath = _localVideoOriginalPath;
+    final double trimStart = _trimStartPercent;
+    final double trimEnd = _trimEndPercent;
     String? targetedServiceId = _selectedServiceId;
+    final String currentUserRole = _userRole;
+    final String partnerMode = _partnerPublishMode;
 
-    // 🚀 LUỒNG PHÂN PHỐI KÉP: Nếu Partner đăng Video Dịch vụ nhưng chưa liên kết gói có sẵn -> Tạo Service mới trước
-    if ((_userRole == "PARTNER_ADMIN" || _userRole == "PARTNER") && _partnerPublishMode == "SERVICE_VIDEO" && targetedServiceId == null) {
-      final Map<String, dynamic> servicePayload = {
-        'service_name': _titleController.text.trim(),
-        'description': _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
-        'price': double.tryParse(_priceController.text.trim()) ?? 0.0,
-        'image_url': null,
-        'video_url': _finalCloudVideoUrl,
-        'tags': [],
-        'service_type': 'RELAXATION',
-        'status': 'PENDING',
-        'affiliate_rate': _commissionController.text.trim().isEmpty ? 0.0 : double.tryParse(_commissionController.text.trim()),
-      };
+    AppToast.show(
+      context: context, 
+      message: 'Video đang được tải lên ngầm, vui lòng không tắt ứng dụng.', 
+      isSuccess: true
+    );
 
+    // Bắt buộc mở khóa âm thanh Feed và thoát màn hình ngay lập tức
+    FeedVideoPool.isGlobalMutedForUpload = false;
+    final navigator = Navigator.of(context);
+    navigator.pop();
+
+    // Fire and forget upload pipeline
+    Future.microtask(() async {
       try {
-        final serviceRes = await ApiClient.instance.post('/services', data: servicePayload);
-        if (serviceRes.statusCode == 200 && serviceRes.data != null) {
-          // Trích xuất id từ response map thô của dio
-          final dynamic resData = serviceRes.data;
-          if (resData is Map && resData.containsKey('id')) {
-            targetedServiceId = resData['id']?.toString();
-          } else if (resData is Map && resData.containsKey('data') && resData['data'] is Map) {
-            targetedServiceId = resData['data']['id']?.toString();
+        // 1. Process Video Trim (From Background Logic)
+        File fileToUpload = File(localVideoPath);
+        final MediaInfo mediaInfoData = await VideoCompress.getMediaInfo(localVideoPath);
+        final double totalDurationMs = mediaInfoData.duration ?? 0;
+        final int startMs = (totalDurationMs * trimStart).toInt();
+        final int durationMs = (totalDurationMs * (trimEnd - trimStart)).toInt();
+        
+        if (startMs > 0 || durationMs < totalDurationMs.toInt()) {
+          final MediaInfo? trimResult = await VideoCompress.compressVideo(
+            localVideoPath,
+            quality: VideoQuality.HighestQuality,
+            startTime: (startMs / 1000).toInt(),
+            duration: (durationMs / 1000).toInt(),
+            deleteOrigin: false,
+          );
+          if (trimResult != null && trimResult.file != null) {
+            fileToUpload = trimResult.file!;
+          }
+        }
+
+        // 2. Upload to Cloudflare R2
+        final String? uploadedUrl = await UserApiService.uploadVideo(fileToUpload, "media/videos");
+        if (uploadedUrl == null || uploadedUrl.isEmpty) {
+          debugPrint("Background upload failed: empty URL");
+          return;
+        }
+
+        // 3. Fallback Service Creation for Partner
+        if ((currentUserRole == "PARTNER_ADMIN" || currentUserRole == "PARTNER") && partnerMode == "SERVICE_VIDEO" && targetedServiceId == null) {
+          final Map<String, dynamic> servicePayload = {
+            'service_name': title,
+            'description': content.isEmpty ? null : content,
+            'price': price ?? 0.0,
+            'image_url': null,
+            'video_url': uploadedUrl,
+            'tags': [],
+            'service_type': 'RELAXATION',
+            'status': 'PENDING',
+            'affiliate_rate': affiliateRate ?? 0.0,
+          };
+          try {
+            final serviceRes = await ApiClient.instance.post('/services', data: servicePayload);
+            if (serviceRes.statusCode == 200 && serviceRes.data != null) {
+              final dynamic resData = serviceRes.data;
+              if (resData is Map && resData.containsKey('id')) targetedServiceId = resData['id']?.toString();
+              else if (resData is Map && resData.containsKey('data') && resData['data'] is Map) targetedServiceId = resData['data']['id']?.toString();
+            }
+          } catch (e) {
+            debugPrint("Service creation fallback alert: $e");
+          }
+        }
+
+        // 4. Create Feed Post
+        final Map<String, dynamic> payload = {
+          'title': title,
+          'content': content.isEmpty ? null : content,
+          'price': price,
+          'video_url': uploadedUrl,
+          'affiliate_rate': affiliateRate,
+          'partner_id': partnerId,
+          'service_id': targetedServiceId,
+          'voucher_code': voucherCode,
+          'feed_type': feedType,
+          'trim_start_percent': trimStart,
+          'trim_end_percent': trimEnd,
+        };
+
+        final res = await ApiClient.instance.post('/tiktok/feeds', data: payload);
+        if (res.statusCode == 200) {
+          if (navigator.context.mounted) {
+            AppToast.show(context: navigator.context, message: "Đăng tải video hoàn tất, đang chờ duyệt!", isSuccess: true);
           }
         }
       } catch (e) {
-        // Bỏ qua lỗi chặn hoặc fallback im lặng để tiếp tục đẩy luồng Feed truyền thông, tránh crash giao diện
-        debugPrint("⚠️ Service creation fallback alert: $e");
+        debugPrint("Background publish error: $e");
       }
-    }
-
-    final Map<String, dynamic> payload = {
-      'title': _titleController.text.trim(),
-      'content': _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
-      'price': _priceController.text.trim().isEmpty ? null : double.tryParse(_priceController.text.replaceAll(RegExp(r'[^0-9]'), '')),
-      'video_url': _finalCloudVideoUrl,
-      'affiliate_rate': _commissionController.text.trim().isEmpty ? 0.0 : double.tryParse(_commissionController.text.trim()),
-      'partner_id': _userRole == "CREATOR" ? _selectedPartnerId : _selectedPartnerName, // 🚀 Bọc thép truyền chuẩn ID nếu là Creator
-      'service_id': targetedServiceId, // Đính kèm ID dịch vụ mới tạo hoặc ID có sẵn được chọn liên kết
-      'voucher_code': _selectedVoucherCode,
-      'feed_type': (_userRole == "PARTNER_ADMIN" || _userRole == "PARTNER") ? _partnerPublishMode : "TIKTOK_FEED",
-      'trim_start_percent': _trimStartPercent,
-      'trim_end_percent': _trimEndPercent,
-    };
-
-    try {
-      final res = await ApiClient.instance.post('/tiktok/feeds', data: payload);
-      if (res.statusCode == 200) {
-        FeedVideoPool.isGlobalMutedForUpload = false;
-        if (mounted) {
-          AppToast.show(context: context, message: "Phát sóng video ngắn và đồng bộ danh mục dịch vụ thành công!", isSuccess: true);
-          context.pop();
-        }
-      } else {  
-        if (mounted) AppToast.show(context: context, message: "Lỗi gửi dữ liệu lên máy chủ!", isSuccess: false);
-      }
-    } catch (e) {
-      if (mounted) AppToast.show(context: context, message: "Kết nối máy chủ thất bại!", isSuccess: false);
-    } finally {
-      if (mounted) setState(() => _isSubmitting = false);
-    }
+    });
   }
 
   Future<bool> _onWillPop() async {
@@ -817,11 +841,9 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text("${(_trimStartPercent * 100).toInt()}%", style: const TextStyle(color: Color(0xFF617D79), fontSize: 10, fontWeight: FontWeight.bold)),
-                    Text(
-                      _isUploadingNgam 
-                          ? "Đang mã hóa dữ liệu: ${(_uploadNgamProgress * 100).toInt()}%" 
-                          : "Đoạn video đăng tải ngắn (Đã sẵn sàng)", 
-                      style: TextStyle(color: _isUploadingNgam ? Colors.orangeAccent : const Color(0xFF1A3A35), fontSize: 10, fontWeight: FontWeight.bold)
+                    const Text(
+                      "Đoạn video đăng tải ngắn (Đã sẵn sàng)", 
+                      style: TextStyle(color: Color(0xFF1A3A35), fontSize: 10, fontWeight: FontWeight.bold)
                     ),
                     Text("${(_trimEndPercent * 100).toInt()}%", style: const TextStyle(color: Color(0xFF617D79), fontSize: 10, fontWeight: FontWeight.bold)),
                   ],
@@ -849,11 +871,6 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                             inactiveColor: const Color(0xFFE2ECEB),
                             onChangeEnd: (RangeValues values) {
                               _debounceTrimTimer?.cancel();
-                              _debounceTrimTimer = Timer(const Duration(milliseconds: 600), () {
-                                if (mounted) {
-                                  _startBackgroundProcessing();
-                                }
-                              });
                             },
                             onChanged: (RangeValues values) {
                               if (values.end - values.start >= 0.05) {

@@ -3257,3 +3257,113 @@ async def get_partner_affiliate_metrics(current_user = Depends(verify_user_token
     finally:
         cur.close()
         db_pool.putconn(conn)
+
+# =========================================================================================
+# 🚀 [PHASE 3.0] TRẠM THEO DÕI HÀNH TRÌNH SỨC KHỎE (WELLNESS JOURNEY DASHBOARD)
+# Chứa Logic 1 (Metrics Aggregator) và Logic 2 (Dynamic Vitality State)
+# Đặt cách ly hoàn toàn ở cuối file, không tác động đến các luồng API phía trên
+# =========================================================================================
+
+class WellnessStateResponse(BaseModel):
+    total_wellness_minutes: int
+    total_sessions: int
+    focus_areas: List[str]
+    vitality_score: int
+    state_text: str
+    recommendation: str
+    metrics_breakdown: dict
+
+@app.get("/user/wellness/profile", response_model=dict)
+def get_user_wellness_profile(current_user = Depends(verify_user_token)):
+    """
+    [Logic 1 & 2] Tự động tổng hợp chỉ số sinh học ngầm & Tính trạng thái năng lượng
+    """
+    if not db_pool:
+        raise HTTPException(status_code=500, detail="Database pool không hoạt động")
+    
+    conn = db_pool.getconn()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # 1. LOGIC 1: BỘ TỔNG HỢP CHỈ SỐ SINH HỌC NGẦM (Wellness Metrics Aggregator)
+        # Quét toàn bộ lịch hẹn 'COMPLETED' của User, gom nhóm theo loại dịch vụ để tính tổng thời lượng
+        query_agg = """
+            SELECT s.service_type, COUNT(a.id) as total_sessions
+            FROM appointments a
+            JOIN services s ON a.service_id = s.id
+            WHERE a.user_id = %s AND a.status = 'COMPLETED'
+            GROUP BY s.service_type;
+        """
+        cur.execute(query_agg, (current_user.id,))
+        aggregates = cur.fetchall()
+        
+        total_sessions = 0
+        focus_areas = []
+        metrics_breakdown = {}
+        
+        # Giả định trung bình mỗi buổi dịch vụ / thiền / trị liệu kéo dài 60 phút
+        for row in aggregates:
+            stype = row['service_type'] or "GENERAL"
+            count = row['total_sessions']
+            total_sessions += count
+            
+            if stype not in focus_areas:
+                focus_areas.append(stype)
+                
+            metrics_breakdown[stype] = {
+                "sessions": count,
+                "minutes": count * 60
+            }
+            
+        total_wellness_minutes = total_sessions * 60
+        
+        # Đồng bộ trạng thái ngầm vào database (Sync State)
+        cur.execute("SELECT id FROM user_wellness_profiles WHERE user_id = %s;", (current_user.id,))
+        if cur.fetchone():
+            cur.execute("""
+                UPDATE user_wellness_profiles 
+                SET focus_areas = %s, total_wellness_minutes = %s, updated_at = NOW()
+                WHERE user_id = %s;
+            """, (focus_areas, total_wellness_minutes, current_user.id))
+        else:
+            cur.execute("""
+                INSERT INTO user_wellness_profiles (user_id, focus_areas, total_wellness_minutes)
+                VALUES (%s, %s, %s);
+            """, (current_user.id, focus_areas, total_wellness_minutes))
+            
+        conn.commit()
+        
+        # 2. LOGIC 2: TÍNH TOÁN TRẠNG THÁI NĂNG LƯỢNG THÍCH ỨNG (Dynamic Vitality State)
+        # Thuật toán tính điểm tinh gọn: Mỗi buổi hoàn thành mang lại 10 điểm năng lượng sinh học (Tối đa 100)
+        vitality_score = min(100, total_sessions * 10)
+        
+        if vitality_score <= 20:
+            state_text = "Cần kích hoạt năng lượng"
+            recommendation = "Hãy dành thời gian trải nghiệm các dịch vụ thư giãn để giải tỏa căng thẳng và khôi phục nhịp điệu sinh học."
+        elif vitality_score <= 50:
+            state_text = "Đang trên đà hồi phục"
+            recommendation = "Bạn đang đi đúng hướng! Hãy duy trì đều đặn các liệu pháp để tối ưu hóa sự cân bằng giữa cơ thể và tâm trí."
+        elif vitality_score <= 80:
+            state_text = "Trạng thái cân bằng tốt"
+            recommendation = "Cơ thể và tinh thần đang đạt trạng thái hòa hợp cao. Rất tuyệt vời, hãy tiếp tục duy trì!"
+        else:
+            state_text = "Năng lượng tối ưu Premium"
+            recommendation = "Trạng thái Wellness hoàn hảo. Bạn đã làm chủ được nhịp sống lành mạnh và bảo vệ cơ thể ở mức tốt nhất."
+            
+        return {
+            "status": "success",
+            "data": {
+                "total_wellness_minutes": total_wellness_minutes,
+                "total_sessions": total_sessions,
+                "focus_areas": focus_areas,
+                "vitality_score": vitality_score,
+                "state_text": state_text,
+                "recommendation": recommendation,
+                "metrics_breakdown": metrics_breakdown
+            }
+        }
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Lỗi truy xuất Wellness Profile: {str(e)}")
+    finally:
+        db_pool.putconn(conn)

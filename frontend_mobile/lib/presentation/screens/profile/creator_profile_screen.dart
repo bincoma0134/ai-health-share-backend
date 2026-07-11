@@ -947,6 +947,124 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         ),
                         const SizedBox(height: 20),
 
+                        // [ĐIỂM CHẠM MỚI] Trạm theo dõi Hành trình Wellness cá nhân hóa
+                        InkWell(
+                          onTap: () => context.push('/wellness-profile'),
+                          borderRadius: BorderRadius.circular(24),
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: _crtPrimary.withOpacity(0.4), width: 1.2),
+                              boxShadow: [
+                                BoxShadow(color: _crtPrimary.withOpacity(0.12), blurRadius: 24, offset: const Offset(0, 8)),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                // Vòng tròn năng lượng tỏa sáng nhẹ (Glowing Orb)
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: RadialGradient(
+                                      colors: [
+                                        _crtPrimary.withOpacity(0.25),
+                                        Colors.transparent,
+                                      ],
+                                      stops: const [0.3, 1.0],
+                                    ),
+                                    border: Border.all(color: _crtPrimary.withOpacity(0.7), width: 1.5),
+                                    boxShadow: [
+                                      BoxShadow(color: _crtPrimary.withOpacity(0.4), blurRadius: 12),
+                                    ],
+                                  ),
+                                  child: Icon(Icons.all_inclusive_rounded, color: _crtSecondary, size: 22),
+                                ),
+                                const SizedBox(width: 16),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Hành trình Wellness của tôi',
+                                        style: TextStyle(color: Color(0xFF1A3A35), fontSize: 15.5, fontWeight: FontWeight.w900, letterSpacing: -0.3),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'Khám phá tiến trình cân bằng sinh học',
+                                        style: TextStyle(color: Color(0xFF617D79), fontSize: 12, fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(Icons.arrow_forward_ios_rounded, color: _crtSecondary, size: 14),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // [ĐIỂM CHẠM MỚI] Trạm theo dõi Hành trình Wellness cá nhân hóa
+                        InkWell(
+                          onTap: () => context.push('/wellness-profile'),
+                          borderRadius: BorderRadius.circular(24),
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: _crtPrimary.withOpacity(0.4), width: 1.2),
+                              boxShadow: [
+                                BoxShadow(color: _crtPrimary.withOpacity(0.12), blurRadius: 24, offset: const Offset(0, 8)),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                // Vòng tròn năng lượng tỏa sáng nhẹ (Glowing Orb)
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: RadialGradient(
+                                      colors: [
+                                        _crtPrimary.withOpacity(0.25),
+                                        Colors.transparent,
+                                      ],
+                                      stops: const [0.3, 1.0],
+                                    ),
+                                    border: Border.all(color: _crtPrimary.withOpacity(0.7), width: 1.5),
+                                    boxShadow: [
+                                      BoxShadow(color: _crtPrimary.withOpacity(0.4), blurRadius: 12),
+                                    ],
+                                  ),
+                                  child: Icon(Icons.all_inclusive_rounded, color: _crtSecondary, size: 22),
+                                ),
+                                const SizedBox(width: 16),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Hành trình Wellness của tôi',
+                                        style: TextStyle(color: Color(0xFF1A3A35), fontSize: 15.5, fontWeight: FontWeight.w900, letterSpacing: -0.3),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        'Khám phá tiến trình cân bằng sinh học',
+                                        style: TextStyle(color: Color(0xFF617D79), fontSize: 12, fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(Icons.arrow_forward_ios_rounded, color: _crtSecondary, size: 14),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
                         // [LOGIC 2 & 3] Khối Điểm SValue & Ví thanh toán bảo chứng
                         Container(
                           padding: const EdgeInsets.all(6),
@@ -961,7 +1079,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                 icon: Icons.stars_rounded,
                                 iconColor: _crtSecondary,
                                 iconBg: const Color(0xFFFFF0F2),
-                                title: 'Điểm SValue tích lũy',
+                                title: 'SValue & Ví Voucher',
                                 subtitle: 'Chuỗi điểm danh ${widget.profile['streak_count'] ?? 0} ngày liên tiếp',
                                 value: widget.profile['svalue_balance']?.toString() ?? '0',
                                 onTap: () => context.push('/promo'),

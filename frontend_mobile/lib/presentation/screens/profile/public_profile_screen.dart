@@ -55,6 +55,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       if (mounted) {
         setState(() {
           _data = profileResult;
+          // 🚀 BỌC THÉP API: Trích xuất trực tiếp danh sách video chuẩn xác của User từ endpoint public thay vì gọi hàm /tiktok/feeds gây nhiễu
+          _fetchedVideos = profileResult['videos'] ?? [];
           _fetchedVouchers = profileResult['vouchers'] ?? [
             {
               'id': 'v1',
@@ -114,7 +116,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     
     bool needsFetch = false;
     if (tab == 'services' && _fetchedServices.isEmpty) needsFetch = true;
-    if ((tab == 'videos' || tab == 'liked' || tab == 'saved' || tab == 'activities') && _fetchedVideos.isEmpty) needsFetch = true;
+    // 🚀 Đã ngắt luồng nạp trễ API /tiktok/feeds cho Tab Video vì dữ liệu gốc đã có sẵn ở hàm loadData.
     
     if (!needsFetch) return;
 
@@ -123,9 +125,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       if (tab == 'services') {
         final services = await UserApiService.fetchUserServices(userId);
         if (mounted) setState(() => _fetchedServices = services);
-      } else {
-        final videos = await UserApiService.fetchUserFeeds(userId);
-        if (mounted) setState(() => _fetchedVideos = videos);
       }
     } finally {
       _isLazyFetching = false;
@@ -169,6 +168,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     if (role == 'MODERATOR') return const Color(0xFF8B5CF6); 
     if (role == 'SUPER_ADMIN' || role == 'ADMIN') return Colors.amber;
     if (role == 'PARTNER' || role == 'PARTNER_ADMIN') return Colors.blue;
+    if (role == 'CREATOR') return const Color(0xFFFF7A8A);
     return const Color(0xFF80BF84); 
   }
 
@@ -211,7 +211,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final role = profile['role'] ?? 'USER';
     final isPartner = role == 'PARTNER' || role == 'PARTNER_ADMIN';
     final primaryColor = _getRoleColor(role);
-    final videos = _fetchedVideos;
+    
+    // 🚀 Lọc hiển thị: Chỉ gọi các video đã có nhãn được duyệt thành công theo logic Studio
+    final videos = _fetchedVideos.where((v) {
+      final String status = (v['status'] ?? '').toString().toUpperCase();
+      return status == 'APPROVED' || status == 'PUBLISHED';
+    }).toList();
+    
     final services = _fetchedServices;
 
     final String? rawCover = profile['cover_url'] != null && profile['cover_url'].toString().trim().isNotEmpty ? '${profile['cover_url']}?w=800&q=70' : null;
@@ -329,7 +335,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Flexible(child: Text(profile['full_name'] ?? 'Vô danh', style: const TextStyle(color: const Color(0xFF1E293B), fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5, height: 1.1), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                          Flexible(child: Text(profile['full_name'] ?? 'Vô danh', style: const TextStyle(color: Color(0xFF1E293B), fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5, height: 1.1), maxLines: 1, overflow: TextOverflow.ellipsis)),
                           if (role != 'USER') ...[
                             const SizedBox(width: 6),
                             Icon(Icons.verified_rounded, color: primaryColor, size: 24),
@@ -380,7 +386,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                               child: Text(
                                 profile['physical_address'] != null && profile['physical_address'].toString().trim().isNotEmpty 
                                     ? profile['physical_address'] 
-                                    : (isPartner ? 'Chưa cập nhật địa chỉ cơ sở' : 'Thành viên cộng đồng AI Health'), 
+                                    : (isPartner ? 'Chưa cập nhật địa chỉ cơ sở' : (role == 'CREATOR' ? 'Thành Viên cộng đồng VN Share' : 'Thành viên cộng đồng VN Share')), 
                                 style: const TextStyle(color: Colors.black54, fontSize: 12, fontWeight: FontWeight.w600, height: 1.4),
                                 textAlign: TextAlign.center,
                                 maxLines: 2,
@@ -431,7 +437,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            _buildPremiumStat(profile['reputation_points']?.toString() ?? '98', 'ĐIỂM UY TÍN', primaryColor, icon: Icons.shield_rounded),
+                            _buildPremiumStat((int.tryParse(profile['reputation_points']?.toString() ?? '0') ?? 0) > 0 ? profile['reputation_points'].toString() : '100', 'ĐIỂM UY TÍN', primaryColor, icon: Icons.shield_rounded),
                             Container(width: 1, height: 40, color: const Color(0xFFF4F7F6)),
                             _buildPremiumStat('4.8', 'ĐÁNH GIÁ (★)', Colors.amber, icon: Icons.star_rounded),
                             Container(width: 1, height: 40, color: const Color(0xFFF4F7F6)),
@@ -454,288 +460,313 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               // 3. STICKY TABS
               SliverToBoxAdapter(
                 child: Container(
+                  width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(children: _getTabsForRole(role, primaryColor)),
+                    child: Container(
+                      constraints: BoxConstraints(minWidth: MediaQuery.of(context).size.width),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: _getTabsForRole(role, primaryColor),
+                      ),
+                    ),
                   ),
                 ),
               ),
 
               // 4. CONTENT AREA (SERVICES / VIDEOS)
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16).copyWith(bottom: 120),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    
-                    if (_activeTab == 'services')
-                      if (services.isEmpty)
-                        const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.spa_rounded, size: 56, color: Colors.black12), SizedBox(height: 16), Text('Đang cập nhật dịch vụ', style: TextStyle(color: Colors.black45, fontWeight: FontWeight.w800))])))
-                      else
-                        ...services.map((svc) {
-                          final bool hasVideo = svc['video_url'] != null && svc['video_url'].toString().trim().isNotEmpty;
-                          final bool hasImage = svc['image_url'] != null && svc['image_url'].toString().trim().isNotEmpty;
-
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 24),
-                            decoration: BoxDecoration(
-                              color: Colors.white, borderRadius: BorderRadius.circular(24),
-                              border: Border.all(color: const Color(0xFFE5E7EB), width: 0.5),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: Material(
-                                color: Colors.transparent,
-                                child: InkWell(
-                                  onTap: () {
-                                    AppToast.show(context: context, message: 'Tính năng xem chi tiết dịch vụ đang được cập nhật.', isSuccess: true);
-                                  },
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+              if (_activeTab == 'videos' || _activeTab == 'liked' || _activeTab == 'saved')
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16).copyWith(bottom: 120),
+                  sliver: videos.isEmpty
+                      ? const SliverToBoxAdapter(
+                          child: Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.video_library_rounded, size: 56, color: Colors.black12), SizedBox(height: 16), Text('Chưa có video chia sẻ', style: TextStyle(color: Colors.black45, fontWeight: FontWeight.w800))]))),
+                        )
+                      : SliverGrid(
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            childAspectRatio: 9 / 16,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                          ),
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final v = videos[index];
+                              return Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(20),
+                                  boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.5), blurRadius: 24, offset: const Offset(0, 8))],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Stack(
+                                    fit: StackFit.expand,
                                     children: [
-                                      AspectRatio(
-                                        aspectRatio: 16/9,
-                                        child: Stack(
-                                          fit: StackFit.expand,
-                                          children: [
-                                            if (hasVideo)
-                                              MiniVideoPlayer(videoUrl: svc['video_url'])
-                                            else if (hasImage)
-                                              GlobalCacheImage(imageUrl: svc['image_url'], fit: BoxFit.cover, memCacheWidth: 400, memCacheHeight: 300)
-                                            else
-                                              Container(color: const Color(0xFFF4F7F6), child: const Icon(Icons.image, color: Colors.black12, size: 40)),
-                                            
-                                            // Lớp phủ hiển thị Icon Play nếu là Video để tăng cường UX
-                                            if (hasVideo)
-                                              Positioned(
-                                                top: 12, right: 12,
-                                                child: Container(
-                                                  padding: const EdgeInsets.all(8),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.black.withOpacity(0.4), 
-                                                    shape: BoxShape.circle, 
-                                                    border: Border.all(color: Colors.white.withOpacity(0.2))
-                                                  ),
-                                                  child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
+                                      MiniVideoPlayer(videoUrl: v['video_url'] ?? ''),
+                                      Positioned(
+                                        top: 10, left: 10,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(0.85),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Container(
+                                                width: 6, height: 6,
+                                                decoration: const BoxDecoration(
+                                                  color: Color(0xFF48C9B0),
+                                                  shape: BoxShape.circle,
                                                 ),
                                               ),
-                                          ],
+                                              const SizedBox(width: 6),
+                                              const Text(
+                                                'Đã duyệt',
+                                                style: TextStyle(color: Color(0xFF1A3A35), fontSize: 10, fontWeight: FontWeight.bold),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
-                                      Padding(
-                                        padding: const EdgeInsets.all(20),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Expanded(
-                                                  child: Text(svc['service_name'] ?? '', style: const TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: -0.3, height: 1.2), maxLines: 2, overflow: TextOverflow.ellipsis),
-                                                ),
-                                                if (isPartner) const SizedBox(width: 8),
-                                                if (isPartner) const Icon(Icons.verified_rounded, color: Colors.blue, size: 18),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 6),
-                                            Text(svc['description'] ?? 'Dịch vụ chăm sóc cao cấp mang lại trải nghiệm thư giãn tuyệt đối.', style: const TextStyle(color: Color(0xFF64748B), fontSize: 12, height: 1.4), maxLines: 2, overflow: TextOverflow.ellipsis),
-                                            const SizedBox(height: 16),
-                                            Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              crossAxisAlignment: CrossAxisAlignment.end,
-                                              children: [
-                                                Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    const Text('GIÁ TRỌN GÓI', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
-                                                    const SizedBox(height: 2),
-                                                    Text(_formatCurrency(svc['price']), style: TextStyle(color: primaryColor, fontWeight: FontWeight.w900, fontSize: 18)),
-                                                  ],
-                                                ),
-                                                ElevatedButton.icon(
-                                                  style: ElevatedButton.styleFrom(
-                                                    backgroundColor: primaryColor, foregroundColor: Colors.white,
-                                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                                    elevation: 0
-                                                  ),
-                                                  onPressed: () {
-                                                    AuthGuard.run(context, action: () {
-                                                      final targetUserId = profile['id'] ?? '';
-                                                      final Map<String, dynamic> adaptedVideoContext = {
-                                                        'id': svc['id'] ?? svc['service_id'] ?? '',
-                                                        'price': svc['price'] ?? 0.0,
-                                                        'authorId': targetUserId,
-                                                        'title': svc['service_name'] ?? '',
-                                                        'service_name': svc['service_name'] ?? '',
-                                                        'image_url': svc['image_url'],
-                                                        'video_url': svc['video_url'],
-                                                      };
-                                                      showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => BookingBottomSheet(video: adaptedVideoContext));
-                                                    });
-                                                  },
-                                                  icon: const Icon(Icons.edit_calendar_rounded, size: 16),
-                                                  label: const Text('ĐẶT LỊCH', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.5)),
-                                                )
-                                              ]
-                                            )
-                                          ]
-                                        )
-                                      )
-                                    ]
+                                      Positioned(
+                                        bottom: 0, left: 0, right: 0,
+                                        child: Container(
+                                          padding: const EdgeInsets.fromLTRB(12, 32, 12, 12),
+                                          decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withOpacity(0.8), Colors.transparent])),
+                                          child: Text(v['title'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600, height: 1.3), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ),
-                            ),
-                          );
-                        })
-                        
-                    else if (_activeTab == 'vouchers')
-                      ...[
-                        ..._fetchedVouchers.map((v) {
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color(0xFFE5E7EB), width: 0.5),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 12,
-                                  height: 90,
-                                  decoration: BoxDecoration(
-                                    color: v['issuer_type'] == 'ADMIN' ? Colors.amber : primaryColor,
-                                    borderRadius: const BorderRadius.only(
-                                      topLeft: Radius.circular(20),
-                                      bottomLeft: Radius.circular(20),
-                                    ),
-                                  ),
+                              );
+                            },
+                            childCount: videos.length,
+                            addAutomaticKeepAlives: false, // 🚀 NGĂN CRASH: Giải phóng bộ nhớ Video Player khi cuộn khỏi màn hình
+                            addRepaintBoundaries: true,
+                          ),
+                        ),
+                )
+              else if (_activeTab == 'services')
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16).copyWith(bottom: 120),
+                  sliver: services.isEmpty
+                      ? const SliverToBoxAdapter(
+                          child: Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.spa_rounded, size: 56, color: Colors.black12), SizedBox(height: 16), Text('Đang cập nhật dịch vụ', style: TextStyle(color: Colors.black45, fontWeight: FontWeight.w800))]))),
+                        )
+                      : SliverGrid(
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3, // 🚀 CHIA LƯỚI 3 CỘT CHO TAB DỊCH VỤ
+                            childAspectRatio: 9 / 16,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                          ),
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final svc = services[index];
+                              final bool hasVideo = svc['video_url'] != null && svc['video_url'].toString().trim().isNotEmpty;
+                              final bool hasImage = svc['image_url'] != null && svc['image_url'].toString().trim().isNotEmpty;
+
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 4))],
                                 ),
-                                Expanded(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Flexible(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () {
+                                        AuthGuard.run(context, action: () {
+                                          final targetUserId = profile['id'] ?? '';
+                                          final Map<String, dynamic> adaptedVideoContext = {
+                                            'id': svc['id'] ?? svc['service_id'] ?? '',
+                                            'price': svc['price'] ?? 0.0,
+                                            'authorId': targetUserId,
+                                            'title': svc['service_name'] ?? '',
+                                            'service_name': svc['service_name'] ?? '',
+                                            'image_url': svc['image_url'],
+                                            'video_url': svc['video_url'],
+                                          };
+                                          showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => BookingBottomSheet(video: adaptedVideoContext));
+                                        });
+                                      },
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                          if (hasVideo)
+                                            MiniVideoPlayer(videoUrl: svc['video_url'])
+                                          else if (hasImage)
+                                            GlobalCacheImage(imageUrl: svc['image_url'], fit: BoxFit.cover, memCacheWidth: 300, memCacheHeight: 400)
+                                          else
+                                            Container(color: const Color(0xFFF4F7F6), child: const Icon(Icons.spa_rounded, color: Colors.black12, size: 30)),
+                                          
+                                          if (hasVideo)
+                                            Positioned(
+                                              top: 8, right: 8,
                                               child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                margin: const EdgeInsets.only(right: 8),
-                                                decoration: BoxDecoration(
-                                                  color: (v['issuer_type'] == 'ADMIN' ? Colors.amber : primaryColor).withOpacity(0.1),
-                                                  borderRadius: BorderRadius.circular(6),
-                                                ),
-                                                child: Text(
-                                                  v['issuer_type'] == 'ADMIN' ? 'TOÀN SÀN' : 'ĐỘC QUYỀN CƠ SỞ',
-                                                  style: TextStyle(
-                                                    color: v['issuer_type'] == 'ADMIN' ? Colors.amber[800] : primaryColor,
-                                                    fontSize: 9,
-                                                    fontWeight: FontWeight.w800,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
+                                                padding: const EdgeInsets.all(4),
+                                                decoration: BoxDecoration(color: Colors.black.withOpacity(0.4), shape: BoxShape.circle),
+                                                child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 12),
                                               ),
                                             ),
-                                            Text(
-                                              'HSD: ${v['valid_until']}',
-                                              style: const TextStyle(color: Colors.black45, fontSize: 10, fontWeight: FontWeight.w600),
-                                              maxLines: 1,
+                                          
+                                          Positioned(
+                                            bottom: 0, left: 0, right: 0,
+                                            child: Container(
+                                              padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
+                                              decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withOpacity(0.8), Colors.transparent])),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(svc['service_name'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700, height: 1.2), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                                  const SizedBox(height: 4),
+                                                  Text(_formatCurrency(svc['price']), style: TextStyle(color: primaryColor, fontWeight: FontWeight.w900, fontSize: 11)),
+                                                ],
+                                              ),
                                             ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          v['discount_type'] == 'PERCENTAGE'
-                                              ? 'Giảm ${v['discount_value']}%'
-                                              : 'Giảm ${_formatCurrency(v['discount_value'])}',
-                                          style: const TextStyle(color: Color(0xFF1E293B), fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.3),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          'Đơn tối thiểu: ${_formatCurrency(v['min_order_value'])}',
-                                          style: const TextStyle(color: Colors.black54, fontSize: 11, fontWeight: FontWeight.w500),
-                                        ),
-                                      ],
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 16),
-                                  child: ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: v['issuer_type'] == 'ADMIN' ? Colors.amber : primaryColor,
-                                      foregroundColor: Colors.white,
-                                      elevation: 0,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                    ),
-                                    onPressed: () {
-                                      AppToast.show(context: context, message: 'Lưu mã ưu đãi thành công!', isSuccess: true);
-                                    },
-                                    child: const Text('LƯU MÃ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.3)),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                        if (_fetchedVouchers.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 40),
-                            child: Center(
-                              child: Column(
-                                children: [
-                                  Icon(Icons.confirmation_num_rounded, size: 56, color: Colors.black12),
-                                  SizedBox(height: 16),
-                                  Text('Hiện chưa có mã ưu đãi nào', style: TextStyle(color: Colors.black45, fontWeight: FontWeight.w800)),
-                                ],
-                              ),
-                            ),
+                              );
+                            },
+                            childCount: services.length,
+                            addAutomaticKeepAlives: false, // 🚀 NGĂN CRASH DỊCH VỤ: Giải phóng bộ nhớ Video Player khi cuộn
+                            addRepaintBoundaries: true,
                           ),
-                      ]
-                        
-                    else if (_activeTab == 'videos' || _activeTab == 'liked' || _activeTab == 'saved')
-                      if (videos.isEmpty)
-                        const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.video_library_rounded, size: 56, color: Colors.black12), SizedBox(height: 16), Text('Chưa có video chia sẻ', style: TextStyle(color: Colors.black45, fontWeight: FontWeight.w800))])))
-                      else
-                        GridView.builder(
-                          shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 9/16, crossAxisSpacing: 16, mainAxisSpacing: 16),
-                          itemCount: videos.length,
-                          itemBuilder: (context, index) {
-                            final v = videos[index];
-                            return ClipRRect(
-                              borderRadius: BorderRadius.circular(28),
-                              child: Stack(
-                                fit: StackFit.expand,
+                        ),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16).copyWith(bottom: 120),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      
+                      if (_activeTab == 'vouchers')
+                        ...[
+                          ..._fetchedVouchers.map((v) {
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: const Color(0xFFE5E7EB), width: 0.5),
+                              ),
+                              child: Row(
                                 children: [
-                                  MiniVideoPlayer(videoUrl: v['video_url']),
-                                  Positioned(
-                                    bottom: 0, left: 0, right: 0, 
-                                    child: Container(
-                                      padding: const EdgeInsets.all(14).copyWith(top: 32), 
-                                      decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withOpacity(0.9), Colors.transparent], stops: const [0.0, 1.0])), 
-                                      child: Text(v['title'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold, height: 1.3), maxLines: 2)
-                                    )
+                                  Container(
+                                    width: 12,
+                                    height: 90,
+                                    decoration: BoxDecoration(
+                                      color: v['issuer_type'] == 'ADMIN' ? Colors.amber : primaryColor,
+                                      borderRadius: const BorderRadius.only(
+                                        topLeft: Radius.circular(20),
+                                        bottomLeft: Radius.circular(20),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Flexible(
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  margin: const EdgeInsets.only(right: 8),
+                                                  decoration: BoxDecoration(
+                                                    color: (v['issuer_type'] == 'ADMIN' ? Colors.amber : primaryColor).withOpacity(0.1),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: Text(
+                                                    v['issuer_type'] == 'ADMIN' ? 'TOÀN SÀN' : 'ĐỘC QUYỀN CƠ SỞ',
+                                                    style: TextStyle(
+                                                      color: v['issuer_type'] == 'ADMIN' ? Colors.amber[800] : primaryColor,
+                                                      fontSize: 9,
+                                                      fontWeight: FontWeight.w800,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ),
+                                              Text(
+                                                'HSD: ${v['valid_until']}',
+                                                style: const TextStyle(color: Colors.black45, fontSize: 10, fontWeight: FontWeight.w600),
+                                                maxLines: 1,
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            v['discount_type'] == 'PERCENTAGE'
+                                                ? 'Giảm ${v['discount_value']}%'
+                                                : 'Giảm ${_formatCurrency(v['discount_value'])}',
+                                            style: const TextStyle(color: Color(0xFF1E293B), fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.3),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Đơn tối thiểu: ${_formatCurrency(v['min_order_value'])}',
+                                            style: const TextStyle(color: Colors.black54, fontSize: 11, fontWeight: FontWeight.w500),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 16),
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: v['issuer_type'] == 'ADMIN' ? Colors.amber : primaryColor,
+                                        foregroundColor: Colors.white,
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                      ),
+                                      onPressed: () {
+                                        AppToast.show(context: context, message: 'Lưu mã ưu đãi thành công!', isSuccess: true);
+                                      },
+                                      child: const Text('LƯU MÃ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.3)),
+                                    ),
                                   ),
                                 ],
                               ),
                             );
-                          },
-                        )
-                    else 
-                       const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.more_horiz_rounded, size: 56, color: Colors.black12), SizedBox(height: 16), Text('Tính năng đang phát triển', style: TextStyle(color: Colors.black45, fontWeight: FontWeight.w800))])) )
-                  ]),
-                ),
-              )
+                          }).toList(),
+                          if (_fetchedVouchers.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 40),
+                              child: Center(
+                                child: Column(
+                                  children: [
+                                    Icon(Icons.confirmation_num_rounded, size: 56, color: Colors.black12),
+                                    SizedBox(height: 16),
+                                    Text('Hiện chưa có mã ưu đãi nào', style: TextStyle(color: Colors.black45, fontWeight: FontWeight.w800)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ]
+                      else 
+                         const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Column(children: [Icon(Icons.more_horiz_rounded, size: 56, color: Colors.black12), SizedBox(height: 16), Text('Tính năng đang phát triển', style: TextStyle(color: Colors.black45, fontWeight: FontWeight.w800))])) )
+                    ]),
+                  ),
+                )
             ],
           ),
 
@@ -751,25 +782,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     decoration: BoxDecoration(color: Colors.white.withOpacity(0.85), border: Border(top: BorderSide(color: Colors.black.withOpacity(0.05)))),
                     child: Row(
                       children: [
-                        // Nút Chat / Tư vấn nhanh (Partner AI Chat)
-                        InkWell(
-                          onTap: () {
-                            AuthGuard.run(context, action: () {
-                              final partnerId = profile['id'];
-                              final partnerName = profile['full_name'];
-                              if (partnerId != null) {
-                                context.push('/partner-ai-chat/$partnerId', extra: partnerName);
-                              }
-                            });
-                          },
-                          child: Container(
-                            width: 56, height: 56,
-                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),
-                            child: const Icon(Icons.smart_toy_rounded, color: Color(0xFF1E293B), size: 24),
-                          )
-                        ),
-                        const SizedBox(width: 12),
-                        // Nút Action Chính
+                        // Nút Action Chính (Đặt Lịch Ngay)
                         Expanded(
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
@@ -778,10 +791,46 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                               padding: const EdgeInsets.symmetric(vertical: 18),
                               elevation: 0
                             ),
-                            onPressed: () => AppToast.show(context: context, message: 'Vui lòng cuộn lên và chọn một dịch vụ cụ thể để đặt lịch!', isSuccess: true),
-                            child: const Text('XEM TẤT CẢ DỊCH VỤ', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)),
+                            onPressed: () {
+                              AuthGuard.run(context, action: () {
+                                // Nếu không chọn dịch vụ cụ thể, thiết lập payload tối giản cho cơ sở
+                                final targetUserId = profile['id'] ?? '';
+                                final Map<String, dynamic> defaultBookingContext = {
+                                  'id': targetUserId, // Dùng ID cơ sở làm ID mặc định
+                                  'price': 0.0,
+                                  'authorId': targetUserId,
+                                  'title': 'Khám / Tư vấn tại Cơ sở',
+                                  'service_name': 'Khám / Tư vấn tại Cơ sở',
+                                  'image_url': profile['avatar_url'],
+                                };
+                                showModalBottomSheet(
+                                  context: context, 
+                                  isScrollControlled: true, 
+                                  backgroundColor: Colors.transparent, 
+                                  builder: (context) => BookingBottomSheet(video: defaultBookingContext)
+                                );
+                              });
+                            },
+                            child: const Text('ĐẶT LỊCH NGAY', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)),
                           )
-                        )
+                        ),
+                        const SizedBox(width: 16),
+                        // Nút nổi tư vấn loang sóng nước sinh động (Partner AI Ripple Chat)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4, left: 4),
+                          child: PartnerRippleAiButton(
+                            buttonColor: primaryColor,
+                            onTap: () {
+                              AuthGuard.run(context, action: () {
+                                final partnerId = profile['id'];
+                                final partnerName = profile['full_name'];
+                                if (partnerId != null) {
+                                  context.push('/partner-ai-chat/$partnerId', extra: partnerName);
+                                }
+                              });
+                            },
+                          ),
+                        ),
                       ]
                     )
                   )
@@ -863,7 +912,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     } else if (role == 'CREATOR') {
       tabs = [
         _buildTabBtn('VIDEO', Icons.video_library_rounded, 'videos', primaryColor),
-        _buildTabBtn('CỘNG ĐỒNG', Icons.forum_rounded, 'community', primaryColor),
       ];
     } else if (role == 'PARTNER' || role == 'PARTNER_ADMIN') {
       tabs = [
@@ -876,12 +924,98 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     } else {
       tabs = [
         _buildTabBtn('VIDEO', Icons.video_library_rounded, 'videos', primaryColor),
-        _buildTabBtn('CỘNG ĐỒNG', Icons.forum_rounded, 'community', primaryColor),
-        _buildTabBtn('ĐÃ THÍCH', Icons.favorite_rounded, 'liked', primaryColor),
       ];
     }
     
     // Tự động chèn khoảng cách 24px giữa các Tab để vuốt mượt mà
     return tabs.expand((widget) => [widget, const SizedBox(width: 24)]).toList()..removeLast();
   }
+}
+
+// 🌊 WIDGET HIỆU ỨNG LOANG SÓNG NƯỚC (WATER RIPPLE ANIMATION FAB)
+class PartnerRippleAiButton extends StatefulWidget {
+  final VoidCallback onTap;
+  final Color buttonColor;
+  
+  const PartnerRippleAiButton({
+    super.key,
+    required this.onTap,
+    required this.buttonColor,
+  });
+
+  @override
+  State<PartnerRippleAiButton> createState() => _PartnerRippleAiButtonState();
+}
+
+class _PartnerRippleAiButtonState extends State<PartnerRippleAiButton> with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2000),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: CustomPaint(
+        painter: _RipplePainter(_animationController, widget.buttonColor),
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: widget.buttonColor,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: widget.buttonColor.withOpacity(0.3),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              )
+            ],
+          ),
+          child: const Icon(Icons.support_agent_rounded, color: Colors.white, size: 26),
+        ),
+      ),
+    );
+  }
+}
+
+class _RipplePainter extends CustomPainter {
+  final Animation<double> animation;
+  final Color rippleColor;
+
+  _RipplePainter(this.animation, this.rippleColor) : super(repaint: animation);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Offset center = Offset(size.width / 2, size.height / 2);
+    final double radius = size.width / 2;
+
+    for (int i = 3; i >= 1; i--) {
+      final double progress = (animation.value + (i / 3)) % 1.0;
+      final double currentRadius = radius + (progress * radius * 0.6);
+      final double opacity = (1.0 - progress) * 0.35;
+
+      final Paint paint = Paint()
+        ..color = rippleColor.withOpacity(opacity)
+        ..style = PaintingStyle.fill;
+
+      canvas.drawCircle(center, currentRadius, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
