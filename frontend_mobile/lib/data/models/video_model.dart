@@ -11,6 +11,12 @@ class VideoModel {
   bool isLiked;
   bool isSaved;
   final Map<String, dynamic> author;
+  final String? partnerId;
+  final String? serviceId;
+  final String? voucherCode;
+  final String? feedType;
+  final double? affiliateRate;
+  final String? partnerUsername; // 🚀 Bổ sung biến hứng Username của đối tác liên kết
 
   VideoModel({
     required this.id,
@@ -25,6 +31,12 @@ class VideoModel {
     required this.isLiked,
     required this.isSaved,
     required this.author,
+    this.partnerId,
+    this.serviceId,
+    this.voucherCode,
+    this.feedType,
+    this.affiliateRate,
+    this.partnerUsername,
   });
 
   // Giải pháp 1: Getter trích xuất nhãn phân loại động từ dữ liệu thực tế (title) để tránh hardcode trên UI
@@ -47,7 +59,14 @@ class VideoModel {
       commentsCount: json['comments_count'] ?? 0,
       isLiked: json['is_liked'] ?? false,
       isSaved: json['is_saved'] ?? false,
-      author: json['author'] ?? {},
+      author: json['author'] is Map<String, dynamic> ? json['author'] : {},
+      partnerId: json['partner_id'],
+      serviceId: json['service_id'],
+      voucherCode: json['voucher_code'],
+      feedType: json['feed_type'],
+      affiliateRate: json['affiliate_rate'] != null ? (json['affiliate_rate'] as num).toDouble() : null,
+      // 🚀 Giải nén an toàn object linked_partner do Backend trả về
+      partnerUsername: json['linked_partner'] != null ? json['linked_partner']['username'] : null,
     );
   }
 }

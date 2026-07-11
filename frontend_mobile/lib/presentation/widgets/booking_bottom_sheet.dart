@@ -33,9 +33,46 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
 
-  // Xử lý linh hoạt: Tự động tương thích cả dạng Object Model và Map truyền từ Profile sang
-  double get _basePrice => (widget.video is Map ? widget.video['price'] : widget.video.price).toDouble();
-  String get _partnerId => (widget.video is Map ? widget.video['authorId'] : widget.video.authorId).toString();
+  // 🚀 LUỒNG 2: TRÍCH XUẤT GIÁ THƯƠNG MẠI GỐC & FALLBACK AN TOÀN
+  double get _basePrice {
+    // 1. Ưu tiên lấy giá cấu hình riêng trên chính video nội dung
+    double videoPrice = (widget.video is Map) 
+        ? (widget.video['price']?.toDouble() ?? 0.0) 
+        : (widget.video.price?.toDouble() ?? 0.0);
+        
+    if (videoPrice > 0.0) return videoPrice;
+
+    // 2. Luồng Fallback: Nếu giá video trống hoặc bằng 0, quét thông tin dịch vụ nhúng kèm để lấy giá gốc làm gốc
+    if (widget.video is Map && widget.video['service'] is Map) {
+      return (widget.video['service']['price'] ?? 0.0).toDouble();
+    } else if (widget.video is! Map) {
+      // Nếu video là Object Model, cấu trúc dữ liệu đã được map sắn qua tầng repository/model
+      try {
+        if (widget.video.price <= 0.0 && _videoServiceId != null) {
+          // Fallback an toàn bảo vệ hệ thống không bị giá trị 0đ sai lệch
+          return videoPrice;
+        }
+      } catch (_) {}
+    }
+    return videoPrice;
+  }
+
+  String get _videoAuthorId => (widget.video is Map) ? (widget.video['author_id'] ?? '') : widget.video.authorId;
+  String get _videoId => (widget.video is Map) ? (widget.video['id'] ?? '') : widget.video.id;
+  String? get _videoPartnerId => (widget.video is Map) ? widget.video['partner_id'] : widget.video.partnerId;
+  String? get _videoServiceId => (widget.video is Map) ? widget.video['service_id'] : widget.video.serviceId;
+  String? get _videoAuthorUsername => (widget.video is Map) 
+      ? (widget.video['author'] is Map ? widget.video['author']['username'] : null) 
+      : (widget.video.author is Map ? widget.video.author['username'] : null);
+  String? get _videoVoucherCode => (widget.video is Map) ? widget.video['voucher_code'] : widget.video.voucherCode;
+  
+  // 🚀 ĐỊNH TUYẾN LỊCH HẸN KÉP (ASYMMETRIC ROUTING)
+  String get _partnerId {
+    if (_videoPartnerId != null && _videoPartnerId!.isNotEmpty) {
+      return _videoPartnerId!;
+    }
+    return _videoAuthorId;
+  }
   
   double get _finalPrice {
     double total = _basePrice - _discountAmount;
@@ -45,7 +82,77 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   @override
   void initState() {
     super.initState();
-    _fetchUserVoucherWallet(); 
+    _preloadUserData(); // Kích hoạt luồng Auto-fill thông tin khách hàng
+    _processAutoVoucherAndFetchWallet(); 
+  }
+
+  // 🚀 AUTO-FILL LUỒNG 4: Trích xuất danh tính ngầm định (Silent Extraction)
+  Future<void> _preloadUserData() async {
+    try {
+      // 1. Gọi API chính xác dựa trên Source of Truth (Backend FastAPI)
+      final res = await ApiClient.instance.get('/user/profile');
+      final dynamic userData = res.data;
+
+      if (userData != null) {
+        // 2. Bóc tách lớp vỏ 'data' -> 'profile' theo đúng Schema của Backend
+        Map<String, dynamic> data = {};
+        if (userData is Map && userData.containsKey('data') && userData['data'] is Map && userData['data'].containsKey('profile')) {
+          data = userData['data']['profile'];
+        }
+
+        if (mounted && data.isNotEmpty) {
+          // 3. Quét thông minh (Dynamic Extraction) biến JSON định dạng Tên
+          final name = data['full_name'] ?? data['fullName'] ?? data['name'] ?? '';
+          if (name.toString().trim().isNotEmpty && _nameCtrl.text.isEmpty) {
+            _nameCtrl.text = name.toString().trim();
+          }
+
+          // 4. Quét thông minh (Dynamic Extraction) biến JSON định dạng Số điện thoại
+          final phone = data['phone'] ?? data['phone_number'] ?? data['phoneNumber'] ?? '';
+          if (phone.toString().trim().isNotEmpty && _phoneCtrl.text.isEmpty) {
+            _phoneCtrl.text = phone.toString().trim();
+          }
+        }
+      }
+    } catch (_) {
+      // 5. Fail-safe: Im lặng bỏ qua, để trống form cho khách tự nhập nếu lỗi mạng
+    }
+  }
+
+  // 🚀 LUỒNG 3: AUTO-CLAIM NGẦM & SELF-HEALING VOUCHER FLOW
+  Future<void> _processAutoVoucherAndFetchWallet() async {
+    final String? linkedVoucher = _videoVoucherCode;
+    
+    // Bước 3.1: Auto-Claim ngầm (Silent Try-Catch)
+    if (linkedVoucher != null && linkedVoucher.isNotEmpty) {
+      try {
+        await ApiClient.instance.post('/vouchers/$linkedVoucher/claim');
+      } catch (_) {
+        // Im lặng bỏ qua lỗi nếu mã đã tồn tại trong ví
+      }
+    }
+
+    // Luôn tải lại ví voucher mới nhất để đồng bộ Data
+    await _fetchUserVoucherWallet();
+
+    // Bước 3.2 & 3.3: Tự động áp dụng & Bắn Toast thông báo UX
+    if (linkedVoucher != null && linkedVoucher.isNotEmpty && mounted) {
+      try {
+        // Tìm đúng voucher vừa claim trong ví để lấy thông số (Giá trị giảm, loại giảm)
+        final targetVoucher = _myVouchers.firstWhere(
+          (v) => (v['code'] ?? '') == linkedVoucher,
+          orElse: () => null,
+        );
+        
+        if (targetVoucher != null) {
+          final double minOrder = (targetVoucher['min_order_value'] ?? 0).toDouble();
+          // Bảo vệ Logic kinh doanh: Chỉ tự động áp dụng nếu đạt giá trị đơn tối thiểu
+          if (_basePrice >= minOrder) {
+            _applyVoucherLocal(targetVoucher, isAutoInjection: true);
+          }
+        }
+      } catch (_) {}
+    }
   }
 
   @override
@@ -138,7 +245,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   }
 
   // 🚀 ĐÃ DỨT ĐIỂM 404: Tự động tính toán trực tiếp bằng Frontend giống hệt Web (Zero-latency)
-  void _applyVoucherLocal(Map<String, dynamic> voucher) {
+  void _applyVoucherLocal(Map<String, dynamic> voucher, {bool isAutoInjection = false}) {
     final String code = voucher['code'] ?? '';
     final String title = voucher['title'] ?? 'Ưu đãi';
     final String type = voucher['discount_type'] ?? 'FIXED';
@@ -157,6 +264,12 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
     if (calculatedDiscount > _basePrice) calculatedDiscount = _basePrice;
 
+    // 🚀 BƯỚC 3.2: Cập nhật UI & Đảm bảo thành tiền tối thiểu 10.000đ
+    double expectedFinalPrice = _basePrice - calculatedDiscount;
+    if (expectedFinalPrice < 10000 && _basePrice >= 10000) {
+      calculatedDiscount = _basePrice - 10000;
+    }
+
     setState(() {
       _appliedVoucherCode = code;
       _appliedVoucherTitle = title; 
@@ -164,9 +277,18 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
       _isVoucherSuccess = true;
     });
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Áp dụng mã ưu đãi thành công!'), backgroundColor: Color(0xFF80BF84))
-    );
+    // 🚀 BƯỚC 3.3: THÔNG BÁO UX BỌC THÉP
+    if (isAutoInjection) {
+      AppToast.show(
+        context: context, 
+        message: 'Bạn đã nhận được 1 voucher ưu đãi và được tự động áp dụng trực tiếp cho dịch vụ này!', 
+        isSuccess: true
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Áp dụng mã ưu đãi thành công!'), backgroundColor: Color(0xFF80BF84))
+      );
+    }
   }
 
   // LUỒNG GỬI ĐƠN ĐẶT LỊCH CHÍNH THỨC
@@ -203,15 +325,22 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         }
       }
 
+      // --- LUỒNG ĐỊNH TUYẾN LỊCH HẸN KÉP (ASYMMETRIC ROUTING LOGIC) ---
+      String? finalAffiliateCode = code.isNotEmpty ? code : null;
+      if (_videoPartnerId != null && _videoPartnerId!.isNotEmpty && finalAffiliateCode == null) {
+        finalAffiliateCode = _videoAuthorUsername ?? _videoAuthorId;
+      }
+
       final payload = {
         'partner_id': _partnerId,
-        'video_id': (widget.video is Map ? widget.video['id'] : widget.video.id).toString(),
+        'service_id': _videoServiceId,
+        'video_id': _videoId,
         'customer_name': _nameCtrl.text.trim(),
         'customer_phone': _phoneCtrl.text.trim(),
         'note': _noteCtrl.text.trim(),
         'total_amount': _basePrice.toInt(), // Đã đồng bộ: Gửi giá gốc nguyên bản để Backend tự xử lý logic Voucher
         'voucher_code': _appliedVoucherCode,
-        'affiliate_code': code.isNotEmpty ? code : null,
+        'affiliate_code': finalAffiliateCode,
       };
       
       await ApiClient.instance.post('/appointments/request', data: payload);
