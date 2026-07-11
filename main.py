@@ -1327,7 +1327,7 @@ def ai_support_chat(payload: schemas.AISupportChatRequest, current_user = Depend
         # 5. Truyền sang LLM 70B của Groq
         chat_completion = groq_client.chat.completions.create(
             messages=messages, 
-            model="llama-3.3-70b-specdec", # Ép cứng cấu hình gọi thẳng não 70B
+            model="llama-3.3-70b-versatile", # Ép cứng cấu hình gọi thẳng não 70B
             temperature=0.3, # Giảm sáng tạo để thông tin y khoa chính xác
             max_tokens=1024
         )

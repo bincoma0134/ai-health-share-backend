@@ -751,13 +751,21 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     decoration: BoxDecoration(color: Colors.white.withOpacity(0.85), border: Border(top: BorderSide(color: Colors.black.withOpacity(0.05)))),
                     child: Row(
                       children: [
-                        // Nút Chat / Tư vấn nhanh
+                        // Nút Chat / Tư vấn nhanh (Partner AI Chat)
                         InkWell(
-                          onTap: () => AppToast.show(context: context, message: 'Tính năng Chat với Đối tác đang được phát triển.', isSuccess: true),
+                          onTap: () {
+                            AuthGuard.run(context, action: () {
+                              final partnerId = profile['id'];
+                              final partnerName = profile['full_name'];
+                              if (partnerId != null) {
+                                context.push('/partner-ai-chat/$partnerId', extra: partnerName);
+                              }
+                            });
+                          },
                           child: Container(
                             width: 56, height: 56,
                             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE5E7EB))),
-                            child: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF1E293B), size: 24),
+                            child: const Icon(Icons.smart_toy_rounded, color: Color(0xFF1E293B), size: 24),
                           )
                         ),
                         const SizedBox(width: 12),
