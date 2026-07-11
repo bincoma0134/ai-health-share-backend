@@ -124,6 +124,13 @@ class CreatorUpgradeActionRequest(BaseModel):
  
 
 # --- 9. CẤU TRÚC AI ASSISTANT ---
+class PartnerAIContextUpdate(BaseModel):
+    partner_ai_context: str
+
+class AISupportChatRequest(BaseModel):
+    partner_id: str
+    message: str
+
 class ChatMessage(BaseModel):
     role: str
     content: str

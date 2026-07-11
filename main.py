@@ -1229,6 +1229,153 @@ def create_tiktok_feed(payload: schemas.TikTokFeedCreate, current_user = Depends
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
+@app.put("/partner/ai-context", tags=["AI Support Chatbot"])
+def update_partner_ai_context(payload: schemas.PartnerAIContextUpdate, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Lưu trữ Custom Context của đối tác vào database (Profile)"""
+    if current_user.role not in ["PARTNER", "PARTNER_ADMIN"]:
+        raise HTTPException(status_code=403, detail="Chỉ Đối tác mới được quyền cài đặt ngữ cảnh AI!")
+        
+    cur = conn.cursor()
+    try:
+        # Tự động Migration nếu bảng users chưa có cột này
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS partner_ai_context TEXT")
+        
+        # Cắt chuỗi tối đa 2000 ký tự để bảo vệ Token Limit của hệ thống
+        context_text = payload.partner_ai_context[:2000] if payload.partner_ai_context else ""
+        
+        cur.execute("UPDATE users SET partner_ai_context = %s WHERE id = %s", (context_text, current_user.id))
+        conn.commit()
+        return {"status": "success", "message": "Đã cập nhật hệ thống định hướng AI thành công!"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+
+@app.post("/ai_support/chat", tags=["AI Support Chatbot"])
+def ai_support_chat(payload: schemas.AISupportChatRequest, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Trộn Context + Sliding Window + LLM 70B phục vụ khách hàng"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # 1. Khởi tạo hoặc Lấy Conversation ID (Phòng chat 1-1 giữa User và Partner)
+        cur.execute("SELECT id FROM ai_support_conversation WHERE user_id = %s AND partner_id = %s", (current_user.id, payload.partner_id))
+        conv = cur.fetchone()
+        if not conv:
+            cur.execute(
+                "INSERT INTO ai_support_conversation (user_id, partner_id) VALUES (%s, %s) RETURNING id",
+                (current_user.id, payload.partner_id)
+            )
+            conv_id = str(cur.fetchone()['id'])
+        else:
+            conv_id = str(conv['id'])
+            cur.execute("UPDATE ai_support_conversation SET updated_at = NOW() WHERE id = %s", (conv_id,))
+
+        # 2. Rút trích AI Context (DB Hydration theo Data Mapping đã chốt)
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS partner_ai_context TEXT")
+        cur.execute("SELECT full_name, physical_address, phone, partner_ai_context FROM users WHERE id = %s", (payload.partner_id,))
+        partner = cur.fetchone()
+        if not partner: raise HTTPException(status_code=404, detail="Không tìm thấy thông tin cơ sở!")
+
+        cur.execute("SELECT service_name, price, description FROM services WHERE partner_id = %s AND status = 'APPROVED' AND is_deleted = false", (payload.partner_id,))
+        services = cur.fetchall()
+
+        cur.execute("SELECT code, discount_type, discount_value, min_order_value FROM vouchers WHERE issuer_id = %s AND issuer_type = 'PARTNER' AND status = 'APPROVED' AND valid_until > NOW()", (payload.partner_id,))
+        vouchers = cur.fetchall()
+
+        # 3. Trộn System Prompt
+        sys_prompt = f"Bạn là Trợ lý AI đại diện tư vấn 24/7 cho cơ sở y khoa/chăm sóc sức khỏe: {partner['full_name']}.\n"
+        sys_prompt += f"Địa chỉ: {partner.get('physical_address', 'Đang cập nhật')} | Hotline: {partner.get('phone', 'Đang cập nhật')}.\n\n"
+        
+        if partner.get("partner_ai_context"):
+            sys_prompt += f"ĐỊNH HƯỚNG TƯ VẤN CỐT LÕI TỪ CHỦ CƠ SỞ:\n{partner['partner_ai_context']}\n\n"
+            
+        sys_prompt += "CÁC GÓI DỊCH VỤ HIỆN CÓ CỦA CƠ SỞ:\n"
+        if services:
+            for s in services[:10]: # Tối đa 10 dịch vụ để tránh tràn token nếu cở sở có quá nhiều
+                sys_prompt += f"- {s['service_name']} (Giá: {s['price']:,.0f}đ): {s.get('description', '')}\n"
+        else:
+            sys_prompt += "- Hiện chưa cập nhật danh sách dịch vụ công khai.\n"
+
+        sys_prompt += "\nCÁC MÃ ƯU ĐÃI (VOUCHER) ĐANG KÍCH HOẠT:\n"
+        if vouchers:
+            for v in vouchers[:5]:
+                d_val = f"{v['discount_value']:,.0f}đ" if v['discount_type'] == 'FIXED_AMOUNT' else f"{v['discount_value']}%"
+                sys_prompt += f"- Mã [{v['code']}]: Giảm {d_val} cho đơn từ {v['min_order_value']:,.0f}đ.\n"
+        else:
+            sys_prompt += "- Hiện không có mã ưu đãi nào.\n"
+
+        sys_prompt += "\nQUY TẮC PHẢN HỒI:\n1. Trả lời ngắn gọn, thân thiện, xưng hô phù hợp với khách hàng.\n2. Dùng Markdown. KHÔNG bịa đặt giá hoặc dịch vụ ngoài danh sách.\n3. Luôn khéo léo gợi ý khách hàng thực hiện Đặt lịch hẹn qua ứng dụng dựa trên nhu cầu của họ."
+
+        # 4. Sliding Window (Giới hạn bộ nhớ 5 lượt hội thoại = 10 records)
+        cur.execute("""
+            SELECT sender_role, message_content 
+            FROM ai_support_chat_history 
+            WHERE conversation_id = %s 
+            ORDER BY created_at DESC 
+            LIMIT 10
+        """, (conv_id,))
+        recent_history = cur.fetchall()
+        recent_history.reverse() # Đảo ngược để đưa về trục thời gian tuyến tính
+
+        messages = [{"role": "system", "content": sys_prompt}]
+        for msg in recent_history:
+            r = "assistant" if msg['sender_role'] == "AI" else "user"
+            messages.append({"role": r, "content": msg['message_content']})
+        
+        messages.append({"role": "user", "content": payload.message})
+
+        # 5. Truyền sang LLM 70B của Groq
+        chat_completion = groq_client.chat.completions.create(
+            messages=messages, 
+            model="llama-3.3-70b-specdec", # Ép cứng cấu hình gọi thẳng não 70B
+            temperature=0.3, # Giảm sáng tạo để thông tin y khoa chính xác
+            max_tokens=1024
+        )
+        bot_reply = chat_completion.choices[0].message.content
+
+        # 6. Lưu vết vào DB (Cả User và AI)
+        cur.execute(
+            "INSERT INTO ai_support_chat_history (conversation_id, sender_role, message_content) VALUES (%s, 'USER', %s)",
+            (conv_id, payload.message)
+        )
+        cur.execute(
+            "INSERT INTO ai_support_chat_history (conversation_id, sender_role, message_content) VALUES (%s, 'AI', %s)",
+            (conv_id, bot_reply)
+        )
+        conn.commit()
+
+        return {
+            "status": "success", 
+            "data": {
+                "conversation_id": conv_id,
+                "reply": bot_reply
+            }
+        }
+    except Exception as e: 
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally: 
+        cur.close()
+
+@app.get("/ai_support/conversations/{partner_id}/history", tags=["AI Support Chatbot"])
+def get_ai_support_history(partner_id: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Load toàn bộ lịch sử hiển thị lên màn hình người dùng (Full History - Không cắt)"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT id FROM ai_support_conversation WHERE user_id = %s AND partner_id = %s", (current_user.id, partner_id))
+        conv = cur.fetchone()
+        if not conv:
+            return {"status": "success", "data": []} # Chưa chat bao giờ
+            
+        cur.execute("""
+            SELECT sender_role, message_content, created_at 
+            FROM ai_support_chat_history 
+            WHERE conversation_id = %s 
+            ORDER BY created_at ASC
+        """, (conv['id'],))
+        return {"status": "success", "data": cur.fetchall()}
+    finally: cur.close()
+
 @app.get("/ai/conversations", tags=["AI Assistant"])
 def get_conversations(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     """Lấy danh sách các cuộc trò chuyện của User, sắp xếp mới nhất lên đầu"""

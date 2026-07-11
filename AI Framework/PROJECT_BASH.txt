@@ -52,7 +52,7 @@ git status
 
 git add .
 
-git commit -m "build(architecture): rollback duplicate handling codes in main.py to achieve absolute overlay isolation layer"
+git commit -m "nâng cấp backend cho Partner AI"
 
 git push origin main
 

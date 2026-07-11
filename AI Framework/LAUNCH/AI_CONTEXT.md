@@ -50,6 +50,8 @@ Mọi TASK bắt buộc phải thực thi tuần tự theo quy trình 5 giai đo
 * affiliate_partnerships
 * ai_chat_history
 * ai_conversations
+* ai_support_conversation
+* ai_support_chat_history
 * appointments
 * bookings_transactions
 * community_post_comments
@@ -73,3 +75,4 @@ Mọi TASK bắt buộc phải thực thi tuần tự theo quy trình 5 giai đo
 * vouchers
 * wallets
 * withdrawal_requests
+*
