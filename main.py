@@ -1136,17 +1136,24 @@ def get_tiktok_feeds(user_id: str = None, filter: str = None, limit: int = 50, c
         # Hỗ trợ bộ lọc 'liked' để lấy đúng danh sách video người dùng đã thả tim
         if filter == "liked" and user_id:
             cur.execute("""
-                SELECT v.*, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url, 'username', u.username, 'role', u.role) as author
+                SELECT v.*, 
+                       json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url, 'username', u.username, 'role', u.role) as author,
+                       CASE WHEN pu.id IS NOT NULL THEN json_build_object('id', pu.id, 'username', pu.username, 'full_name', pu.full_name) ELSE NULL END as linked_partner
                 FROM tiktok_feed_likes l
                 JOIN tiktok_feeds v ON l.video_id = v.id
                 JOIN users u ON v.author_id = u.id
+                LEFT JOIN users pu ON v.partner_id = pu.id
                 WHERE l.user_id = %s AND v.status = 'APPROVED' 
                 ORDER BY l.created_at DESC LIMIT %s
             """, (user_id, limit))
         else:
             cur.execute("""
-                SELECT v.*, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url, 'username', u.username, 'role', u.role) as author
-                FROM tiktok_feeds v JOIN users u ON v.author_id = u.id
+                SELECT v.*, 
+                       json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url, 'username', u.username, 'role', u.role) as author,
+                       CASE WHEN pu.id IS NOT NULL THEN json_build_object('id', pu.id, 'username', pu.username, 'full_name', pu.full_name) ELSE NULL END as linked_partner
+                FROM tiktok_feeds v 
+                JOIN users u ON v.author_id = u.id
+                LEFT JOIN users pu ON v.partner_id = pu.id
                 WHERE v.status = 'APPROVED' ORDER BY v.created_at DESC LIMIT %s
             """, (limit,))
         videos = cur.fetchall()
