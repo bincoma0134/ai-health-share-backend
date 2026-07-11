@@ -443,84 +443,80 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    // THẺ ĐẶT LỊCH & NÚT INFO CƠ SỞ: Gộp chung vào một dải Row gọn gàng
+                    // 🚀 THẺ ĐẶT LỊCH & NÚT INFO CƠ SỞ: Dùng Wrap để chống tràn màn hình (Overflow) và tối ưu không gian hiển thị
                     if (video.price > 0 || (video.partnerId != null && video.partnerId!.isNotEmpty)) ...[
                       const SizedBox(height: 8),
-                      SingleChildScrollView( // Dùng SingleChildScrollView dọc theo trục ngang để chống tràn màn hình trên máy nhỏ
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            // Nút 1: ĐẶT LỊCH (Chỉ hiện khi có giá/dịch vụ)
-                            if (video.price > 0)
-                              GestureDetector(
-                                onTap: () => _handleAuthGuard(() => _showBookingBottomSheet(video)),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF80BF84).withOpacity(0.15),
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.4), width: 1),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 14),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            '${NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(video.price)} • ĐẶT LỊCH NGAY',
-                                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.3),
-                                          ),
-                                        ],
-                                      ),
+                      Wrap(
+                        spacing: 8, // Khoảng cách ngang giữa 2 nút
+                        runSpacing: 8, // Khoảng cách dọc nếu rớt dòng (bảo vệ màn hình kích thước hẹp)
+                        children: [
+                          // Nút 1: ĐẶT LỊCH (Màu xanh CTA chủ đạo)
+                          if (video.price > 0)
+                            GestureDetector(
+                              onTap: () => _handleAuthGuard(() => _showBookingBottomSheet(video)),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF80BF84).withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.4), width: 1),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 14),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '${NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(video.price)} • ĐẶT LỊCH',
+                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.3),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
                               ),
-                            
-                            if (video.price > 0 && video.partnerId != null && video.partnerId!.isNotEmpty)
-                              const SizedBox(width: 8), // Khoảng cách giữa 2 nút
-                            
-                            // Nút 2: TÌM HIỂU CƠ SỞ (Chỉ hiện khi có Partner ID đính kèm)
-                            if (video.partnerId != null && video.partnerId!.isNotEmpty)
-                              GestureDetector(
-                                onTap: () {
-                                  HapticFeedback.selectionClick(); // Rung phản hồi nhẹ
-                                  // 🚀 ĐỊNH TUYẾN BẤT ĐỐI XỨNG: Ưu tiên target về username của partner được link, fallback về username tác giả
-                                  final String targetUsername = video.partnerUsername ?? video.author['username'].toString();
-                                  context.push('/public-profile/$targetUsername');
-                                },
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: BackdropFilter(
-                                    filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.1), // Nút kính xám đục (Thứ cấp)
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: const [
-                                          Icon(Icons.storefront_rounded, color: Colors.white, size: 14),
-                                          SizedBox(width: 6),
-                                          Text(
-                                            'TÌM HIỂU CƠ SỞ',
-                                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.2),
-                                          ),
-                                        ],
-                                      ),
+                            ),
+                          
+                          // Nút 2: TÌM HIỂU CƠ SỞ (Kính mờ Xám/Trắng bảo vệ sắc thái Primary)
+                          if (video.partnerId != null && video.partnerId!.isNotEmpty)
+                            GestureDetector(
+                              onTap: () {
+                                HapticFeedback.selectionClick(); // Rung phản hồi nhẹ
+                                // 🚀 ĐỊNH TUYẾN BẤT ĐỐI XỨNG CHUẨN XÁC
+                                final String targetUsername = video.partnerUsername ?? video.author['username'].toString();
+                                context.push('/public-profile/$targetUsername');
+                              },
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.15), // Nâng nhẹ opacity để chữ dễ đọc hơn trên nền phức tạp
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(color: Colors.white.withOpacity(0.35), width: 1),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: const [
+                                        Icon(Icons.storefront_rounded, color: Colors.white, size: 14),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          'TÌM HIỂU CƠ SỞ',
+                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.2),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
                               ),
-                          ],
-                        ),
+                            ),
+                        ],
                       ),
                     ],
                     const SizedBox(height: 5),

@@ -1355,9 +1355,17 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
               pinned: true,
               centerTitle: true,
               leading: IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF1A3A35), size: 20),
-                onPressed: () => context.pop(),
+                icon: const Icon(Icons.smart_toy_rounded, color: Color(0xFF1A3A35), size: 22),
+                onPressed: () async {
+                  final String currentContext = widget.profile['partner_ai_context'] ?? '';
+                  final result = await context.push<bool>('/partner-ai-context', extra: currentContext);
+                  if (result == true) {
+                    widget.onRefresh();
+                    _loadPartnerData();
+                  }
+                },
                 splashRadius: 20,
+                tooltip: 'Huấn luyện AI',
               ),
               title: const Text('Hồ sơ Đối tác', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 17, fontWeight: FontWeight.w600, letterSpacing: -0.5)),
               actions: [

@@ -5,6 +5,8 @@ import '../../presentation/screens/feeds/tiktok_feeds_screen.dart';
 import '../../presentation/screens/explore/explore_screen.dart';
 import '../../presentation/screens/map/map_screen.dart';
 import '../../presentation/screens/ai/ai_chat_screen.dart';
+import '../../presentation/screens/ai/partner_ai_chat_screen.dart';
+import '../../presentation/screens/ai/partner_ai_context_screen.dart';
 import '../../presentation/screens/promo/promo_screen.dart';
 import '../../presentation/screens/calendar/calendar_screen.dart';
 import '../../presentation/screens/profile/private_profile_screen.dart';
@@ -126,6 +128,28 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) {
         final roleParam = (state.extra as String?) ?? 'USER';
         return DedicatedUploadScreen(userRole: roleParam);
+      },
+    ),
+    // TUYẾN ĐƯỜNG PARTNER AI CHAT (Dành riêng cho khách hàng chat với cơ sở)
+    GoRoute(
+      path: '/partner-ai-chat/:partnerId',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) {
+        final partnerId = state.pathParameters['partnerId']!;
+        final partnerName = state.extra as String?;
+        return PartnerAIChatScreen(
+          partnerId: partnerId,
+          partnerName: partnerName,
+        );
+      },
+    ),
+    // TUYẾN ĐƯỜNG PARTNER AI CONTEXT (Dành cho cơ sở thiết lập định hướng AI)
+    GoRoute(
+      path: '/partner-ai-context',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) {
+        final currentContext = (state.extra as String?) ?? '';
+        return PartnerAiContextScreen(currentContext: currentContext);
       },
     ),
   ],
