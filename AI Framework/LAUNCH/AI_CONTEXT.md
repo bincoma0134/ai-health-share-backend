@@ -71,6 +71,7 @@ Mọi TASK bắt buộc phải thực thi tuần tự theo quy trình 5 giai đo
 * user_missions
 * user_svalue_wallet
 * user_vouchers
+* user_wellness_logs
 * users
 * vouchers
 * wallets
