@@ -15,6 +15,7 @@ import '../../widgets/video_uploader.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/shimmer_wrapper.dart';
 import 'package:flutter_map/flutter_map.dart';
+import '../../../data/models/video_model.dart';
 import 'package:latlong2/latlong.dart';
 
 class PartnerProfileScreen extends StatefulWidget {
@@ -2135,10 +2136,45 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      MiniVideoPlayer(videoUrl: v['video_url']),
+                  child: GestureDetector(
+                    onTap: () {
+                      final String currentStatus = v['status']?.toString().toUpperCase() ?? 'PENDING';
+                      if (currentStatus == 'APPROVED' || currentStatus == 'PUBLISHED') {
+                        final approvedVideos = _myVideos.where((vid) {
+                          final st = vid['status']?.toString().toUpperCase() ?? 'PENDING';
+                          return st == 'APPROVED' || st == 'PUBLISHED';
+                        }).toList();
+                        final int tappedIndex = approvedVideos.indexWhere((vid) => vid['id'] == v['id']);
+                        final List<VideoModel> models = approvedVideos.map((json) {
+                          final Map<String, dynamic> videoMap = Map<String, dynamic>.from(json);
+                          // Tiêm bổ sung metadata của Private Profile vào thực thể map thô trước khi nạp model giải quyết dứt điểm lỗi khuyết tên/avatar
+                          videoMap['author'] = {
+                            'id': widget.profile['id'] ?? '',
+                            'username': widget.profile['username'] ?? '',
+                            'full_name': widget.profile['full_name'] ?? '',
+                            'avatar_url': widget.profile['avatar_url'] ?? '',
+                          };
+                          return VideoModel.fromJson(videoMap);
+                        }).toList();
+                        
+                        // Đóng gói tham số định tuyến kèm filter cách ly 'is_private_profile' để TikTokFeedsScreen kích hoạt Auto-Wakeup Engine chuẩn xác
+                        context.push('/isolated-feed?filter=is_private_profile', extra: {
+                          'videos': models,
+                          'index': tappedIndex >= 0 ? tappedIndex : 0,
+                        }).then((_) {
+                          // Đồng bộ hóa tức thì trạng thái Like/Save ngược về lưới Private Profile khi Back trở ra
+                          if (mounted) {
+                            setState(() {});
+                          }
+                        });
+                      } else {
+                        AppToast.show(context: context, message: 'Video đang ở trạng thái chờ duyệt hoặc cần chỉnh sửa, chưa thể phát!', isSuccess: false);
+                      }
+                    },
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        MiniVideoPlayer(videoUrl: v['video_url']),
                       
                       // Cụm action buttons dịch chuyển lên góc trên bên phải (Rút gọn khoảng cách tránh va chạm)
                       Positioned(
@@ -2242,6 +2278,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                         )
                       ),
                     ],
+                  ),
                   ),
                 ),
               );

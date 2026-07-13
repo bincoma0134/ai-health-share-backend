@@ -46,4 +46,14 @@ class NotificationApiService {
       return false;
     }
   }
+
+  // 🚀 XÁC NHẬN MÁY ĐÃ NHẬN (ACK)
+  static Future<bool> sendAck(String notificationId) async {
+    try {
+      final res = await _dio.patch('/notifications/$notificationId/ack');
+      return res.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
 }

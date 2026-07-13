@@ -33,7 +33,7 @@ class PushService:
                 print(f"[PUSH DEBUG] TOKEN FOUND: {len(tokens)} token(s) for user_id {user_id}")
                 print(f"[PUSH DEBUG] FCM SEND START: Chuẩn bị gửi payload tới {len(tokens)} thiết bị")
 
-                # 3. Đóng gói Payload Multicast FCM (Bổ sung Cấu hình OS ưu tiên cao)
+                # 3. Đóng gói Payload Multicast FCM (Bổ sung Cấu hình OS ưu tiên cao - Xuyên thủng Doze Mode & Kill App)
                 msg = messaging.MulticastMessage(
                     notification=messaging.Notification(
                         title=title,
@@ -42,11 +42,24 @@ class PushService:
                     data={"payload": json.dumps(deep_link_payload)},
                     android=messaging.AndroidConfig(
                         priority='high',
-                        notification=messaging.AndroidNotification(channel_id='high_importance_channel')
+                        ttl=86400, # Giữ tin nhắn 24h trên máy chủ FCM nếu thiết bị đang ngoại tuyến
+                        notification=messaging.AndroidNotification(
+                            channel_id='high_importance_channel',
+                            default_sound=True,
+                            default_vibrate_timings=True
+                        )
                     ),
                     apns=messaging.APNSConfig(
+                        headers={
+                            'apns-priority': '10',  # 10 = Đẩy ngay lập tức, bắt buộc
+                            'apns-push-type': 'alert' # Phân loại tin nhắn bắt buộc hiển thị UI
+                        },
                         payload=messaging.APNSPayload(
-                            aps=messaging.Aps(sound='default', content_available=True)
+                            aps=messaging.Aps(
+                                sound='default', 
+                                content_available=True,
+                                mutable_content=True
+                            )
                         )
                     ),
                     tokens=tokens

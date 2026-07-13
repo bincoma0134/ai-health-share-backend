@@ -4,6 +4,7 @@ import '../../core/theme/app_theme.dart';
 import '../widgets/liquid_glass/liquid_glass_panel.dart';
 import '../widgets/auth_guard.dart';
 import '../widgets/notification_notifier.dart';
+import '../widgets/professor_x_panel.dart';
 
 class MainHubScreen extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -60,17 +61,18 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBody: true,
-      body: Stack(
-        children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 250),
-            child: _isPageLoading ? _buildSkeletonLayout() : widget.navigationShell,
-          ),
-        ],
-      ),
-      bottomNavigationBar: Padding(
+    return ProfessorXPanel(
+      child: Scaffold(
+        extendBody: true,
+        body: Stack(
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: _isPageLoading ? _buildSkeletonLayout() : widget.navigationShell,
+            ),
+          ],
+        ),
+        bottomNavigationBar: Padding(
           padding: EdgeInsets.only(
             left: 16,
             right: 16,
@@ -124,8 +126,10 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
             ),
           ),
         ),
-      );
-    }
+      ),
+    );
+  }
+    
 
   // --- THIẾT KẾ BỘ KHUNG XƯƠNG (SKELETON LAYOUT SYSTEM) TRỪU TƯỢNG ---
   Widget _buildSkeletonLayout() {

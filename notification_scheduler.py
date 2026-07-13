@@ -38,6 +38,10 @@ async def _scheduler_loop():
                 # 4. Nhắc nhở kết nối chánh niệm (Người dùng vắng mặt 3 ngày)
                 elif current_hour == 15 and current_minute == 0:
                     events_to_trigger.append("SYS_INACTIVE_REMINDER")
+                
+                # 5. 🚀 NHẮC NHỞ HỎA TỐC: Quét mỗi 5 phút một lần để tìm lịch hẹn bị kẹt quá 15 phút chưa duyệt
+                if current_minute % 5 == 0:
+                    events_to_trigger.append("APPOINTMENT_URGENT_REMINDER")
                     
                 if events_to_trigger:
                     _execute_triggers(events_to_trigger)
@@ -71,6 +75,17 @@ def _execute_triggers(events):
                     users = cur.fetchall()
                     for u in users:
                         NotificationService.dispatch_event(conn, str(u[0]), event, "")
+                elif event == "APPOINTMENT_URGENT_REMINDER":
+                    # 🚀 NHẮC NHỞ HỎA TỐC: Lọc các lịch hẹn WAITING_PARTNER quá 15 phút
+                    cur.execute("""
+                        SELECT id, partner_id FROM appointments 
+                        WHERE status = 'WAITING_PARTNER' 
+                        AND created_at < NOW() - INTERVAL '15 minutes'
+                        AND created_at > NOW() - INTERVAL '1 hour' -- Giới hạn không nhắc lại lịch quá cũ
+                    """)
+                    urgent_appts = cur.fetchall()
+                    for appt in urgent_appts:
+                        NotificationService.dispatch_event(conn, str(appt[1]), event, str(appt[0]))
                 else:
                     # Multicast cho toàn mạng lưới
                     cur.execute("SELECT id FROM users")

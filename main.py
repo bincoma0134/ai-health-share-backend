@@ -115,6 +115,10 @@ async def startup_event():
                     -- Khởi tạo Index tăng tốc độ truy vấn định tuyến từ O(N) về O(log N)
                     CREATE INDEX IF NOT EXISTS idx_user_fcm_tokens_user_id 
                     ON user_fcm_tokens(user_id);
+
+                    -- 🚀 AUTO-MIGRATION: Nâng cấp Bảng notifications phục vụ Smart Fallback & ACK
+                    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(50) DEFAULT 'PENDING';
+                    ALTER TABLE notifications ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP;
                 """)
             conn.commit()
         except Exception as e:
@@ -899,10 +903,19 @@ def update_my_service(service_id: str, payload: dict, current_user = Depends(ver
 
 @app.delete("/partner/my-services/{service_id}", tags=["Partner"])
 def delete_my_service(service_id: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         cur.execute("UPDATE services SET status = 'PENDING_DELETE', updated_at = now() WHERE id = %s AND partner_id = %s RETURNING id", (service_id, current_user.id))
         if not cur.fetchone(): raise HTTPException(status_code=403, detail="Cấm!")
+        
+        # 🚀 ĐỒNG BỘ GỠ DỊCH VỤ: Gửi thông báo đến Moderator
+        cur.execute("SELECT id FROM users WHERE role IN ('MODERATOR', 'SUPER_ADMIN')")
+        moderators = cur.fetchall()
+        if moderators:
+            from notification_service import NotificationService
+            for mod in moderators:
+                NotificationService.dispatch_event(conn, user_id=str(mod["id"]), event_type="SERVICE_DELETE_REQUESTED", reference_id=service_id, sender_id=current_user.id)
+                
         conn.commit()
         return {"status": "success"}
     finally: cur.close()
@@ -2254,9 +2267,11 @@ def respond_appointment(appointment_id: str, payload: schemas.PartnerResponse, c
         
         from notification_service import NotificationService
         if payload.action == "ACCEPT":
-            NotificationService.dispatch_event(conn, user_id=appt["user_id"], event_type="APPOINTMENT_ACCEPTED", reference_id=appointment_id, sender_id=current_user.id)
+            # 🚀 NÂNG CẤP DEEP LINK: Ép cứng về màn hình thanh toán
+            NotificationService.dispatch_event(conn, user_id=appt["user_id"], event_type="APPOINTMENT_ACCEPTED", reference_id=appointment_id, metadata={"screen": "calendar_checkout_modal"}, sender_id=current_user.id)
         else:
-            NotificationService.dispatch_event(conn, user_id=appt["user_id"], event_type="LEGACY", reference_id=appointment_id, metadata={"category": "BOOKING", "title": "Cập nhật Lịch hẹn", "message": f"Cơ sở đã từ chối. Lý do: {payload.reason}"}, sender_id=current_user.id)
+            # 🚀 VÁ LỖ HỔNG ROUTER SỰ KIỆN KHƯỚC TỪ: Sử dụng mã định danh APPOINTMENT_REJECTED
+            NotificationService.dispatch_event(conn, user_id=appt["user_id"], event_type="APPOINTMENT_REJECTED", reference_id=appointment_id, metadata={"message": f"Cơ sở đã từ chối. Lý do: {payload.reason}"}, sender_id=current_user.id)
         
         conn.commit()
         return jsonable_encoder({"status": "success", "data": updated})
@@ -2803,12 +2818,38 @@ def check_follow_status(target_id: str, current_user = Depends(verify_user_token
 def get_my_notifications(limit: int = 50, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
+        # 🚀 SMART FALLBACK LOGIC: Cắm cờ ưu tiên cao cho thông báo có trạng thái gửi đi quá 30 giây nhưng máy chưa ACK
         cur.execute("""
-            SELECT n.*, json_build_object('full_name', u.full_name, 'username', u.username, 'avatar_url', u.avatar_url, 'role', u.role) as sender
+            SELECT n.*, 
+                   json_build_object('full_name', u.full_name, 'username', u.username, 'avatar_url', u.avatar_url, 'role', u.role) as sender,
+                   CASE 
+                        WHEN n.delivery_status != 'DELIVERED_TO_DEVICE' 
+                             AND n.created_at < (CURRENT_TIMESTAMP - INTERVAL '30 seconds') 
+                             AND n.is_read = FALSE 
+                        THEN TRUE 
+                        ELSE FALSE 
+                   END as is_fallback_priority
             FROM notifications n LEFT JOIN users u ON n.sender_id = u.id
-            WHERE n.user_id = %s ORDER BY n.created_at DESC LIMIT %s
+            WHERE n.user_id = %s ORDER BY is_fallback_priority DESC, n.created_at DESC LIMIT %s
         """, (current_user.id, limit))
         return {"status": "success", "data": cur.fetchall()}
+    finally: cur.close()
+
+@app.patch("/notifications/{notification_id}/ack", tags=["Notifications"])
+def acknowledge_notification_delivery(notification_id: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """API nội bộ: Nhận tín hiệu ngầm từ thiết bị xác nhận thông báo đã đáp xuống máy thành công"""
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            UPDATE notifications 
+            SET delivery_status = 'DELIVERED_TO_DEVICE', delivered_at = CURRENT_TIMESTAMP 
+            WHERE id = %s AND user_id = %s
+        """, (notification_id, current_user.id))
+        conn.commit()
+        return {"status": "success", "message": "Đã ghi nhận biên nhận thành công"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
     finally: cur.close()
 
 @app.patch("/notifications/{notification_id}/read", tags=["Notifications"])

@@ -131,6 +131,24 @@ class NotificationService:
                 "message": "Lịch hẹn của bạn đã được xác nhận. Vui lòng thanh toán.",
                 "screen": "calendar_payment"
             },
+            "APPOINTMENT_REJECTED": {
+                "category": "BOOKING",
+                "title": "Yêu cầu đặt lịch bị từ chối",
+                "message": "Cơ sở dịch vụ đã từ chối yêu cầu đặt lịch hẹn của bạn.",
+                "screen": "calendar_page"
+            },
+            "SERVICE_DELETE_REQUESTED": {
+                "category": "SYSTEM",
+                "title": "Yêu cầu gỡ dịch vụ",
+                "message": "Một đối tác vừa gửi yêu cầu gỡ bỏ dịch vụ khỏi hệ thống. Vui lòng kiểm duyệt.",
+                "screen": "moderator_dashboard"
+            },
+            "APPOINTMENT_URGENT_REMINDER": {
+                "category": "BOOKING",
+                "title": "Nhắc nhở: Lịch hẹn đang chờ duyệt",
+                "message": "Bạn có một lịch hẹn cấp bách từ khách hàng chưa được xử lý. Hãy xác nhận ngay để không lọt lưới doanh thu!",
+                "screen": "partner_dashboard_booking"
+            },
             "REVENUE_DISBURSED": {
                 "category": "FINANCIAL",
                 "title": "Doanh thu được giải ngân",

@@ -13,8 +13,13 @@ import '../../core/manager/audio_focus_manager.dart';
 class FeedVideoPool {
   static final Map<String, VideoPlayerController> _pool = {};
   static final List<String> _lru = [];
-  static const int maxPoolSize = 5;
+  static const int maxPoolSize = 8; // 🚀 TĂNG POOL SIZE: Tạo vùng đệm an toàn lớn hơn Window Cache (5), triệt tiêu lỗi tranh chấp
   
+  // 🚀 BỌC THÉP TRẠNG THÁI: Hàm kiểm tra vòng đời của Controller
+  static bool isControllerAlive(String url) {
+    return _pool.containsKey(url);
+  }
+
   // 🚀 CÔNG TẮC TỔNG TOÀN CỤC: Khóa cứng âm lượng toàn bộ Pool khi Studio Đăng tải mở/đóng thành công
   static bool isGlobalMutedForUpload = false;
 
@@ -97,6 +102,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
 
   // Tách hàm Lắng nghe riêng để dễ dàng gỡ bỏ chống rò rỉ bộ nhớ (Memory Leak)
   void _videoListener() {
+    if (!FeedVideoPool.isControllerAlive(widget.videoUrl)) return; // 🚀 GUARD: Chặn truy cập vùng nhớ chết
     if (mounted && _controller != null && _controller!.value.isInitialized && _controller!.value.duration.inMilliseconds > 0) {
       final double currentPos = _controller!.value.position.inMilliseconds.toDouble();
       final double totalDuration = _controller!.value.duration.inMilliseconds.toDouble();
@@ -117,6 +123,9 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
     // Lấy Controller từ Pool (Hỗ trợ Async Disk Cache)
     FeedVideoPool.getController(widget.videoUrl).then((controller) {
       if (!mounted) return;
+      // 🚀 CHỐT CHẶN RACE CONDITION: Kiểm tra xem trong lúc chờ Async, Controller này có bị Pool khai tử ngầm chưa
+      if (!FeedVideoPool.isControllerAlive(widget.videoUrl)) return;
+      
       _controller = controller;
       _controller!.addListener(_videoListener);
 
@@ -145,7 +154,37 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
       updateKeepAlive();
     }
 
-    if (_isInitialized && _controller != null) {
+    // 🚀 TỰ ĐỘNG KHÔI PHỤC (AUTO-RESUME ENGINE): Nếu quay lại video này nhưng Controller đã bị dọn dẹp mất
+    if (widget.isActive && (!FeedVideoPool.isControllerAlive(widget.videoUrl) || _controller == null)) {
+      setState(() {
+        _isInitialized = false;
+        _controller = null;
+      });
+      FeedVideoPool.getController(widget.videoUrl).then((controller) {
+        if (!mounted || !FeedVideoPool.isControllerAlive(widget.videoUrl)) return;
+        _controller = controller;
+        _controller!.addListener(_videoListener);
+        if (!_controller!.value.isInitialized) {
+          _controller!.initialize().then((_) {
+            if (mounted) {
+              setState(() => _isInitialized = true);
+              _controller!.setLooping(true);
+              if (widget.isActive && !_isUserPaused && AudioFocusManager.instance.shouldFeedsPlay) {
+                _controller!.play();
+              }
+            }
+          });
+        } else {
+          setState(() => _isInitialized = true);
+          if (widget.isActive && !_isUserPaused && AudioFocusManager.instance.shouldFeedsPlay) {
+            _controller!.play();
+          }
+        }
+      });
+      return; // Thoát luồng didUpdate cũ để nhường chỗ cho luồng nạp mới
+    }
+
+    if (_isInitialized && _controller != null && FeedVideoPool.isControllerAlive(widget.videoUrl)) {
       // 🚀 ĐỒNG BỘ: Check qua AudioFocusManager thay vì cờ tĩnh toàn cục
       if (widget.isActive && !_isUserPaused && AudioFocusManager.instance.shouldFeedsPlay) {
         _controller!.play();
@@ -193,7 +232,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
   }
 
   void _togglePlayPause() {
-    if (!_isInitialized || _controller == null) return;
+    if (!_isInitialized || _controller == null || !FeedVideoPool.isControllerAlive(widget.videoUrl)) return;
     setState(() {
       if (_controller!.value.isPlaying) {
         _controller!.pause();
@@ -231,23 +270,22 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
   @override
   Widget build(BuildContext context) {
     super.build(context); // BẮT BUỘC phải gọi để kích hoạt thuật toán KeepAlive
-    if (!_isInitialized || _controller == null) {
+    
+    // 🚀 BẪY LỖI NỘI TẠI (LIFECYCLE VALUE GUARD): Chặn đứng việc render nếu Controller đã chết hoặc lỗi
+    if (!_isInitialized || _controller == null || !FeedVideoPool.isControllerAlive(widget.videoUrl)) {
       return const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)));
     }
 
     return VisibilityDetector(
       key: Key(widget.videoUrl),
       onVisibilityChanged: (info) {
-        if (info.visibleFraction < 0.9) {
+        if (!FeedVideoPool.isControllerAlive(widget.videoUrl) || _controller == null) return;
+        
+        if (info.visibleFraction < 0.7) {
           if (_isInitialized && _controller!.value.isPlaying) {
             _controller!.pause();
-            // 🚀 KHÓA CỨNG: Giả lập gesture người dùng chạm màn hình để đưa vào trạng thái chủ động Pause
-            setState(() {
-              _isUserPaused = true;
-            });
           }
-        } else if (info.visibleFraction >= 0.9 && widget.isActive) {
-          // Khi quay lại tab, tuyệt đối không tự động .play() nữa nếu người dùng chưa click resume
+        } else if (info.visibleFraction >= 0.7 && widget.isActive) {
           if (!_isUserPaused && AudioFocusManager.instance.shouldFeedsPlay) {
             _controller!.play();
           } else {

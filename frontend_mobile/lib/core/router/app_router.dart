@@ -24,13 +24,14 @@ import '../../presentation/screens/auth/onboarding_screen.dart';
 import '../../presentation/screens/login_screen.dart';
 import '../../presentation/widgets/auth_guard.dart';
 import '../../presentation/widgets/notification_notifier.dart';
+import '../../data/models/video_model.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 
 final GoRouter appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
-  restorationScopeId: 'vnshare_router_scope', // 🚀 RESTORATION ĐIỀU HƯỚNG: Phục hồi chính xác Tab và Màn hình đang xem khi App bị OS Kill
+  // Đã gỡ bỏ restorationScopeId để vô hiệu hóa tính năng khôi phục Tab cũ, ép Router khởi động lại hoàn toàn từ initialLocation.
   initialLocation: '/splash', // Đặt Splash làm trang chạy đầu tiên
   refreshListenable: AuthNotifier.instance, // Lắng nghe thay đổi Auth để tự động cập nhật Navigation
   redirect: (context, state) {
@@ -121,6 +122,18 @@ final GoRouter appRouter = GoRouter(
       path: '/notifications',
       parentNavigatorKey: rootNavigatorKey, 
       builder: (context, state) => const NotificationCenterScreen(),
+    ),
+    // TUYẾN ĐƯỜNG PROFILE FEED ISOLATION (Tái sử dụng Component màn hình TikTokFeedsScreen)
+    GoRoute(
+      path: '/isolated-feed',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) {
+        final extra = state.extra as Map<String, dynamic>? ?? {};
+        return TikTokFeedsScreen(
+          preloadedVideos: extra['videos'] as List<VideoModel>?,
+          initialIndex: extra['index'] as int?,
+        );
+      },
     ),
     // Tuyến đường độc lập phục vụ Creative Studio áp dụng Inject Quyền cứng trực tiếp từ tầng router cửa ngõ
     GoRoute(

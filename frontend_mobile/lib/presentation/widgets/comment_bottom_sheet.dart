@@ -5,6 +5,7 @@ import 'auth_guard.dart';
 import 'package:go_router/go_router.dart'; // Bổ sung GoRouter
 import '../../core/network/api_client.dart';
 import '../../data/models/comment_model.dart';
+import 'shimmer_wrapper.dart';
 
 class CommentBottomSheet extends StatefulWidget {
   final String videoId;
@@ -221,6 +222,38 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
     );
   }
 
+  Widget _buildShimmerLoading() {
+    return ShimmerWrapper(
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        itemCount: 6,
+        physics: const NeverScrollableScrollPhysics(),
+        itemBuilder: (context, index) => Padding(
+          padding: const EdgeInsets.only(bottom: 24.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(radius: 18, backgroundColor: Colors.grey.shade200),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(width: 100, height: 12, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4))),
+                    const SizedBox(height: 8),
+                    Container(width: double.infinity, height: 14, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4))),
+                    const SizedBox(height: 6),
+                    Container(width: 180, height: 14, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4))),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Phân loại bình luận Cha
@@ -267,7 +300,7 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
               // Danh sách bình luận
               Expanded(
                 child: _isLoading 
-                    ? const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)))
+                    ? _buildShimmerLoading()
                     : _comments.isEmpty
                         ? const Center(child: Text('Chưa có bình luận nào. Hãy là người đầu tiên!', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)))
                         : ListView.builder(

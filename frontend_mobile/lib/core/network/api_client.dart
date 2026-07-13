@@ -16,4 +16,12 @@ class ApiClient {
     }
     return _instance!;
   }
+
+  // 🚀 HARD RESET SESSION: Xóa sạch instance cũ để ép chu kỳ sau tạo mới hoàn toàn
+  static void clearSession() {
+    if (_instance != null) {
+      _instance!.options.headers.clear();
+      _instance = null;
+    }
+  }
 }

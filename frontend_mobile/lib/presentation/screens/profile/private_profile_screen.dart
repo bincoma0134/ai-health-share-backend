@@ -17,6 +17,7 @@ import '../../widgets/shimmer_wrapper.dart';
 import '../../widgets/video_uploader.dart'; // Import bọc thép widget tải tệp
 import '../../../core/network/api_client.dart'; // Import để gọi biểu mẫu đăng bài lên TikTokFeeds
 import '../../widgets/mini_video_player.dart';
+import '../../../data/models/video_model.dart';
 
 
 class PrivateProfileScreen extends StatefulWidget {
@@ -60,8 +61,18 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
   @override
   void initState() {
     super.initState();
+    AuthNotifier.instance.addListener(_onAuthStatusChanged);
     _loadData();
     _fetchUpgradeStatus();
+  }
+
+  // Lắng nghe tín hiệu từ ProfessorXPanel hoặc luồng Auth toàn cục
+  void _onAuthStatusChanged() {
+    // Chỉ nạp lại dữ liệu nếu Widget vẫn đang tồn tại trên bộ nhớ và đã xác thực thành công
+    if (mounted && AuthNotifier.instance.isAuthenticated) {
+      _loadData();
+      _fetchUpgradeStatus();
+    }
   }
 
   // Hàm đồng bộ nạp trạng thái hồ sơ nâng cấp từ Backend API
@@ -1458,11 +1469,38 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        MiniVideoPlayer(videoUrl: v['video_url'] ?? ''),
-                        Positioned(
+                    child: GestureDetector(
+                      onTap: () {
+                        final currentStatus = status.toUpperCase();
+                        if (currentStatus == 'APPROVED' || currentStatus == 'PUBLISHED') {
+                          // Lọc tạo Playlist chỉ chứa video sạch (Đã duyệt)
+                          final approvedVideos = _userVideos.where((item) {
+                            final s = (item['status'] ?? '').toString().toUpperCase();
+                            return s == 'APPROVED' || s == 'PUBLISHED';
+                          }).toList();
+                          
+                          // Tìm vị trí của video hiện tại trong mảng đã lọc
+                          final targetIndex = approvedVideos.indexOf(v);
+                          final List<VideoModel> models = approvedVideos.map((json) => VideoModel.fromJson(json)).toList();
+                          
+                          context.push('/isolated-feed', extra: {
+                            'videos': models,
+                            'index': targetIndex >= 0 ? targetIndex : 0,
+                          });
+                        } else {
+                          // Chặn điều hướng, ném thông báo Toast mượt mà
+                          AppToast.show(
+                            context: context, 
+                            message: 'Video đang trong trạng thái chờ duyệt hoặc chỉnh sửa, vui lòng quay lại sau!', 
+                            isSuccess: false,
+                          );
+                        }
+                      },
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          MiniVideoPlayer(videoUrl: v['video_url'] ?? ''),
+                          Positioned(
                           top: 10, left: 10,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1654,9 +1692,10 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                       ],
                     ),
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
+          ),
         ],
       );
     }
@@ -2044,6 +2083,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
 
   @override
   void dispose() {
+    AuthNotifier.instance.removeListener(_onAuthStatusChanged);
     _nameController.dispose();
     _usernameController.dispose();
     _bioController.dispose();

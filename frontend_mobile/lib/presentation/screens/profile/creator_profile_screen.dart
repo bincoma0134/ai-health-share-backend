@@ -8,6 +8,8 @@ import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/mini_video_player.dart';
 import '../../../core/network/api_client.dart';
 import '../../widgets/shimmer_wrapper.dart';
+import '../../../data/models/video_model.dart';
+import '../../widgets/app_toast.dart';
 
 class CreatorProfileScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -1370,10 +1372,28 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      MiniVideoPlayer(videoUrl: v['video_url'] ?? ''),
+                  child: GestureDetector(
+                    onTap: () {
+                      final String currentStatus = v['status']?.toString().toUpperCase() ?? 'PENDING';
+                      if (currentStatus == 'APPROVED' || currentStatus == 'PUBLISHED') {
+                        final approvedVideos = _videos.where((vid) {
+                          final st = vid['status']?.toString().toUpperCase() ?? 'PENDING';
+                          return st == 'APPROVED' || st == 'PUBLISHED';
+                        }).toList();
+                        final int tappedIndex = approvedVideos.indexWhere((vid) => vid['id'] == v['id']);
+                        final List<VideoModel> models = approvedVideos.map((json) => VideoModel.fromJson(json)).toList();
+                        context.push('/isolated-feed', extra: {
+                          'videos': models,
+                          'index': tappedIndex >= 0 ? tappedIndex : 0,
+                        });
+                      } else {
+                        AppToast.show(context: context, message: 'Video đang ở trạng thái chờ duyệt hoặc cần chỉnh sửa, chưa thể phát!', isSuccess: false);
+                      }
+                    },
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        MiniVideoPlayer(videoUrl: v['video_url'] ?? ''),
                       // Nhãn trạng thái thu gọn tinh tế phù hợp lưới 3 cột
                       Positioned(
                         top: 6, left: 6,
@@ -1486,6 +1506,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         ),
                       ),
                     ],
+                  ),
                   ),
                 ),
               );

@@ -73,10 +73,6 @@ class _MiniVideoPlayerState extends State<MiniVideoPlayer> {
           final startMs = (totalMs * widget.trimStartPercent!).toInt();
           _controller.seekTo(Duration(milliseconds: startMs));
         }
-        
-        if (mounted) {
-          _controller.play();
-        }
       }
     } catch (e) {
       debugPrint("Lỗi nạp luồng phát nhanh Video: $e");
@@ -178,11 +174,6 @@ class _MiniVideoPlayerState extends State<MiniVideoPlayer> {
         if (visiblePercentage < 15) {
           if (_controller.value.isPlaying) {
             _controller.pause();
-          }
-        } else {
-          // Khi quay trở lại vùng nhìn thấy lớn hơn 15%, tự động kích hoạt preview mượt mà
-          if (!_controller.value.isPlaying) {
-            _controller.play();
           }
         }
       },

@@ -10,6 +10,7 @@ import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/booking_bottom_sheet.dart';
 import '../../widgets/auth_guard.dart';
 import '../../widgets/shimmer_wrapper.dart';
+import '../../../data/models/video_model.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String username;
@@ -502,52 +503,88 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(20),
-                                  child: Stack(
-                                    fit: StackFit.expand,
-                                    children: [
-                                      MiniVideoPlayer(videoUrl: v['video_url'] ?? ''),
-                                      Positioned(
-                                        top: 10, left: 10,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(0.85),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Container(
-                                                width: 6, height: 6,
-                                                decoration: const BoxDecoration(
-                                                  color: Color(0xFF48C9B0),
-                                                  shape: BoxShape.circle,
+                                  child: GestureDetector(
+                                    onTap: () async {
+                                      // Đồng bộ hóa danh sách VideoModel thực thể tham chiếu gốc trực tiếp để kích hoạt re-render l lồng cha khi Like/Save thay đổi
+                                      final List<VideoModel> models = videos.map((json) {
+                                        final Map<String, dynamic> videoMap = Map<String, dynamic>.from(json);
+                                        if (!videoMap.containsKey('author') || videoMap['author'] == null) {
+                                          videoMap['author'] = profile;
+                                        }
+                                        return VideoModel.fromJson(videoMap);
+                                      }).toList();
+                                      
+                                      // Hứng List<VideoModel> cập nhật trả về từ Feed để đồng bộ Real-time
+                                      final result = await context.push('/isolated-feed', extra: {
+                                        'videos': models,
+                                        'index': index,
+                                      });
+                                      
+                                      if (mounted && result is List<VideoModel>) {
+                                        setState(() {
+                                          final List<dynamic>? originalVideos = _data?['videos'];
+                                          if (originalVideos != null) {
+                                            for (var updatedVideo in result) {
+                                              final originalIndex = originalVideos.indexWhere((v) => v['id']?.toString() == updatedVideo.id.toString());
+                                              if (originalIndex != -1) {
+                                                originalVideos[originalIndex]['is_liked'] = updatedVideo.isLiked;
+                                                originalVideos[originalIndex]['likes_count'] = updatedVideo.likesCount;
+                                                originalVideos[originalIndex]['is_saved'] = updatedVideo.isSaved;
+                                                originalVideos[originalIndex]['saves_count'] = updatedVideo.savesCount;
+                                                originalVideos[originalIndex]['comments_count'] = updatedVideo.commentsCount;
+                                              }
+                                            }
+                                          }
+                                        });
+                                      }
+                                    },
+                                    child: Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        MiniVideoPlayer(videoUrl: v['video_url'] ?? ''),
+                                        Positioned(
+                                          top: 10, left: 10,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withOpacity(0.85),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Container(
+                                                  width: 6, height: 6,
+                                                  decoration: const BoxDecoration(
+                                                    color: Color(0xFF48C9B0),
+                                                    shape: BoxShape.circle,
+                                                  ),
                                                 ),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              const Text(
-                                                'Đã duyệt',
-                                                style: TextStyle(color: Color(0xFF1A3A35), fontSize: 10, fontWeight: FontWeight.bold),
-                                              ),
-                                            ],
+                                                const SizedBox(width: 6),
+                                                const Text(
+                                                  'Đã duyệt',
+                                                  style: TextStyle(color: Color(0xFF1A3A35), fontSize: 10, fontWeight: FontWeight.bold),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      Positioned(
-                                        bottom: 0, left: 0, right: 0,
-                                        child: Container(
-                                          padding: const EdgeInsets.fromLTRB(12, 32, 12, 12),
-                                          decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withOpacity(0.8), Colors.transparent])),
-                                          child: Text(v['title'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600, height: 1.3), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                        Positioned(
+                                          bottom: 0, left: 0, right: 0,
+                                          child: Container(
+                                            padding: const EdgeInsets.fromLTRB(12, 32, 12, 12),
+                                            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withOpacity(0.8), Colors.transparent])),
+                                            child: Text(v['title'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600, height: 1.3), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               );
                             },
                             childCount: videos.length,
-                            addAutomaticKeepAlives: false, // 🚀 NGĂN CRASH: Giải phóng bộ nhớ Video Player khi cuộn khỏi màn hình
+                            addAutomaticKeepAlives: false,
                             addRepaintBoundaries: true,
                           ),
                         ),
@@ -583,20 +620,70 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                   child: Material(
                                     color: Colors.transparent,
                                     child: InkWell(
-                                      onTap: () {
-                                        AuthGuard.run(context, action: () {
-                                          final targetUserId = profile['id'] ?? '';
-                                          final Map<String, dynamic> adaptedVideoContext = {
-                                            'id': svc['id'] ?? svc['service_id'] ?? '',
-                                            'price': svc['price'] ?? 0.0,
-                                            'authorId': targetUserId,
-                                            'title': svc['service_name'] ?? '',
-                                            'service_name': svc['service_name'] ?? '',
-                                            'image_url': svc['image_url'],
-                                            'video_url': svc['video_url'],
-                                          };
-                                          showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => BookingBottomSheet(video: adaptedVideoContext));
+                                      onTap: () async {
+                                        if (hasVideo) {
+                                          final servicesWithVideo = services.where((s) => s['video_url'] != null && s['video_url'].toString().trim().isNotEmpty).toList();
+                                          final int tappedIndex = servicesWithVideo.indexOf(svc);
+                                          
+                                          final List<VideoModel> models = servicesWithVideo.map((s) {
+                                            final Map<String, dynamic> mockJson = {
+                                              'id': s['id'] ?? s['service_id'] ?? '',
+                                              'author_id': profile['id'] ?? '',
+                                              'title': s['service_name'] ?? '',
+                                              'content': s['description'] ?? '',
+                                              'price': (s['price'] ?? 0).toDouble(),
+                                              'video_url': s['video_url'] ?? '',
+                                              'likes_count': s['likes_count'] ?? 0,
+                                              'saves_count': s['saves_count'] ?? 0,
+                                              'comments_count': s['comments_count'] ?? 0,
+                                              'is_liked': s['is_liked'] ?? false,
+                                              'is_saved': s['is_saved'] ?? false,
+                                              'author': profile,
+                                              'service_id': s['id'] ?? s['service_id'],
+                                              'partner_id': profile['id'],
+                                            };
+                                            return VideoModel.fromJson(mockJson);
+                                          }).toList();
+
+                                          // Hứng List<VideoModel> cập nhật trả về từ Feed để đồng bộ Real-time
+                                          final result = await context.push('/isolated-feed', extra: {
+                                            'videos': models,
+                                            'index': tappedIndex >= 0 ? tappedIndex : 0,
+                                          });
+
+                                          if (mounted && result is List<VideoModel>) {
+                                        setState(() {
+                                          final List<dynamic>? originalServices = _data?['services'];
+                                          if (originalServices != null) {
+                                            for (var updatedVideo in result) {
+                                              for (var s in originalServices) {
+                                                if (s['video_id']?.toString() == updatedVideo.id.toString() || s['id']?.toString() == updatedVideo.id.toString()) {
+                                                  s['is_liked'] = updatedVideo.isLiked;
+                                                  s['likes_count'] = updatedVideo.likesCount;
+                                                  s['is_saved'] = updatedVideo.isSaved;
+                                                  s['saves_count'] = updatedVideo.savesCount;
+                                                  s['comments_count'] = updatedVideo.commentsCount;
+                                                }
+                                              }
+                                            }
+                                          }
                                         });
+                                      }
+                                        } else {
+                                          AuthGuard.run(context, action: () {
+                                            final targetUserId = profile['id'] ?? '';
+                                            final Map<String, dynamic> adaptedVideoContext = {
+                                              'id': svc['id'] ?? svc['service_id'] ?? '',
+                                              'price': svc['price'] ?? 0.0,
+                                              'authorId': targetUserId,
+                                              'title': svc['service_name'] ?? '',
+                                              'service_name': svc['service_name'] ?? '',
+                                              'image_url': svc['image_url'],
+                                              'video_url': svc['video_url'],
+                                            };
+                                            showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (context) => BookingBottomSheet(video: adaptedVideoContext));
+                                          });
+                                        }
                                       },
                                       child: Stack(
                                         fit: StackFit.expand,

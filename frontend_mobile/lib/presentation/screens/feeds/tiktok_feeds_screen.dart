@@ -27,7 +27,15 @@ import '../../../core/manager/audio_focus_manager.dart';
 
 class TikTokFeedsScreen extends StatefulWidget {
   final String? filter;
-  const TikTokFeedsScreen({super.key, this.filter});
+  final List<VideoModel>? preloadedVideos;
+  final int? initialIndex;
+  
+  const TikTokFeedsScreen({
+    super.key, 
+    this.filter,
+    this.preloadedVideos,
+    this.initialIndex,
+  });
 
   @override
   State<TikTokFeedsScreen> createState() => _TikTokFeedsScreenState();
@@ -55,12 +63,33 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
   // MỚI: Quản lý trạng thái và dữ liệu cho tính năng Tìm kiếm nhanh (Search Overlay)
   bool _isSearchOpen = false;
   String _searchQuery = '';
-  final PageController _pageController = PageController();
+  late final PageController _pageController;
 
   @override
   void initState() {
     super.initState();
-    _loadFeeds();
+    _currentIndex = widget.initialIndex ?? 0;
+    _pageController = PageController(initialPage: _currentIndex);
+    
+    // Thuật toán Isolation Flow: Tái sử dụng danh sách VideoModel đã được map bọc thép an toàn từ màn hình cha
+    if (widget.preloadedVideos != null && widget.preloadedVideos!.isNotEmpty) {
+      _videos = widget.preloadedVideos!.map((v) {
+        // Thay đổi trực tiếp các cặp key-value nội bộ của Map vì biến author đã được khai báo final
+        if (v.author.isEmpty || v.author['username'] == null) {
+          v.author['id'] = v.authorId.isNotEmpty ? v.authorId : (AuthNotifier.instance.userId ?? '');
+          v.author['username'] = v.author['username'] ?? 'user';
+          v.author['full_name'] = v.author['full_name'] ?? 'Chủ cơ sở';
+          v.author['avatar_url'] = v.author['avatar_url'] ?? '';
+        }
+        return v;
+      }).toList();
+      _isLoading = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _preloadNextVideos(_currentIndex);
+      });
+    } else {
+      _loadFeeds();
+    }
   }
 
   @override
@@ -275,9 +304,22 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
               VisibilityDetector(
                 key: Key('feed_video_${video.id}_$index'),
                 onVisibilityChanged: (visibilityInfo) {
+                  if (!mounted) return;
                   // Trả về luồng xử lý nhẹ để tối ưu tài nguyên tầng danh sách cha
                   if (visibilityInfo.visibleFraction < 0.1 && index == _currentIndex) {
-                    FeedVideoPool.getController(video.videoUrl).then((c) => c.pause());
+                    FeedVideoPool.getController(video.videoUrl).then((c) {
+                      if (FeedVideoPool.isControllerAlive(video.videoUrl)) c.pause();
+                    });
+                  } else if (visibilityInfo.visibleFraction >= 0.5 && index == _currentIndex) {
+                    // Cơ chế Tự động đánh thức toàn cục (Universal Auto-Wakeup): 
+                    // Giải quyết dứt điểm hard pause cho TẤT CẢ các Profile do trễ hoạt họa GoRouter chỉ cần đạt 50% khung hình
+                    if (AudioFocusManager.instance.shouldFeedsPlay) {
+                      FeedVideoPool.getController(video.videoUrl).then((c) {
+                        if (mounted && index == _currentIndex && !c.value.isPlaying && FeedVideoPool.isControllerAlive(video.videoUrl)) {
+                          c.play();
+                        }
+                      });
+                    }
                   }
                 },
                 child: FeedVideoPlayer(
@@ -321,7 +363,14 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                     children: [
                       // Nút Quay lại
                       GestureDetector(
-                        onTap: () => context.pop(),
+                        onTap: () {
+                          // Bọc thép đồng bộ Like/Save: Trả về toàn bộ danh sách VideoModel mang trạng thái mới nhất cho màn hình Profile cập nhật
+                          if (widget.preloadedVideos != null) {
+                            context.pop(_videos);
+                          } else {
+                            context.pop();
+                          }
+                        },
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(

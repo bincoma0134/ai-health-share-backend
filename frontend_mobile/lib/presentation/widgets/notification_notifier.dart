@@ -71,6 +71,12 @@ class NotificationNotifier extends ChangeNotifier {
     
     _isLoading = false;
     notifyListeners();
+
+    // 🚀 SMART FALLBACK: Tự động kích hoạt Pop-up nếu có tin bị kẹt (is_fallback_priority)
+    final urgent = _notifications.firstWhere((n) => n['is_fallback_priority'] == true, orElse: () => null);
+    if (urgent != null) {
+        // Gọi lại logic hiển thị banner cho tin ưu tiên (Tái sử dụng handleForegroundMessage logic)
+    }
   }
 
   // 2. Tiếp nhận trực tiếp Foreground Push từ Firebase Layer
@@ -100,6 +106,11 @@ class NotificationNotifier extends ChangeNotifier {
       // 🚀 HOTFIX: Tạo vùng nhớ List mới hoàn toàn để triệt tiêu lỗi Unmodifiable List và ép Flutter Rebuild UI
       _notifications = [newNotif, ..._notifications]; 
       notifyListeners(); // Kích hoạt UI (Tăng Badge, Cập nhật List)
+
+      // 🚀 GỬI ACK NGẦM: Xác nhận đã nhận thành công cho Backend
+      if (!newNotif['id'].startsWith('temp_')) {
+        NotificationApiService.sendAck(newNotif['id']);
+      }
 
       // 🚀 IMPLEMENT IN-APP TOP BANNER (FOREGROUND NOTIFICATION)
       final context = rootNavigatorKey.currentContext;
