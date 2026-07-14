@@ -3,6 +3,8 @@
 
 *Được, hãy triển khai sửa code, cô lập, xác định, giải quyết gọn, không mở rộng ảnh hưởng đến các logic khác.
 
+Chưa cần code, hãy cô lập, xác định, giải quyết gọn, không mở rộng ảnh hưởng đến các logic khác. Xác định vấn đề thật sự, không ngộ nhận, ảo giác.
+
 cd /d "E:\AI Project\AI Project_AI Health Share\frontend_mobile"
 
 E:\src\flutter\bin\flutter analyze
@@ -52,7 +54,7 @@ git status
 
 git add .
 
-git commit -m "User Wellness Profile 2"
+git commit -m "Notification System Upgrade"
 
 git push origin main
 

@@ -22,6 +22,7 @@ import '../../widgets/animated_premium_like_button.dart'; // Tích hợp nút th
 import 'package:flutter/services.dart'; // 🚀 Bổ sung HapticFeedback để tạo rung vi chạm
 import 'package:visibility_detector/visibility_detector.dart'; // Giải quyết dứt điểm lỗi phát nhạc dưới nền
 import '../../../core/manager/audio_focus_manager.dart';
+import '../../widgets/ai_mascot_overlay.dart'; // 🚀 Nhúng cấu trúc lớp phủ Mascot UI biệt lập
 
 
 
@@ -278,6 +279,9 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
         allowImplicitScrolling: true, 
         itemCount: _videos.length,
         onPageChanged: (index) async {
+          // 🚀 Tự động gỡ Pop-up rớt mã nếu người dùng lướt đi (Auto-Dismiss)
+          NotificationNotifier.instance.dismissVoucherDrop();
+
           // Tính toán thời gian xem tích lũy của video vừa xem trước khi chuyển trang
           if (_videoStartTime != null) {
             final int secondsWatched = DateTime.now().difference(_videoStartTime!).inSeconds;
@@ -296,6 +300,14 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
           
           // Kích hoạt nạp trước luồng video cho các trang tiếp theo
           _preloadNextVideos(index);
+
+          // 🚀 KÍCH HOẠT VOUCHER DROP ENGINE
+          // Lấy ID tác giả video hiện tại để lọc mã chéo
+          final currentAuthorId = _videos[index].authorId.isNotEmpty 
+              ? _videos[index].authorId 
+              : (_videos[index].author['id']?.toString() ?? '');
+          
+          NotificationNotifier.instance.triggerVoucherDrop(context, currentAuthorId);
         },
         itemBuilder: (context, index) {
           final video = _videos[index];
@@ -762,6 +774,12 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                     const _MusicDiscAnimated(),
                   ],
                 ),
+              ),
+
+              // 🚀 NHÚNG MỘT DÒNG DUY NHẤT: AI Mascot đồng bộ theo chu kỳ PageView và Index video hiện tại
+              AiMascotOverlay(
+                currentVideo: video,
+                videoIndex: index,
               ),
 
               // MỚI: LỚP PHỦ TÌM KIẾM NHANH (SEARCH OVERLAY WIDGET) TÁCH BIỆT KHÔNG LIÊN QUAN ĐẾN TAB EXPLORE

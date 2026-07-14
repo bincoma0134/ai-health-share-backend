@@ -56,4 +56,40 @@ class NotificationApiService {
       return false;
     }
   }
+
+  // 🚀 VOUCHER DROP: Lưu voucher rơi vào ví
+  static Future<bool> claimVoucher(String code) async {
+    try {
+      final res = await _dio.post('/vouchers/$code/claim');
+      return res.statusCode == 200 && res.data['status'] == 'success';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // 🚀 VOUCHER DROP: Tải danh sách public voucher để lọc
+  static Future<List<dynamic>> fetchPublicVouchers() async {
+    try {
+      final res = await _dio.get('/vouchers/public');
+      if (res.statusCode == 200 && res.data['status'] == 'success') {
+        return List<dynamic>.from(res.data['data'] ?? []);
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+  
+  // 🚀 VOUCHER DROP: Tải danh sách my voucher để lọc chéo
+  static Future<List<dynamic>> fetchMyVouchers() async {
+    try {
+      final res = await _dio.get('/vouchers/me');
+      if (res.statusCode == 200 && res.data['status'] == 'success') {
+        return List<dynamic>.from(res.data['data'] ?? []);
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
 }

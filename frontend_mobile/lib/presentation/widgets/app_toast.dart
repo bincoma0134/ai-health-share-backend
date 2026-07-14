@@ -101,20 +101,20 @@ class _ToastWidgetState extends State<_ToastWidget> with SingleTickerProviderSta
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24), // Bo góc sâu viên thuốc cực kỳ sang trọng
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12), // Kính mờ Glassmorphism xuyên thấu nền
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16), // Nâng cấp độ mờ kính Glassmorphism siêu mịn
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
                   color: widget.isSuccess 
-                      ? const Color(0xFF80BF84).withOpacity(0.85) // Màu xanh SM mờ
-                      : const Color(0xFFFE2C55).withOpacity(0.85), // Màu đỏ cảnh báo mờ
+                      ? const Color(0xFF80BF84).withOpacity(0.65) // Hạ Opacity để tăng xuyên thấu ánh sáng
+                      : const Color(0xFFFE2C55).withOpacity(0.65), 
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.5),
+                  border: Border.all(color: Colors.white.withOpacity(0.15), width: 0.5), // Làm mảnh viền sáng tạo cảm giác viền kính thực tế
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
                     )
                   ],
                 ),

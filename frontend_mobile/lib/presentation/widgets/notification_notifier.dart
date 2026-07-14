@@ -1,6 +1,9 @@
 import 'dart:async'; // 🚀 Bổ sung thư viện quản lý đếm ngược
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/services/notification_api_service.dart';
 import 'dart:convert'; // Đảm bảo nạp thư viện giải mã chuỗi cục bộ
 import '../../core/router/app_router.dart'; // 🚀 Truy xuất Router để lấy Context toàn cục
@@ -93,9 +96,12 @@ class NotificationNotifier extends ChangeNotifier {
         }
       }
 
+      // Giải nén Original ID từ Backend truyền sang qua data payload
+      final originalId = message.data['notification_id'] ?? 'temp_${DateTime.now().millisecondsSinceEpoch}';
+
       // Giả lập cấu trúc bản ghi để đẩy thẳng vào RAM (Hiển thị tức thì)
       final newNotif = {
-        'id': 'temp_${DateTime.now().millisecondsSinceEpoch}',
+        'id': originalId,
         'title': message.notification?.title ?? 'Thông báo mới',
         'short_message': message.notification?.body ?? '',
         'is_read': false,
@@ -108,8 +114,8 @@ class NotificationNotifier extends ChangeNotifier {
       notifyListeners(); // Kích hoạt UI (Tăng Badge, Cập nhật List)
 
       // 🚀 GỬI ACK NGẦM: Xác nhận đã nhận thành công cho Backend
-      if (!newNotif['id'].startsWith('temp_')) {
-        NotificationApiService.sendAck(newNotif['id']);
+      if (!originalId.startsWith('temp_')) {
+        NotificationApiService.sendAck(originalId);
       }
 
       // 🚀 IMPLEMENT IN-APP TOP BANNER (FOREGROUND NOTIFICATION)
@@ -165,6 +171,240 @@ class NotificationNotifier extends ChangeNotifier {
     }
     notifyListeners();
     await NotificationApiService.markAllAsRead();
+  }
+
+  // ======================================================================
+  // 🚀 HỆ THỐNG VOUCHER DROP ENGINE (GAMIFICATION)
+  // ======================================================================
+  OverlayEntry? _voucherOverlay;
+  bool _isClaimingDrop = false;
+
+  void dismissVoucherDrop() {
+    _voucherOverlay?.remove();
+    _voucherOverlay = null;
+  }
+
+  Future<void> triggerVoucherDrop(BuildContext context, String currentAuthorId) async {
+    if (_voucherOverlay != null) return; // Đang hiển thị Pop-up thì chặn lại
+
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+
+    // 1. Quản lý Giới hạn Ngày (Daily Cap Limit = 3)
+    final lastDropDate = prefs.getString('last_voucher_drop_date') ?? '';
+    int todayDrops = prefs.getInt('voucher_drop_today_count') ?? 0;
+
+    if (lastDropDate != todayStr) {
+      todayDrops = 0; // Reset qua ngày mới
+      await prefs.setString('last_voucher_drop_date', todayStr);
+    }
+
+    if (todayDrops >= 3) return; // Chặn cứng nếu đã ăn đủ 3 mã hôm nay
+
+    // 2. Quản lý Cooldown (2 Phút)
+    final lastDropTimeStr = prefs.getString('last_voucher_drop_time');
+    if (lastDropTimeStr != null) {
+      final lastDropTime = DateTime.tryParse(lastDropTimeStr);
+      if (lastDropTime != null && now.difference(lastDropTime).inMinutes < 2) {
+        return; // Chưa đủ 2 phút
+      }
+    }
+
+    // 3. Tỷ lệ rơi mã (Entropy Drop Rate = 25%)
+    if (math.Random().nextDouble() > 0.25) return;
+
+    // 4. Lọc chéo Voucher: Tải ngầm danh sách
+    final publicVouchers = await NotificationApiService.fetchPublicVouchers();
+    if (publicVouchers.isEmpty) return;
+    final myVouchers = await NotificationApiService.fetchMyVouchers();
+
+    final availableVouchers = publicVouchers.where((v) {
+      final isUnclaimed = !myVouchers.any((myV) => myV['code'] == v['code']);
+      final isValidIssuer = v['issuer_type'] == 'ADMIN' || v['issuer_id'] == currentAuthorId;
+      return isUnclaimed && isValidIssuer;
+    }).toList();
+
+    if (availableVouchers.isEmpty) return;
+
+    // Bốc thăm
+    final randomVoucher = availableVouchers[math.Random().nextInt(availableVouchers.length)];
+
+    // Ghi nhận mốc thời gian thả rơi
+    await prefs.setString('last_voucher_drop_time', now.toIso8601String());
+    
+    // Rung Haptic phản hồi
+    HapticFeedback.heavyImpact();
+
+    // 5. Kích hoạt Overlay
+    final overlay = Overlay.of(context);
+    _voucherOverlay = OverlayEntry(
+      builder: (ctx) => _VoucherDropWidget(
+        voucher: randomVoucher,
+        onDismiss: dismissVoucherDrop,
+        onClaim: () async {
+          if (_isClaimingDrop) return;
+          _isClaimingDrop = true;
+          
+          final success = await NotificationApiService.claimVoucher(randomVoucher['code']);
+          
+          if (success) {
+            await prefs.setInt('voucher_drop_today_count', todayDrops + 1);
+            if (ctx.mounted) {
+              ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                content: Text('Đã bỏ túi thành công!'),
+                backgroundColor: Color(0xFF10B981),
+              ));
+            }
+          }
+          
+          _isClaimingDrop = false;
+          dismissVoucherDrop();
+        },
+      ),
+    );
+
+    overlay.insert(_voucherOverlay!);
+  }
+}
+
+// ==========================================
+// VOUCHER DROP OVERLAY WIDGET
+// ==========================================
+class _VoucherDropWidget extends StatefulWidget {
+  final dynamic voucher;
+  final VoidCallback onDismiss;
+  final Future<void> Function() onClaim;
+
+  const _VoucherDropWidget({required this.voucher, required this.onDismiss, required this.onClaim});
+
+  @override
+  State<_VoucherDropWidget> createState() => _VoucherDropWidgetState();
+}
+
+class _VoucherDropWidgetState extends State<_VoucherDropWidget> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  bool _isClaiming = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 400));
+    _scaleAnimation = CurvedAnimation(parent: _controller, curve: Curves.elasticOut);
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _close() {
+    _controller.reverse().then((_) => widget.onDismiss());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final v = widget.voucher;
+    final isPercentage = v['discount_type'] == 'PERCENTAGE';
+    final discountStr = isPercentage 
+        ? 'GIẢM ${v['discount_value']}%' 
+        : 'GIẢM ${(v['discount_value'] / 1000).toInt()}K';
+
+    return Stack(
+      children: [
+        // Backdrop mờ cản tương tác phía sau
+        GestureDetector(
+          onTap: _close,
+          child: Container(color: Colors.black.withOpacity(0.6)),
+        ),
+        Center(
+          child: ScaleTransition(
+            scale: _scaleAnimation,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.85,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF18181B).withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(color: Colors.white24),
+                  boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.2), blurRadius: 40)],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Align(
+                      alignment: Alignment.topRight,
+                      child: GestureDetector(
+                        onTap: _close,
+                        child: const Icon(Icons.close, color: Colors.white70, size: 24),
+                      ),
+                    ),
+                    Container(
+                      width: 80, height: 80,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(colors: [Color(0xFFFCD34D), Color(0xFFF59E0B)]),
+                        boxShadow: [BoxShadow(color: Color(0xFFF59E0B), blurRadius: 20)],
+                      ),
+                      child: const Icon(Icons.card_giftcard, color: Colors.white, size: 40),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('Bạn tìm thấy Ưu Đãi!', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 8),
+                    const Text('Một mã giảm giá bí mật vừa xuất hiện trong lúc bạn xem video.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    const SizedBox(height: 20),
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(16)),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.local_activity, color: Color(0xFFFBBF24), size: 18),
+                              const SizedBox(width: 8),
+                              Text(discountStr, style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 18, fontWeight: FontWeight.w900)),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text('Mã: ${v['code']}', style: const TextStyle(color: Colors.white54, fontSize: 10, letterSpacing: 2, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    GestureDetector(
+                      onTap: () async {
+                        if (_isClaiming) return;
+                        setState(() => _isClaiming = true);
+                        await widget.onClaim();
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFF97316)]),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Center(
+                          child: _isClaiming 
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text('BỎ TÚI NGAY', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 

@@ -36,13 +36,15 @@ class DeepLinkEngine {
     try {
       if (screen == 'partner_dashboard_booking' || screen == 'partner_dashboard') {
         targetContext.push('/partner-dashboard');
-      } else if (screen == 'calendar_payment' || screen == 'calendar') {
+      } else if (screen == 'calendar_payment' || screen == 'calendar' || screen == 'calendar_checkout_modal' || screen == 'calendar_page') {
         targetContext.push('/calendar');
       } else if (screen == 'partner_wallet') {
         // Fallback điều hướng về màn hình có chứa số dư ví
-        targetContext.push('/partner-dashboard'); 
+        targetContext.push('/wallet'); // Sửa lại trỏ thẳng trang ví theo app_router.dart
+      } else if (screen == 'moderator_dashboard') {
+        targetContext.push('/moderator-dashboard');
       } else if (eventType == 'LEGACY') {
-        // Các thông báo cũ chưa quy chuẩn, tạm thời đưa về trang chính
+        // Các thông báo cũ chưa quy chuẩn, tạm thời đưa về trang lịch
         targetContext.push('/calendar');
       }
     } catch (e) {

@@ -165,7 +165,7 @@ class NotificationService:
             cur.execute("SAVEPOINT notif_insert_sp")
             cur.execute("""
                 INSERT INTO notifications (user_id, sender_id, category, title, short_message, deep_link_payload)
-                VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+                VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s::jsonb)
                 RETURNING id
             """, (user_id, sender_id, category, title, message, json.dumps(deep_link)))
             record = cur.fetchone()

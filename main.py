@@ -1550,6 +1550,15 @@ def moderate_item(item_type: str, item_id: str, payload: dict, current_user = De
         else:
             raise HTTPException(status_code=400, detail="Loại mục kiểm duyệt không hợp lệ")
         
+        cur.execute(f"SELECT status FROM {table} WHERE id = %s", (item_id,))
+        current_item = cur.fetchone()
+        if not current_item:
+            raise HTTPException(status_code=404, detail="Không tìm thấy mục cần duyệt")
+        
+        old_status = current_item[0] if isinstance(current_item, tuple) else current_item["status"]
+        if old_status == "PENDING_DELETE" and action == "APPROVED":
+            status = "DELETED"
+        
         cur.execute(f"UPDATE {table} SET status = %s, moderation_note = %s, moderated_by = %s, updated_at = now() WHERE id = %s", 
                     (status, payload.get("note", ""), current_user.id, item_id))
                     
@@ -3177,33 +3186,25 @@ async def action_partner_affiliate(partnership_id: str, payload: schemas.Affilia
 
 
 @app.get("/creator/affiliate/partners/{partner_id}/services", tags=["Creator Affiliate"])
-async def get_partner_services_for_creator(partner_id: str, current_user = Depends(verify_user_token)):
+async def get_partner_services_for_creator(partner_id: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     """
     [Phase 2.6] Creator xem danh mục toàn bộ dịch vụ của một Partner cụ thể,
     gồm thông tin dịch vụ và tỷ lệ % hoa hồng lấy gốc trực tiếp từ bảng services.
     """
-    conn = db_pool.getconn()
+    cur = conn.cursor(cursor_Factory=RealDictCursor)
     try:
-        # Ép buộc giải phóng mọi giao dịch tồn đọng trước đó trên kết nối này để làm sạch Pool
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-            
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
         # 1. Xác thực thông tin định danh username của Partner từ id nhận được sử dụng ép kiểu UUID tường minh
-        cur.execute("SELECT id, username FROM users WHERE id = %s::uuid AND role = 'PARTNER_ADMIN'", (partner_id,))
+        cur.execute("SELECT id, username FROM users WHERE id = %s::uuid AND role = 'PARTNER_aDMIN'", (partner_id,))
         partner = cur.fetchone()
         if not partner:
             raise HTTPException(status_code=404, detail="Không tìm thấy cơ sở đối tác hợp lệ.")
             
         # 2. Truy vấn danh sách dịch vụ gốc trực tiếp từ bảng services, đảm bảo không lọc chéo sang bảng khác
         query_services = """
-            SELECT id, service_name, description, price, image_url, video_url, tags, service_type, status, created_at, affiliate_rate
+            select id, service_name, description, price, image_url, video_url, tags, service_type, status, created_at, affiliate_rate
             FROM services
             WHERE partner_id = %s::uuid AND status = 'APPROVED' AND is_deleted = false
-            ORDER BY created_at DESC;
+            ORDER BY created_at desc;
         """
         cur.execute(query_services, (partner_id,))
         services = cur.fetchall()
@@ -3212,12 +3213,12 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
         for svc in services:
             svc_id = str(svc["id"])
             
-            # Khai thác hoa hồng trực tiếp từ thuộc tính affiliate_rate gốc của dịch vụ
+            # khai thác hoa hồng trực tiếp từ thuộc tính affiliate_rate gốc của dịch vụ
             commission_rate = svc.get("affiliate_rate")
             if commission_rate is None:
                 commission_rate = 0.0
                 
-            # Xử lý an toàn dữ liệu trường tags tránh lỗi parse chuỗi JSON thô từ CSV/DB
+            # xử lý an toàn dữ liệu trường tags tránh lỗi parse chuỗi json thô từ csv/db
             raw_tags = svc.get("tags")
             processed_tags = []
             if raw_tags:
@@ -3227,14 +3228,14 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
                     try:
                         import json
                         processed_tags = json.loads(raw_tags)
-                    except Exception:
+                    except exception:
                         processed_tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
             
             result.append({
                 "id": svc_id,
                 "service_name": svc["service_name"],
                 "description": svc["description"],
-                "price": float(svc["price"]) if svc["price"] is not None else 0.0,
+                "price": float(svc["price"]) if svc["price"] is not none else 0.0,
                 "image_url": svc["image_url"],
                 "video_url": svc["video_url"],
                 "tags": processed_tags,
@@ -3245,27 +3246,11 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
             
         return {"status": "success", "data": result}
     except HTTPException:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
         raise
     except Exception as e:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        try:
-            cur.close()
-        except Exception:
-            pass
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        db_pool.putconn(conn)
+        cur.close()
 
 
 @app.get("/partner/affiliate/metrics", tags=["Partner Dashboard"])
