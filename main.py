@@ -3243,7 +3243,7 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
     cur = conn.cursor(cursor_Factory=RealDictCursor)
     try:
         # 1. Xác thực thông tin định danh username của Partner từ id nhận được sử dụng ép kiểu UUID tường minh
-        cur.execute("SELECT id, username FROM users WHERE id = %s::uuid AND role = 'PARTNER_aDMIN'", (partner_id,))
+        cur.execute("SELECT id, username FROM users WHERE id = %s::uuid AND role = 'PARTNER_ADMIN'", (partner_id,))
         partner = cur.fetchone()
         if not partner:
             raise HTTPException(status_code=404, detail="Không tìm thấy cơ sở đối tác hợp lệ.")
@@ -3277,14 +3277,14 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
                     try:
                         import json
                         processed_tags = json.loads(raw_tags)
-                    except exception:
+                    except Exception:
                         processed_tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
             
             result.append({
                 "id": svc_id,
                 "service_name": svc["service_name"],
                 "description": svc["description"],
-                "price": float(svc["price"]) if svc["price"] is not none else 0.0,
+                "price": float(svc["price"]) if svc["price"] is not None else 0.0,
                 "image_url": svc["image_url"],
                 "video_url": svc["video_url"],
                 "tags": processed_tags,
@@ -3309,7 +3309,7 @@ async def get_partner_affiliate_metrics(current_user = Depends(verify_user_token
     """
     conn = db_pool.getconn()
     try:
-        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur = conn.cursor(cursor_Factory=RealDictCursor)
         query = """
             SELECT am.partnership_id, u.username as creator_username, u.full_name as creator_full_name,
                    am.total_clicks, am.total_conversions, am.total_revenue_generated, am.total_commission_earned, am.last_activity_at

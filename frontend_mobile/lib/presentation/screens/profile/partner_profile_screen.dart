@@ -1008,6 +1008,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
   void _showEditServiceModal(Map<String, dynamic> svc) {
     final nameCtrl = TextEditingController(text: svc['service_name']?.toString() ?? '');
     final priceCtrl = TextEditingController(text: svc['price']?.toString() ?? '');
+    final affiliateCtrl = TextEditingController(text: svc['affiliate_rate']?.toString() ?? '0'); // 🚀 ĐỒNG BỘ: Thêm Hoa hồng Affiliate
     
     String tagsText = '';
     if (svc['tags'] != null) {
@@ -1025,71 +1026,87 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
-          InputDecoration _inputDeco(String label) => InputDecoration(labelText: label, labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500), filled: true, fillColor: const Color(0xFFF7FBF9), contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20), border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)));
+          InputDecoration _premiumInputDeco(String label, IconData icon) => InputDecoration(labelText: label, labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500), floatingLabelStyle: const TextStyle(color: Color(0xFF48C9B0), fontSize: 13, fontWeight: FontWeight.bold), prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20), filled: true, fillColor: Colors.white, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)));
 
           return Container(
             height: MediaQuery.of(context).size.height * 0.9,
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 12),
-            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            decoration: const BoxDecoration(color: Color(0xFFF7FBF9), borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10)))),
-                const Text('Sửa Dịch Vụ', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-                const SizedBox(height: 24),
+                Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(top: 12, bottom: 16), decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10)))),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Sửa Dịch Vụ', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                      Container(decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE2ECEB))), child: IconButton(icon: const Icon(Icons.close_rounded, color: Color(0xFF617D79), size: 20), onPressed: () => Navigator.pop(context))),
+                    ],
+                  ),
+                ),
+                Container(height: 1, width: double.infinity, margin: const EdgeInsets.only(top: 16, bottom: 24), decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, const Color(0xFFE2ECEB).withOpacity(0.5), Colors.transparent]))),
                 Expanded(
                   child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TextField(controller: nameCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _inputDeco('Tên dịch vụ (Bắt buộc)')),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: nameCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _premiumInputDeco('Tên dịch vụ (Bắt buộc)', Icons.medical_services_outlined))),
                         const SizedBox(height: 16),
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _inputDeco('Giá tiền (VNĐ)'))),
+                            Expanded(child: Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _premiumInputDeco('Giá tiền (VNĐ)', Icons.monetization_on_outlined)))),
                             const SizedBox(width: 16),
-                            Expanded(child: TextField(controller: tagsCtrl, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _inputDeco('Tags (cách nhau ,)'))),
+                            Expanded(child: Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: tagsCtrl, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _premiumInputDeco('Tags (cách nhau ,)', Icons.local_offer_outlined)))),
                           ],
                         ),
                         const SizedBox(height: 16),
-                        TextField(controller: descCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _inputDeco('Mô tả chi tiết')),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: affiliateCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _premiumInputDeco('% Hoa hồng Affiliate (VD: 15)', Icons.percent_rounded))),
+                        const SizedBox(height: 16),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: descCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _premiumInputDeco('Mô tả chi tiết', Icons.description_outlined))),
                         const SizedBox(height: 32),
                       ]
                     )
                   )
                 ),
                 Container(
-                  width: double.infinity, height: 60,
-                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(100), gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2B5A53)]), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8))]),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100))),
-                    onPressed: isUploading ? null : () async {
-                      if (nameCtrl.text.isEmpty || priceCtrl.text.isEmpty) { AppToast.show(context: context, message: 'Vui lòng nhập Tên và Giá!', isSuccess: false); return; }
-                      setModalState(() => isUploading = true);
-                      
-                      final payload = {
-                        'service_name': nameCtrl.text,
-                        'description': descCtrl.text,
-                        'price': double.tryParse(priceCtrl.text) ?? 0,
-                        'tags': tagsCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-                      };
-                      
-                      final success = await PartnerApiService.updateService(svc['id'], payload);
-                      setModalState(() => isUploading = false);
-                      
-                      if (success && mounted) {
-                        Navigator.pop(context);
-                        _loadPartnerData();
-                        AppToast.show(context: context, message: 'Bản sửa đổi đã được gửi duyệt lại!', isSuccess: true);
-                      } else if (mounted) {
-                        AppToast.show(context: context, message: 'Lỗi đường truyền!', isSuccess: false);
-                      }
-                    },
-                    child: isUploading ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('LƯU THAY ĐỔI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 0.5)),
+                  padding: const EdgeInsets.only(left: 24, right: 24, bottom: 24, top: 12),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    width: double.infinity, height: 52,
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: isUploading ? const Color(0xFF2B5A53) : const Color(0xFF1A3A35), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.2), blurRadius: 16, offset: const Offset(0, 6))]),
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                      onPressed: isUploading ? null : () async {
+                        if (nameCtrl.text.isEmpty || priceCtrl.text.isEmpty) { AppToast.show(context: context, message: 'Vui lòng nhập Tên và Giá!', isSuccess: false); return; }
+                        setModalState(() => isUploading = true);
+                        
+                        final payload = {
+                          'service_name': nameCtrl.text,
+                          'description': descCtrl.text,
+                          'price': double.tryParse(priceCtrl.text) ?? 0,
+                          'affiliate_rate': double.tryParse(affiliateCtrl.text) ?? 0.0, // 🚀 ĐỒNG BỘ: Cập nhật biến số Affiliate Rate
+                          'tags': tagsCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
+                        };
+                        
+                        final success = await PartnerApiService.updateService(svc['id'], payload);
+                        setModalState(() => isUploading = false);
+                        
+                        if (success && mounted) {
+                          Navigator.pop(context);
+                          _loadPartnerData();
+                          AppToast.show(context: context, message: 'Bản sửa đổi đã được gửi duyệt lại!', isSuccess: true);
+                        } else if (mounted) {
+                          AppToast.show(context: context, message: 'Lỗi đường truyền!', isSuccess: false);
+                        }
+                      },
+                      child: isUploading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('LƯU THAY ĐỔI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 0.5)),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 24),
               ],
             ),
           );
@@ -1174,6 +1191,13 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     final titleCtrl = TextEditingController(text: vid['title']?.toString() ?? '');
     final contentCtrl = TextEditingController(text: vid['content']?.toString() ?? '');
     final priceCtrl = TextEditingController(text: vid['price']?.toString() ?? '');
+    
+    // 🚀 ĐỒNG BỘ: Trạng thái liên kết thương mại cho luồng Video
+    String? selectedServiceId = vid['service_id']?.toString();
+    String? selectedVoucherCode = vid['voucher_code']?.toString();
+    List<dynamic> partnerVouchers = [];
+    bool isFetchingVouchers = true;
+    bool hasFetched = false;
     bool isUploading = false;
 
     showModalBottomSheet(
@@ -1183,63 +1207,210 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
-          InputDecoration _inputDeco(String label) => InputDecoration(labelText: label, labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500), filled: true, fillColor: const Color(0xFFF7FBF9), contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20), border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)));
+          if (!hasFetched) {
+            hasFetched = true;
+            ApiClient.instance.get('/partner/vouchers').then((res) {
+              List<dynamic> rawVouchers = [];
+              if (res.data is Map && res.data.containsKey('data')) {
+                rawVouchers = res.data['data'] is List ? res.data['data'] : [];
+              } else if (res.data is List) {
+                rawVouchers = res.data;
+              }
+              final now = DateTime.now();
+              if (context.mounted) {
+                setModalState(() {
+                  partnerVouchers = rawVouchers.where((v) {
+                    if (v['valid_until'] == null) return false;
+                    try { return DateTime.parse(v['valid_until'].toString()).isAfter(now); } catch (_) { return false; }
+                  }).toList();
+                  isFetchingVouchers = false;
+                });
+              }
+            }).catchError((_) {
+              if (context.mounted) setModalState(() => isFetchingVouchers = false);
+            });
+          }
+          
+          InputDecoration _premiumInputDeco(String label, IconData icon) => InputDecoration(labelText: label, labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500), floatingLabelStyle: const TextStyle(color: Color(0xFF48C9B0), fontSize: 13, fontWeight: FontWeight.bold), prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20), filled: true, fillColor: Colors.white, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)));
 
           return Container(
             height: MediaQuery.of(context).size.height * 0.9,
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 12),
-            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            decoration: const BoxDecoration(color: Color(0xFFF7FBF9), borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10)))),
-                const Text('Sửa Thông Tin Video', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-                const SizedBox(height: 24),
+                Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(top: 12, bottom: 16), decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10)))),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Sửa Thông Tin Video', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                      Container(decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE2ECEB))), child: IconButton(icon: const Icon(Icons.close_rounded, color: Color(0xFF617D79), size: 20), onPressed: () => Navigator.pop(context))),
+                    ],
+                  ),
+                ),
+                Container(height: 1, width: double.infinity, margin: const EdgeInsets.only(top: 16, bottom: 24), decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, const Color(0xFFE2ECEB).withOpacity(0.5), Colors.transparent]))),
                 Expanded(
                   child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TextField(controller: titleCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _inputDeco('Tiêu đề video (Bắt buộc)')),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: titleCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _premiumInputDeco('Tiêu đề video (Bắt buộc)', Icons.title_rounded))),
                         const SizedBox(height: 16),
-                        TextField(controller: contentCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _inputDeco('Mô tả nội dung')),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: contentCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _premiumInputDeco('Mô tả nội dung', Icons.description_outlined))),
                         const SizedBox(height: 16),
-                        TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _inputDeco('Giá tham khảo đính kèm (VNĐ)')),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _premiumInputDeco('Giá tham khảo đính kèm (VNĐ)', Icons.monetization_on_outlined))),
+                        const SizedBox(height: 16),
+                        
+                        // 🚀 ĐỒNG BỘ: Tích hợp Dropdown liên kết Gói Dịch vụ
+                        Container(
+                          decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
+                          child: DropdownButtonFormField<String>(
+                            isExpanded: true, // 🚀 KHẮC PHỤC LỖI: Bật thuộc tính co giãn chiều rộng tối đa tránh tràn giao diện
+                            value: _myServices.where((s) => s['status'] == 'APPROVED').any((s) => s['id'].toString() == selectedServiceId) ? selectedServiceId : null,
+                            decoration: _premiumInputDeco('Liên kết Gói dịch vụ y khoa', Icons.medical_services_rounded),
+                            dropdownColor: Colors.white,
+                            icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
+                            items: [
+                              const DropdownMenuItem(
+                                value: null, 
+                                child: Text(
+                                  'Không liên kết dịch vụ', 
+                                  style: TextStyle(color: Color(0xFF617D79)),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                              ..._myServices.where((s) => s['status'] == 'APPROVED').map((s) {
+                                return DropdownMenuItem<String>(
+                                  value: s['id'].toString(),
+                                  child: Text(
+                                    s['service_name'] ?? 'Dịch vụ', 
+                                    style: const TextStyle(color: Color(0xFF1A3A35)),
+                                    overflow: TextOverflow.ellipsis, // 🚀 KHẮC PHỤC LỖI: Thêm hiệu ứng ba chấm (...) khi text quá dài
+                                    maxLines: 1,
+                                  ),
+                                );
+                              }).toList(),
+                            ],
+                            onChanged: (val) {
+                              setModalState(() {
+                                selectedServiceId = val;
+                                if (val != null) {
+                                  final svc = _myServices.firstWhere((s) => s['id'].toString() == val);
+                                  priceCtrl.text = svc['price']?.toString() ?? '0';
+                                }
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // 🚀 ĐỒNG BỘ: Tích hợp Voucher có chức năng check điều kiện theo DedicatedUploadScreen
+                        Container(
+                          decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
+                          child: DropdownButtonFormField<String>(
+                            isExpanded: true, // 🚀 KHẮC PHỤC LỖI: Đảm bảo dropdown Voucher cũng không bị lỗi tương tự
+                            value: partnerVouchers.any((v) => v['code'].toString() == selectedVoucherCode) ? selectedVoucherCode : null,
+                            decoration: _premiumInputDeco(isFetchingVouchers ? 'Đang tải Voucher...' : 'Đính kèm Mã ưu đãi (Voucher)', Icons.local_offer_rounded),
+                            dropdownColor: Colors.white,
+                            icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
+                            items: [
+                              const DropdownMenuItem(
+                                value: null, 
+                                child: Text(
+                                  'Không dùng Voucher', 
+                                  style: TextStyle(color: Color(0xFF617D79)),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ),
+                              ...partnerVouchers.map((v) {
+                                return DropdownMenuItem<String>(
+                                  value: v['code'].toString(),
+                                  child: Text(
+                                    v['code']?.toString() ?? 'VOUCHER', 
+                                    style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold),
+                                    overflow: TextOverflow.ellipsis, // 🚀 KHẮC PHỤC LỖI: Thêm hiệu ứng ba chấm (...) tránh tràn dòng
+                                    maxLines: 1,
+                                  ),
+                                );
+                              }).toList(),
+                            ],
+                            onChanged: (val) {
+                              if (val != null) {
+                                final v = partnerVouchers.firstWhere((element) => element['code'].toString() == val);
+                                final minOrderValue = double.tryParse(v['min_order_value']?.toString() ?? '0') ?? 0.0;
+                                final currentPrice = double.tryParse(priceCtrl.text) ?? 0.0;
+                                
+                                List<dynamic> applicableServices = [];
+                                final rawServices = v['applicable_services'];
+                                if (rawServices is List) applicableServices = rawServices;
+                                else if (rawServices is String && rawServices.isNotEmpty) {
+                                  applicableServices = rawServices.replaceAll(RegExp(r'[{}[\]]'), '').split(',').map((e) => e.trim().replaceAll('"', '').replaceAll("'", "")).where((e) => e.isNotEmpty).toList();
+                                }
+
+                                if (selectedServiceId == null && currentPrice <= 0) {
+                                  AppToast.show(context: context, message: 'Vui lòng nhập giá hoặc chọn Gói dịch vụ trước để áp dụng ưu đãi!', isSuccess: false);
+                                  return;
+                                } else if (applicableServices.isNotEmpty && selectedServiceId == null) {
+                                  AppToast.show(context: context, message: 'Voucher này chỉ áp dụng khi nhúng gói dịch vụ cụ thể!', isSuccess: false);
+                                  return;
+                                } else if (applicableServices.isNotEmpty && !applicableServices.any((id) => id.toString() == selectedServiceId)) {
+                                  AppToast.show(context: context, message: 'Voucher không áp dụng cho gói dịch vụ này!', isSuccess: false);
+                                  return;
+                                } else if (currentPrice < minOrderValue) {
+                                  AppToast.show(context: context, message: 'Chưa đạt giá trị tối thiểu!', isSuccess: false);
+                                  return;
+                                }
+                              }
+                              setModalState(() => selectedVoucherCode = val);
+                            },
+                          ),
+                        ),
                         const SizedBox(height: 32),
                       ]
                     )
                   )
                 ),
                 Container(
-                  width: double.infinity, height: 60,
-                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(100), gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2B5A53)]), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8))]),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100))),
-                    onPressed: isUploading ? null : () async {
-                      if (titleCtrl.text.isEmpty) { AppToast.show(context: context, message: 'Vui lòng nhập Tiêu đề!', isSuccess: false); return; }
-                      setModalState(() => isUploading = true);
-                      
-                      final payload = {
-                        'title': titleCtrl.text,
-                        'content': contentCtrl.text.isEmpty ? null : contentCtrl.text,
-                        'price': priceCtrl.text.isEmpty ? null : double.tryParse(priceCtrl.text),
-                      };
-                      
-                      final success = await PartnerApiService.updateVideo(vid['id'], payload);
-                      setModalState(() => isUploading = false);
-                      
-                      if (success && mounted) {
-                        Navigator.pop(context);
-                        _loadPartnerData();
-                        AppToast.show(context: context, message: 'Bản sửa đổi video đã được gửi duyệt lại!', isSuccess: true);
-                      } else if (mounted) {
-                        AppToast.show(context: context, message: 'Lỗi đường truyền!', isSuccess: false);
-                      }
-                    },
-                    child: isUploading ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('LƯU THAY ĐỔI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 0.5)),
+                  padding: const EdgeInsets.only(left: 24, right: 24, bottom: 24, top: 12),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    width: double.infinity, height: 52,
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: isUploading ? const Color(0xFF2B5A53) : const Color(0xFF1A3A35), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.2), blurRadius: 16, offset: const Offset(0, 6))]),
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                      onPressed: isUploading ? null : () async {
+                        if (titleCtrl.text.isEmpty) { AppToast.show(context: context, message: 'Vui lòng nhập Tiêu đề!', isSuccess: false); return; }
+                        setModalState(() => isUploading = true);
+                        
+                        final payload = {
+                          'title': titleCtrl.text,
+                          'content': contentCtrl.text.isEmpty ? null : contentCtrl.text,
+                          'price': priceCtrl.text.isEmpty ? null : double.tryParse(priceCtrl.text),
+                          'service_id': selectedServiceId, // 🚀 ĐỒNG BỘ: Payload Metadata Dịch vụ
+                          'voucher_code': selectedVoucherCode, // 🚀 ĐỒNG BỘ: Payload Metadata Voucher
+                        };
+                        
+                        final success = await PartnerApiService.updateVideo(vid['id'], payload);
+                        setModalState(() => isUploading = false);
+                        
+                        if (success && mounted) {
+                          Navigator.pop(context);
+                          _loadPartnerData();
+                          AppToast.show(context: context, message: 'Bản sửa đổi video đã được gửi duyệt lại!', isSuccess: true);
+                        } else if (mounted) {
+                          AppToast.show(context: context, message: 'Lỗi đường truyền!', isSuccess: false);
+                        }
+                      },
+                      child: isUploading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('LƯU THAY ĐỔI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 0.5)),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 24),
               ],
             ),
           );

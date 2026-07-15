@@ -1427,43 +1427,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                               Material(
                                 color: Colors.transparent,
                                 child: InkWell(
-                                  onTap: () {
-                                    final titleCtrl = TextEditingController(text: v['title']?.toString() ?? '');
-                                    showModalBottomSheet(
-                                      context: context,
-                                      isScrollControlled: true,
-                                      backgroundColor: Colors.transparent,
-                                      builder: (context) => Container(
-                                        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 16),
-                                        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            const Text('Sửa tiêu đề video', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 16, fontWeight: FontWeight.bold)),
-                                            const SizedBox(height: 12),
-                                            TextField(controller: titleCtrl, decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'Nhập tiêu đề mới...')),
-                                            const SizedBox(height: 16),
-                                            SizedBox(
-                                              width: double.infinity,
-                                              child: ElevatedButton(
-                                                style: ElevatedButton.styleFrom(backgroundColor: _crtPrimary),
-                                                onPressed: () async {
-                                                  final res = await ApiClient.instance.patch('/user/my-tiktok-feeds/${v['id']}', data: {'title': titleCtrl.text.trim()});
-                                                  if (res.statusCode == 200 && context.mounted) {
-                                                    Navigator.pop(context);
-                                                    _loadCreatorData();
-                                                  }
-                                                },
-                                                child: const Text('LƯU THAY ĐỔI', style: TextStyle(color: Colors.white)),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 24),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
+                                  onTap: () => _showEditVideoModal(v),
                                   child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.edit_rounded, color: Color(0xFF64748B), size: 12)),
                                 ),
                               ),
@@ -1618,6 +1582,332 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     }
 
     return const SizedBox.shrink();
+  }
+
+  void _showEditVideoModal(Map<String, dynamic> vid) {
+    final titleCtrl = TextEditingController(text: vid['title']?.toString() ?? '');
+    final contentCtrl = TextEditingController(text: vid['content']?.toString() ?? '');
+    final priceCtrl = TextEditingController(text: vid['price']?.toString() ?? '0'); // 🚀 ĐỒNG BỘ: Thêm biến điều khiển hiển thị Giá
+    
+    // 🚀 ĐỒNG BỘ: Trạng thái liên kết thương mại cho luồng Video Affiliate (Creator)
+    String? selectedPartnerId = vid['partner_id']?.toString();
+    String? selectedServiceId = vid['service_id']?.toString();
+    String? selectedVoucherCode = vid['voucher_code']?.toString();
+    
+    List<dynamic> creatorPartners = [];
+    List<dynamic> partnerServices = [];
+    List<dynamic> partnerVouchers = [];
+    
+    bool isFetchingPartners = true;
+    bool isFetchingServices = false;
+    bool isFetchingVouchers = false;
+    bool hasFetchedPartners = false;
+    bool isUploading = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          if (!hasFetchedPartners) {
+            hasFetchedPartners = true;
+            ApiClient.instance.get('/creator/affiliate/partners').then((res) {
+              if (res.statusCode == 200 && context.mounted) {
+                final List<dynamic> allPartners = res.data['data'] ?? [];
+                setModalState(() {
+                  creatorPartners = allPartners.where((p) => p['status'] == 'APPROVED').toList();
+                  isFetchingPartners = false;
+                });
+
+                // Nếu video đang sửa đã có nhúng Affiliate, tự động tải các dịch vụ/voucher tương ứng
+                if (selectedPartnerId != null) {
+                  setModalState(() => isFetchingServices = true);
+                  ApiClient.instance.get('/user/public/partner/$selectedPartnerId/services').then((sRes) {
+                    if (sRes.statusCode == 200 && context.mounted) {
+                      List<dynamic> rawServices = [];
+                      if (sRes.data is Map && sRes.data.containsKey('data')) {
+                        rawServices = sRes.data['data'] is List ? sRes.data['data'] : [];
+                      } else if (sRes.data is List) {
+                        rawServices = sRes.data;
+                      }
+                      setModalState(() {
+                        partnerServices = rawServices.where((s) => s['status'] == 'APPROVED').toList();
+                        isFetchingServices = false;
+                      });
+                    }
+                  }).catchError((_) { if (context.mounted) setModalState(() => isFetchingServices = false); });
+
+                  try {
+                    final partner = creatorPartners.firstWhere((p) => p['partner_id'].toString() == selectedPartnerId);
+                    if (partner['username'] != null) {
+                      setModalState(() => isFetchingVouchers = true);
+                      ApiClient.instance.get('/user/public/${partner['username']}').then((vRes) {
+                        if (vRes.statusCode == 200 && context.mounted) {
+                          final resBody = vRes.data as Map<String, dynamic>?;
+                          final profileData = resBody?['data'] as Map<String, dynamic>?;
+                          final now = DateTime.now();
+                          final allVouchers = profileData?['vouchers'] as List<dynamic>? ?? [];
+                          setModalState(() {
+                            partnerVouchers = allVouchers.where((v) {
+                              if (v['valid_until'] == null) return false;
+                              try { return DateTime.parse(v['valid_until'].toString()).isAfter(now); } catch (_) { return false; }
+                            }).toList();
+                            isFetchingVouchers = false;
+                          });
+                        }
+                      }).catchError((_) { if (context.mounted) setModalState(() => isFetchingVouchers = false); });
+                    }
+                  } catch (_) {}
+                }
+              }
+            }).catchError((_) {
+              if (context.mounted) setModalState(() => isFetchingPartners = false);
+            });
+          }
+          
+          InputDecoration _premiumInputDeco(String label, IconData icon) => InputDecoration(labelText: label, labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500), floatingLabelStyle: TextStyle(color: _crtPrimary, fontSize: 13, fontWeight: FontWeight.bold), prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20), filled: true, fillColor: Colors.white, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: _crtPrimary, width: 1.5)));
+
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.9,
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            decoration: const BoxDecoration(color: Color(0xFFF7FBF9), borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(top: 12, bottom: 16), decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10)))),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Sửa Thông Tin Video', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                      Container(decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE2ECEB))), child: IconButton(icon: const Icon(Icons.close_rounded, color: Color(0xFF617D79), size: 20), onPressed: () => Navigator.pop(context))),
+                    ],
+                  ),
+                ),
+                Container(height: 1, width: double.infinity, margin: const EdgeInsets.only(top: 16, bottom: 24), decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, const Color(0xFFE2ECEB).withOpacity(0.5), Colors.transparent]))),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: titleCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _premiumInputDeco('Tiêu đề video (Bắt buộc)', Icons.title_rounded))),
+                        const SizedBox(height: 16),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: contentCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _premiumInputDeco('Mô tả nội dung', Icons.description_outlined))),
+                        const SizedBox(height: 16),
+                        
+                        // 🚀 ĐỒNG BỘ: Thêm trường Giá Read-only
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: priceCtrl, enabled: false, style: const TextStyle(color: Color(0xFF617D79), fontWeight: FontWeight.bold), decoration: _premiumInputDeco('Giá tham khảo đính kèm (VNĐ)', Icons.monetization_on_outlined))),
+                        const SizedBox(height: 16),
+                        
+                        // 🚀 ĐỒNG BỘ: Tích hợp Dropdown Đối tác (Affiliate) với cấu trúc Premium chống tràn
+                        Container(
+                          decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
+                          child: DropdownButtonFormField<String>(
+                            isExpanded: true,
+                            value: creatorPartners.any((p) => p['partner_id'].toString() == selectedPartnerId) ? selectedPartnerId : null,
+                            decoration: _premiumInputDeco(isFetchingPartners ? 'Đang tải Đối tác...' : 'Chọn Cơ sở Đối tác Y tế', Icons.maps_home_work_rounded),
+                            dropdownColor: Colors.white,
+                            icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
+                            items: [
+                              const DropdownMenuItem(value: null, child: Text('Không liên kết đối tác', style: TextStyle(color: Color(0xFF617D79)), overflow: TextOverflow.ellipsis, maxLines: 1)),
+                              ...creatorPartners.map((p) {
+                                return DropdownMenuItem<String>(
+                                  value: p['partner_id'].toString(),
+                                  child: Text(p['full_name'] ?? 'Đối tác', style: const TextStyle(color: Color(0xFF1A3A35)), overflow: TextOverflow.ellipsis, maxLines: 1),
+                                );
+                              }).toList(),
+                            ],
+                            onChanged: (val) {
+                              setModalState(() {
+                                selectedPartnerId = val;
+                                selectedServiceId = null;
+                                selectedVoucherCode = null;
+                                partnerServices = [];
+                                partnerVouchers = [];
+                              });
+                              if (val != null) {
+                                setModalState(() => isFetchingServices = true);
+                                ApiClient.instance.get('/user/public/partner/$val/services').then((sRes) {
+                                  if (sRes.statusCode == 200 && context.mounted) {
+                                    List<dynamic> rawServices = [];
+                                    if (sRes.data is Map && sRes.data.containsKey('data')) {
+                                      rawServices = sRes.data['data'] is List ? sRes.data['data'] : [];
+                                    } else if (sRes.data is List) {
+                                      rawServices = sRes.data;
+                                    }
+                                    setModalState(() {
+                                      partnerServices = rawServices.where((s) => s['status'] == 'APPROVED').toList();
+                                      isFetchingServices = false;
+                                    });
+                                  }
+                                }).catchError((_) { if (context.mounted) setModalState(() => isFetchingServices = false); });
+
+                                try {
+                                  final partner = creatorPartners.firstWhere((p) => p['partner_id'].toString() == val);
+                                  if (partner['username'] != null) {
+                                    setModalState(() => isFetchingVouchers = true);
+                                    ApiClient.instance.get('/user/public/${partner['username']}').then((vRes) {
+                                      if (vRes.statusCode == 200 && context.mounted) {
+                                        final resBody = vRes.data as Map<String, dynamic>?;
+                                        final profileData = resBody?['data'] as Map<String, dynamic>?;
+                                        final now = DateTime.now();
+                                        final allVouchers = profileData?['vouchers'] as List<dynamic>? ?? [];
+                                        setModalState(() {
+                                          partnerVouchers = allVouchers.where((v) {
+                                            if (v['valid_until'] == null) return false;
+                                            try { return DateTime.parse(v['valid_until'].toString()).isAfter(now); } catch (_) { return false; }
+                                          }).toList();
+                                          isFetchingVouchers = false;
+                                        });
+                                      }
+                                    }).catchError((_) { if (context.mounted) setModalState(() => isFetchingVouchers = false); });
+                                  }
+                                } catch (_) {}
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // 🚀 ĐỒNG BỘ: Tích hợp Dropdown Dịch vụ (Affiliate)
+                        Container(
+                          decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
+                          child: DropdownButtonFormField<String>(
+                            isExpanded: true,
+                            value: partnerServices.any((s) => s['id'].toString() == selectedServiceId) ? selectedServiceId : null,
+                            decoration: _premiumInputDeco(isFetchingServices ? 'Đang tải Dịch vụ...' : 'Liên kết Gói dịch vụ y khoa', Icons.medical_services_rounded),
+                            dropdownColor: Colors.white,
+                            icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
+                            items: [
+                              const DropdownMenuItem(value: null, child: Text('Không liên kết dịch vụ', style: TextStyle(color: Color(0xFF617D79)), overflow: TextOverflow.ellipsis, maxLines: 1)),
+                              ...partnerServices.map((s) {
+                                return DropdownMenuItem<String>(
+                                  value: s['id'].toString(),
+                                  child: Text(s['service_name'] ?? 'Dịch vụ', style: const TextStyle(color: Color(0xFF1A3A35)), overflow: TextOverflow.ellipsis, maxLines: 1),
+                                );
+                              }).toList(),
+                            ],
+                            onChanged: selectedPartnerId == null ? null : (val) {
+                              setModalState(() {
+                                selectedServiceId = val;
+                                if (val != null) {
+                                  try {
+                                    final svc = partnerServices.firstWhere((s) => s['id'].toString() == val);
+                                    priceCtrl.text = svc['price']?.toString() ?? '0';
+                                  } catch (_) {}
+                                } else {
+                                  priceCtrl.text = '0';
+                                }
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // 🚀 ĐỒNG BỘ: Tích hợp Dropdown Voucher có chức năng check điều kiện theo DedicatedUploadScreen
+                        Container(
+                          decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
+                          child: DropdownButtonFormField<String>(
+                            isExpanded: true,
+                            value: partnerVouchers.any((v) => v['code'].toString() == selectedVoucherCode) ? selectedVoucherCode : null,
+                            decoration: _premiumInputDeco(isFetchingVouchers ? 'Đang tải Voucher...' : 'Đính kèm Mã ưu đãi (Voucher)', Icons.local_offer_rounded),
+                            dropdownColor: Colors.white,
+                            icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
+                            items: [
+                              const DropdownMenuItem(value: null, child: Text('Không dùng Voucher', style: TextStyle(color: Color(0xFF617D79)), overflow: TextOverflow.ellipsis, maxLines: 1)),
+                              ...partnerVouchers.map((v) {
+                                return DropdownMenuItem<String>(
+                                  value: v['code'].toString(),
+                                  child: Text(v['code']?.toString() ?? 'VOUCHER', style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis, maxLines: 1),
+                                );
+                              }).toList(),
+                            ],
+                            onChanged: selectedPartnerId == null ? null : (val) {
+                              if (val != null) {
+                                final v = partnerVouchers.firstWhere((element) => element['code'].toString() == val);
+                                final minOrderValue = double.tryParse(v['min_order_value']?.toString() ?? '0') ?? 0.0;
+                                
+                                double selectedServicePrice = 0.0;
+                                if (selectedServiceId != null) {
+                                  try {
+                                    final selectedSvc = partnerServices.firstWhere((s) => s['id'].toString() == selectedServiceId);
+                                    selectedServicePrice = double.tryParse(selectedSvc['price']?.toString() ?? '0') ?? 0.0;
+                                  } catch (_) {}
+                                }
+
+                                List<dynamic> applicableServices = [];
+                                final rawServices = v['applicable_services'];
+                                if (rawServices is List) applicableServices = rawServices;
+                                else if (rawServices is String && rawServices.isNotEmpty) {
+                                  applicableServices = rawServices.replaceAll(RegExp(r'[{}[\]]'), '').split(',').map((e) => e.trim().replaceAll('"', '').replaceAll("'", "")).where((e) => e.isNotEmpty).toList();
+                                }
+
+                                if (selectedServiceId == null) {
+                                  AppToast.show(context: context, message: 'Vui lòng chọn Gói dịch vụ y khoa trước để áp dụng ưu đãi!', isSuccess: false);
+                                  return;
+                                } else if (applicableServices.isNotEmpty && !applicableServices.any((id) => id.toString() == selectedServiceId)) {
+                                  AppToast.show(context: context, message: 'Voucher không áp dụng cho gói dịch vụ này!', isSuccess: false);
+                                  return;
+                                } else if (selectedServicePrice < minOrderValue) {
+                                  AppToast.show(context: context, message: 'Chưa đạt giá trị tối thiểu!', isSuccess: false);
+                                  return;
+                                }
+                              }
+                              setModalState(() => selectedVoucherCode = val);
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                      ]
+                    )
+                  )
+                ),
+                Container(
+                  padding: const EdgeInsets.only(left: 24, right: 24, bottom: 24, top: 12),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    width: double.infinity, height: 52,
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: isUploading ? _crtSecondary : _crtPrimary, boxShadow: [BoxShadow(color: _crtPrimary.withOpacity(0.3), blurRadius: 16, offset: const Offset(0, 6))]),
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                      onPressed: isUploading ? null : () async {
+                        if (titleCtrl.text.isEmpty) { AppToast.show(context: context, message: 'Vui lòng nhập Tiêu đề!', isSuccess: false); return; }
+                        setModalState(() => isUploading = true);
+                        
+                        final payload = {
+                          'title': titleCtrl.text,
+                          'content': contentCtrl.text.isEmpty ? null : contentCtrl.text,
+                          'price': priceCtrl.text.isEmpty ? null : double.tryParse(priceCtrl.text), // 🚀 ĐỒNG BỘ: Gắn giá trị hiện tại vào Payload
+                          'partner_id': selectedPartnerId, // 🚀 ĐỒNG BỘ: Payload Metadata Affiliate Đối tác
+                          'service_id': selectedServiceId, // 🚀 ĐỒNG BỘ: Payload Metadata Affiliate Dịch vụ
+                          'voucher_code': selectedVoucherCode, // 🚀 ĐỒNG BỘ: Payload Metadata Voucher
+                        };
+                        
+                        final res = await ApiClient.instance.patch('/user/my-tiktok-feeds/${vid['id']}', data: payload);
+                        setModalState(() => isUploading = false);
+                        
+                        if (res.statusCode == 200 && mounted) {
+                          Navigator.pop(context);
+                          _loadCreatorData();
+                          AppToast.show(context: context, message: 'Bản sửa đổi video đã được lưu thành công!', isSuccess: true);
+                        } else if (mounted) {
+                          AppToast.show(context: context, message: 'Lỗi đường truyền!', isSuccess: false);
+                        }
+                      },
+                      child: isUploading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('LƯU THAY ĐỔI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 0.5)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+      )
+    );
   }
 
   Widget _buildEmptyBox(IconData icon, String message) {
