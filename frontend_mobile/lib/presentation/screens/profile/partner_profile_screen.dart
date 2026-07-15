@@ -1962,9 +1962,11 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                       // Thumbnail nền dịch vụ
                       Container(
                         color: const Color(0xFFF7FBF9),
-                        child: svc['image_url'] != null 
-                            ? GlobalCacheImage(imageUrl: svc['image_url'], fit: BoxFit.cover)
-                            : const Center(child: Icon(Icons.spa_outlined, color: Color(0xFFB0C4C1), size: 28)),
+                        child: svc['video_url'] != null && svc['video_url'].toString().trim().isNotEmpty
+                            ? MiniVideoPlayer(videoUrl: svc['video_url'], isMuted: true)
+                            : svc['image_url'] != null 
+                                ? GlobalCacheImage(imageUrl: svc['image_url'], fit: BoxFit.cover)
+                                : const Center(child: Icon(Icons.spa_outlined, color: Color(0xFFB0C4C1), size: 28)),
                       ),
                       
                       // Cụm action buttons lơ lửng góc trên bên phải (Tinh chỉnh layer)

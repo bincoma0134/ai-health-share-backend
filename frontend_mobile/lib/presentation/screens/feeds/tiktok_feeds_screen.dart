@@ -66,6 +66,9 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
   String _searchQuery = '';
   late final PageController _pageController;
 
+  // 🚀 TẠO BỘ PHÁT TÍN HIỆU CÔ LẬP: Bắn tín hiệu Hard Pause xuống video đang chạy
+  final ValueNotifier<bool> _hardPauseNotifier = ValueNotifier<bool>(false);
+
   @override
   void initState() {
     super.initState();
@@ -251,8 +254,8 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
   }
 
   @override
-  @override
   void dispose() {
+    _hardPauseNotifier.dispose();
     // 🚀 ĐỒNG BỘ HÓA GIẢI PHÓNG: Tránh rò rỉ tài nguyên bằng cách ngắt trực tiếp tiêu điểm qua Trọng tài tập trung
     try {
       AudioFocusManager.instance.requestMode(AppAudioMode.mutedAll);
@@ -267,9 +270,20 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
     if (_isLoading) return const Scaffold(backgroundColor: Color(0xFFFAFAFA), body: Center(child: CircularProgressIndicator(color: Color(0xFF80BF84))));
     if (_videos.isEmpty) return const Scaffold(backgroundColor: Color(0xFFFAFAFA), body: Center(child: Text('Không có video nào', style: TextStyle(color: Colors.black87))));
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
-      body: PageView.builder(
+    return VisibilityDetector(
+      key: const Key('tiktok_feeds_global_visibility'),
+      onVisibilityChanged: (info) {
+        // 🚀 KHI RỜI TAB: Tỷ lệ hiển thị toàn khung hình Scaffold về 0 -> Bắn tín hiệu Hard Pause
+        if (info.visibleFraction == 0.0) {
+          _hardPauseNotifier.value = true;
+        } else if (info.visibleFraction > 0.0) {
+          // Reset tín hiệu (Không ảnh hưởng đến trạng thái đã khóa cứng của video con)
+          _hardPauseNotifier.value = false;
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFFAFAFA),
+        body: PageView.builder(
         key: const PageStorageKey<String>('feed_video_position'), // 🚀 THUẬT TOÁN FEED POSITION ENGINE: Lưu giữ vị trí video hiện tại
         controller: _pageController, // Gán bộ điều khiển để hỗ trợ dịch chuyển index video khi chọn kết quả tìm kiếm
         scrollDirection: Axis.vertical,
@@ -339,6 +353,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                   isActive: index == _currentIndex,
                   videoIndex: index,            // Truyền vị trí để tính toán khoảng cách
                   currentIndex: _currentIndex,  // Truyền vị trí đang xem để so sánh
+                  hardPauseTrigger: _hardPauseNotifier, // 🚀 TRUYỀN TÍN HIỆU CÔ LẬP
                   onDoubleTap: () {
                     // Chuẩn TikTok: Double Tap chỉ để thả tim (Like), nếu đã tim rồi thì không thu hồi (Unlike)
                     if (!video.isLiked) {
@@ -899,8 +914,9 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
           );
         },
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildInteractButton(IconData icon, String text, VoidCallback onTap, {Color color = Colors.white}) {
     return GestureDetector(

@@ -396,9 +396,19 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
   }
 
   Future<void> _pickVideoFromGallery() async {
-    if (_isLockingAction) return; // Khóa ngay lập tức nếu tiến trình cũ chưa đóng
+    if (_isLockingAction) return; 
     
     setState(() => _isLockingAction = true);
+
+    AppToast.show(
+      context: context, 
+      message: "Đang mở thư viện. Vui lòng không chọn file > 500MB để tránh ứng dụng bị đơ cứng...", 
+      isSuccess: true
+    );
+
+    // BỌC THÉP UX: Thêm nhịp nghỉ 300ms để Main Thread kịp vẽ Toast lên màn hình 
+    // trước khi bị OS chiếm luồng mở Gallery
+    await Future.delayed(const Duration(milliseconds: 300));
 
     Permission statusPermission = Permission.videos;
     PermissionStatus status = await statusPermission.status;
@@ -409,24 +419,52 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
 
     if (status.isGranted) {
       try {
+        final Stopwatch perfLog = Stopwatch()..start();
+        debugPrint("[PERF_LOG] Bắt đầu gọi ImagePicker...");
+
         final ImagePicker picker = ImagePicker();
         final XFile? video = await picker.pickVideo(source: ImageSource.gallery);
 
-        if (video != null) {
-          // 🚀 KHẮC PHỤC TRIỆT ĐỂ: Đồng bộ cơ chế phân tích tĩnh siêu tốc qua VideoCompress
-          final MediaInfo mediaInfoData = await VideoCompress.getMediaInfo(video.path);
-          final double durationInSeconds = (mediaInfoData.duration ?? 0) / 1000;
-          final double fileSizeInMB = (mediaInfoData.filesize ?? File(video.path).lengthSync()) / (1024 * 1024);
+        debugPrint("[PERF_LOG] 1. ImagePicker hoàn tất I/O sau: ${perfLog.elapsedMilliseconds}ms");
 
-          if (durationInSeconds > 180 || fileSizeInMB > 500) {
+        if (video != null) {
+          final File videoFile = File(video.path);
+          final double fileSizeInMB = videoFile.lengthSync() / (1024 * 1024);
+
+          debugPrint("[PERF_LOG] 2. Quét File.lengthSync() sau: ${perfLog.elapsedMilliseconds}ms (Kích thước: ${fileSizeInMB.toStringAsFixed(2)}MB)");
+
+          if (fileSizeInMB > 500) {
             setState(() => _isLockingAction = false);
             if (!mounted) return;
             AppToast.show(
-              context: context, 
-              message: durationInSeconds > 180 
-                ? "Từ chối: Video dài ${durationInSeconds.toInt()} giây (Vượt giới hạn 3 phút)!" 
-                : "Từ chối: Dung lượng file đạt ${fileSizeInMB.toInt()}MB (Vượt giới hạn 500MB)!", 
-              isSuccess: false
+              context: context,
+              message: "Từ chối: Dung lượng file đạt ${fileSizeInMB.toInt()}MB (Vượt giới hạn 500MB)!",
+              isSuccess: false,
+            );
+            return;
+          }
+
+          final VideoPlayerController durationController = VideoPlayerController.file(videoFile);
+          double durationInSeconds = 0;
+          try {
+            await durationController.initialize();
+            durationInSeconds = durationController.value.duration.inSeconds.toDouble();
+          } catch (e) {
+            debugPrint("Lỗi đọc thời lượng qua VideoPlayerController: $e");
+          } finally {
+            await durationController.dispose();
+          }
+
+          debugPrint("[PERF_LOG] 3. Native Decode initialize() sau: ${perfLog.elapsedMilliseconds}ms (Thời lượng: $durationInSeconds giây)");
+          perfLog.stop();
+
+          if (durationInSeconds > 180) {
+            setState(() => _isLockingAction = false);
+            if (!mounted) return;
+            AppToast.show(
+              context: context,
+              message: "Từ chối: Video dài ${durationInSeconds.toInt()} giây (Vượt giới hạn 3 phút)!",
+              isSuccess: false,
             );
             return;
           }
@@ -438,19 +476,21 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
             _localVideoOriginalPath = video.path;
             _uploadedVideoUrl = video.path;
             _currentMode = "UPLOAD";
-            _isLockingAction = false; // Mở khóa ngay lập tức cho phép đổi file hoặc gỡ file
-            // Reset biên trượt về trạng thái nguyên bản của tệp mới
+            _isLockingAction = false;
             _trimStartPercent = 0.0;
             _trimEndPercent = 1.0;
           });
+        } else {
+          setState(() => _isLockingAction = false);
         }
       } catch (e) {
+        setState(() => _isLockingAction = false);
         if (mounted) {
           AppToast.show(context: context, message: "Lỗi kết nối bộ đọc tệp hệ thống!", isSuccess: false);
         }
       }
     } else if (status.isPermanentlyDenied) {
-      // 4. Trường hợp người dùng tích chọn "Không bao giờ hỏi lại", điều hướng họ vào cài đặt ứng dụng
+      setState(() => _isLockingAction = false);
       if (!mounted) return;
       showDialog(
         context: context,
@@ -466,7 +506,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
             TextButton(
               onPressed: () {
                 Navigator.pop(ctx);
-                openAppSettings(); // Mở trang Settings hệ thống của ứng dụng này
+                openAppSettings(); 
               },
               child: const Text("Đi đến Cài đặt", style: TextStyle(color: Color(0xFF80BF84), fontWeight: FontWeight.bold)),
             ),
@@ -474,6 +514,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
         ),
       );
     } else {
+      setState(() => _isLockingAction = false);
       if (mounted) {
         AppToast.show(context: context, message: "Quyền truy cập thư viện bị từ chối!", isSuccess: false);
       }
@@ -583,25 +624,50 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
           }
         }
 
-        // 4. Create Feed Post
-        final Map<String, dynamic> payload = {
-          'title': title,
-          'content': content.isEmpty ? null : content,
-          'price': price,
-          'video_url': uploadedUrl,
-          'affiliate_rate': affiliateRate,
-          'partner_id': partnerId,
-          'service_id': targetedServiceId,
-          'voucher_code': voucherCode,
-          'feed_type': feedType,
-          'trim_start_percent': trimStart,
-          'trim_end_percent': trimEnd,
-        };
+        // 🚀 ISOLATED FIX: Khử trùng lặp API. Đối tác đăng video dịch vụ sẽ được Backend lo việc đồng bộ (Atom Sync Flow)
+        bool shouldCreateFeed = true;
+        if ((currentUserRole == "PARTNER_ADMIN" || currentUserRole == "PARTNER") && partnerMode == "SERVICE_VIDEO") {
+          shouldCreateFeed = false;
+          
+          // Fallback cập nhật video cho Dịch vụ có sẵn nếu Đối tác chọn nhúng thay vì tạo mới
+          if (targetedServiceId != null) {
+            try {
+              await ApiClient.instance.patch('/partner/my-services/$targetedServiceId', data: {
+                'video_url': uploadedUrl,
+                'status': 'PENDING'
+              });
+            } catch (e) {
+              debugPrint("Service update fallback alert: $e");
+            }
+          }
+        }
 
-        final res = await ApiClient.instance.post('/tiktok/feeds', data: payload);
-        if (res.statusCode == 200) {
+        if (shouldCreateFeed) {
+          // 4. Create Feed Post (Dành cho TIKTOK_FEED hoặc CREATOR/USER thông thường)
+          final Map<String, dynamic> payload = {
+            'title': title,
+            'content': content.isEmpty ? null : content,
+            'price': price,
+            'video_url': uploadedUrl,
+            'affiliate_rate': affiliateRate,
+            'partner_id': partnerId,
+            'service_id': targetedServiceId,
+            'voucher_code': voucherCode,
+            'feed_type': feedType,
+            'trim_start_percent': trimStart,
+            'trim_end_percent': trimEnd,
+          };
+
+          final res = await ApiClient.instance.post('/tiktok/feeds', data: payload);
+          if (res.statusCode == 200) {
+            if (navigator.context.mounted) {
+              AppToast.show(context: navigator.context, message: "Đăng tải video hoàn tất, đang chờ duyệt!", isSuccess: true);
+            }
+          }
+        } else {
+          // Thông báo thành công cho luồng Service Video đã được tối ưu
           if (navigator.context.mounted) {
-            AppToast.show(context: navigator.context, message: "Đăng tải video hoàn tất, đang chờ duyệt!", isSuccess: true);
+            AppToast.show(context: navigator.context, message: "Video dịch vụ đã lưu thành công, đang chờ kiểm duyệt!", isSuccess: true);
           }
         }
       } catch (e) {
@@ -719,6 +785,25 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                                   fontWeight: FontWeight.w400,
                                 ),
                                 textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 16),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF80BF84).withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.3)),
+                                ),
+                                child: const Text(
+                                  "Lưu ý: Chỉ chọn video < 3 phút & < 500MB.\n(File quá lớn hệ điều hành sẽ tốn rất nhiều thời gian xử lý)",
+                                  style: TextStyle(
+                                    color: Color(0xFF1A3A35),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.4,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
                             ],
                           ),

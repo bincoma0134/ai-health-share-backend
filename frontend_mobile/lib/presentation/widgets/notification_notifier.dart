@@ -8,6 +8,7 @@ import '../../data/services/notification_api_service.dart';
 import 'dart:convert'; // Đảm bảo nạp thư viện giải mã chuỗi cục bộ
 import '../../core/router/app_router.dart'; // 🚀 Truy xuất Router để lấy Context toàn cục
 import '../../core/router/deep_link_engine.dart'; // 🚀 Động cơ điều hướng khi chạm vào Popup
+import '../../presentation/widgets/app_toast.dart'; // 🚀 Đồng bộ giao diện thông báo hệ thống
 
 
 class NotificationNotifier extends ChangeNotifier {
@@ -251,10 +252,11 @@ class NotificationNotifier extends ChangeNotifier {
           if (success) {
             await prefs.setInt('voucher_drop_today_count', todayDrops + 1);
             if (ctx.mounted) {
-              ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
-                content: Text('Đã bỏ túi thành công!'),
-                backgroundColor: Color(0xFF10B981),
-              ));
+              AppToast.show(
+                context: ctx,
+                message: "Đã bỏ túi Voucher thành công!",
+                isSuccess: true,
+              );
             }
           }
           

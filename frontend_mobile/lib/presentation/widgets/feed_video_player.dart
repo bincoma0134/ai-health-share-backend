@@ -65,6 +65,7 @@ class FeedVideoPlayer extends StatefulWidget {
   final VoidCallback? onDoubleTap; 
   final int videoIndex;   // MỚI: Vị trí của video này trong danh sách
   final int currentIndex; // MỚI: Vị trí video người dùng đang thực sự xem
+  final ValueNotifier<bool>? hardPauseTrigger; // 🚀 CỔNG TÍN HIỆU CÔ LẬP: Lắng nghe lệnh Hard Pause từ Tab cha
 
   const FeedVideoPlayer({
     super.key, 
@@ -73,6 +74,7 @@ class FeedVideoPlayer extends StatefulWidget {
     this.onDoubleTap,
     required this.videoIndex,
     required this.currentIndex,
+    this.hardPauseTrigger,
   });
 
   @override
@@ -112,11 +114,23 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
     }
   }
 
+  void _onHardPauseTriggered() {
+    if (widget.hardPauseTrigger?.value == true && _isInitialized && _controller != null) {
+      setState(() {
+        _controller!.pause();
+        _isUserPaused = true; // 🚀 KHÓA CỨNG: Ép trạng thái dừng vật lý y hệt chạm tay, cấm Auto-resume
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     
+    // Đăng ký lắng nghe tín hiệu rời Tab
+    widget.hardPauseTrigger?.addListener(_onHardPauseTriggered);
+
     // 🚀 TÍCH HỢP KIẾN TRÚC ĐẲNG CẤP: Lắng nghe trọng tài âm thanh tập trung
     AudioFocusManager.instance.addListener(_onAudioFocusChanged);
 
@@ -208,6 +222,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
 
   @override
   void dispose() {
+    widget.hardPauseTrigger?.removeListener(_onHardPauseTriggered);
     WidgetsBinding.instance.removeObserver(this);
     _controller?.removeListener(_videoListener);
     
