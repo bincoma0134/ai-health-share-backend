@@ -1451,7 +1451,7 @@ def chat_with_llama(payload: schemas.AIChatRequest, current_user = Depends(verif
         
         chat_completion = groq_client.chat.completions.create(
             messages=messages, 
-            model="qwen3-32b", 
+            model="qwen/qwen3-32b", 
             temperature=0.6, 
             max_tokens=1024
         )
