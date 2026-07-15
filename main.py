@@ -1091,7 +1091,8 @@ def complete_booking_escrow(booking_id: str, current_user = Depends(verify_user_
 def create_withdrawal_request(payload: schemas.WithdrawalRequest, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        cur.execute("SELECT balance FROM wallets WHERE user_id = %s", (current_user.id,))
+        # 🚀 BỌC THÉP SỐ DƯ (Lỗ hổng 1): Ép hệ thống sử dụng cơ chế Row-level locking gác cổng chống rút âm tiền khi spam request liên tục
+        cur.execute("SELECT balance FROM wallets WHERE user_id = %s for update", (current_user.id,))
         wlt = cur.fetchone()
         if not wlt or float(wlt["balance"]) < payload.amount: raise HTTPException(status_code=400, detail="Số dư không đủ!")
         if payload.amount < 50000: raise HTTPException(status_code=400, detail="Tối thiểu 50k")
@@ -1319,22 +1320,9 @@ def ai_support_chat(payload: schemas.AISupportChatRequest, current_user = Depend
 
         sys_prompt += "\nQUY TẮC PHẢN HỒI:\n1. Trả lời ngắn gọn, thân thiện, xưng hô phù hợp với khách hàng.\n2. Dùng Markdown. KHÔNG bịa đặt giá hoặc dịch vụ ngoài danh sách.\n3. Luôn khéo léo gợi ý khách hàng thực hiện Đặt lịch hẹn qua ứng dụng dựa trên nhu cầu của họ.\n4. Nếu khách hàng hỏi về vấn đề Đặt lịch, luôn nhắc họ có thể đặt lịch trực tiếp qua app VN Share - app của chúng ta.\n5. Nếu khách hàng hỏi bất kỳ vấn đề thực tế, điều kiện của cơ sở đều phải điều hướng khách hàng gọi cho số điện thoại của cơ sở, không được tùy ý trả lời"
 
-        # 4. Sliding Window (Giới hạn bộ nhớ 5 lượt hội thoại = 10 records)
-        cur.execute("""
-            SELECT sender_role, message_content 
-            FROM ai_support_chat_history 
-            WHERE conversation_id = %s 
-            ORDER BY created_at DESC 
-            LIMIT 10
-        """, (conv_id,))
-        recent_history = cur.fetchall()
-        recent_history.reverse() # Đảo ngược để đưa về trục thời gian tuyến tính
-
+        # 4. Sliding Window (ĐÃ TRIỆT TIÊU: Loại bỏ nạp lịch sử cũ để tiết kiệm 90% Input Token)
+        # Hệ thống chỉ nạp System Prompt và câu hỏi hiện tại (Zero-shot context)
         messages = [{"role": "system", "content": sys_prompt}]
-        for msg in recent_history:
-            r = "assistant" if msg['sender_role'] == "AI" else "user"
-            messages.append({"role": r, "content": msg['message_content']})
-        
         messages.append({"role": "user", "content": payload.message})
 
         # 5. Truyền sang LLM 70B của Groq
@@ -1455,12 +1443,15 @@ def chat_with_llama(payload: schemas.AIChatRequest, current_user = Depends(verif
 
         # 2. Xử lý Logic AI LLM (Groq)
         messages = [{"role": "system", "content": "Bạn là Trợ lý AI Health. Dùng Markdown. Trả lời trực tiếp, rõ ràng."}]
-        for msg in payload.messages:
-            messages.append({"role": "assistant" if msg.role == "bot" else "user", "content": msg.content})
+        
+        # 🚀 BỌC THÉP TOKEN: Chỉ trích xuất duy nhất câu hỏi cuối cùng của mảng gửi lên (Phá vỡ vòng lặp nạp Context rác)
+        if payload.messages:
+            last_msg = payload.messages[-1]
+            messages.append({"role": "user", "content": last_msg.content})
         
         chat_completion = groq_client.chat.completions.create(
             messages=messages, 
-            model="llama-3.1-8b-instant", 
+            model="qwen3-32b", 
             temperature=0.6, 
             max_tokens=1024
         )
@@ -1670,7 +1661,8 @@ def create_creator_withdrawal_request(payload: schemas.WithdrawalRequest, curren
         
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        cur.execute("SELECT balance FROM wallets WHERE user_id = %s", (current_user.id,))
+        # 🚀 BỌC THÉP SỐ DƯ (Lỗ hổng 1): Ép hệ thống sử dụng cơ chế Row-level locking gác cổng cho ví Creator chống Double-Withdrawal
+        cur.execute("SELECT balance FROM wallets WHERE user_id = %s for update", (current_user.id,))
         wlt = cur.fetchone()
         if not wlt or float(wlt["balance"]) < payload.amount: 
             raise HTTPException(status_code=400, detail="Số dư tài khoản không đủ để thực hiện giao dịch!")
@@ -1992,14 +1984,20 @@ def get_withdrawals(current_user = Depends(verify_user_token), conn=Depends(get_
 def process_withdrawal(w_id: str, payload: schemas.WithdrawalUpdate, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        cur.execute("SELECT * FROM withdrawal_requests WHERE id = %s", (w_id,))
+        # 🚀 BỌC THÉP KIỂM DUYỆT (Lỗ hổng 2): Khóa cấp dòng đơn rút tiền ngăn chặn xung đột xử lý song song từ Dashboard Admin
+        cur.execute("SELECT * FROM withdrawal_requests WHERE id = %s FOR UPDATE", (w_id,))
         req = cur.fetchone()
         if not req: raise HTTPException(status_code=404, detail="Không tìm thấy")
+        
+        # Ngăn chặn xử lý nếu đơn không còn ở trạng thái PENDING
+        if req["status"] != "PENDING":
+            raise HTTPException(status_code=400, detail="Hồ sơ rút tiền này đã được kiểm duyệt xử lý trước đó!")
 
-        if payload.status == "REJECTED" and req["status"] == "PENDING":
+        if payload.status == "REJECTED":
             cur.execute("UPDATE wallets SET balance = balance + %s WHERE user_id = %s", (req["amount"], req["user_id"]))
 
-        cur.execute("UPDATE withdrawal_requests SET status = %s, admin_note = %s, processed_by = %s, updated_at = now() WHERE id = %s",
+        # Chốt chặn tối thượng: Chỉ cho phép cập nhật ghi đè trạng thái nếu bản ghi thô hiện tại trong DB là PENDING
+        cur.execute("UPDATE withdrawal_requests SET status = %s, admin_note = %s, processed_by = %s, updated_at = now() WHERE id = %s AND status = 'PENDING'",
                     (payload.status, payload.admin_note or "", current_user.id, w_id))
         
         from notification_service import NotificationService
@@ -2528,7 +2526,8 @@ def confirm_appointment(appointment_id: str, payload: schemas.AppointmentConfirm
         booking_id = appt.get("booking_id")
         partner_rev = 0
         if booking_id:
-            cur.execute("SELECT * FROM bookings_transactions WHERE id = %s", (booking_id,))
+            # 🚀 BỌC THÉP ESCROW (Lỗ hổng 2): Khóa dòng hóa đơn chống Double-spending do click liên tục
+            cur.execute("SELECT * FROM bookings_transactions WHERE id = %s FOR UPDATE", (booking_id,))
             booking = cur.fetchone()
             if booking and booking["payment_status"] == "PAID" and booking["service_status"] != "COMPLETED":
                 original_total = float(booking["total_amount"])
@@ -2604,15 +2603,18 @@ def cancel_appointment(appointment_id: str, current_user = Depends(verify_user_t
         cur.execute("SELECT * FROM appointments WHERE id = %s", (appointment_id,))
         appt = cur.fetchone()
         if appt["user_id"] != current_user.id: raise HTTPException(status_code=403, detail="Cấm!")
-        if appt["status"] not in ["WAITING_PARTNER", "PENDING_PAYMENT"]: raise HTTPException(status_code=400, detail="Không thể hủy!")
+        
+        # 🚀 BỌC THÉP HỦY LỊCH LỆCH LUỒNG (Lỗ hổng 3): Chỉ cho phép hủy khi đối tác chưa sinh link PayOS
+        # Ngăn chặn trường hợp khách bấm hủy trên App nhưng link PayOS vẫn treo và quét mã chuyển tiền
+        if appt["status"] not in ["WAITING_PARTNER"]: 
+            if appt["status"] == "PENDING_PAYMENT":
+                raise HTTPException(status_code=400, detail="Lịch hẹn đã lên cổng thanh toán. Hệ thống sẽ tự động hủy nếu bạn không nộp tiền sau 2 tiếng.")
+            raise HTTPException(status_code=400, detail="Không thể hủy lịch ở trạng thái này!")
 
         if appt.get("applied_user_voucher_id"):
             if appt["status"] == "WAITING_PARTNER":
                 # Cơ sở chưa xác nhận -> Hoàn lại Voucher
                 cur.execute("UPDATE user_vouchers SET status = 'UNUSED', locked_until = NULL WHERE id = %s", (appt["applied_user_voucher_id"],))
-            elif appt["status"] == "PENDING_PAYMENT":
-                # Cơ sở đã xác nhận mà khách hủy -> Phạt mất Voucher
-                cur.execute("UPDATE user_vouchers SET status = 'USED' WHERE id = %s", (appt["applied_user_voucher_id"],))
 
         cur.execute("UPDATE appointments SET status = 'CANCELLED', rejection_reason = 'Người dùng tự hủy' WHERE id = %s", (appointment_id,))
         from notification_service import NotificationService

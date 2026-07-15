@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart'; // Bổ sung thư viện
+import 'package:rive/rive.dart';
 import 'core/router/app_router.dart';
 import 'presentation/widgets/auth_guard.dart';
 import 'core/network/global_cache_engine.dart'; // Nạp Engine để xả RAM toàn cục

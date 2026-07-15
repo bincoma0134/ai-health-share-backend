@@ -9,7 +9,7 @@ import '../../../data/services/notification_api_service.dart';
 import 'booking_bottom_sheet.dart';
 import 'auth_guard.dart'; // 🚀 Nhúng hệ thống định danh Auth
 import '../screens/ai/partner_ai_chat_screen.dart'; // 🚀 Động cơ định tuyến sang luồng Chat AI Cơ sở
-import 'package:rive/rive.dart'; // 🚀 Nhúng engine hoạt họa Mascot Aldo
+import 'package:rive/rive.dart' hide Animation; // 🚀 Rive namespace protection
 
 class AiMascotOverlay extends StatefulWidget {
   final VideoModel currentVideo;
@@ -45,19 +45,93 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
   late AnimationController _animationController;
   late Animation<double> _bounceAnimation;
 
-  // 🚀 BỘ ĐIỀU KHIỂN TRẠNG THÁI RIVE MASCOT ALDO ĐỈNH CAO
-  StateMachineController? _riveController;
-  SMITrigger? _trgHello;
-  SMITrigger? _trgHow;
-  SMITrigger? _trgLetsDoIt;
-  SMITrigger? _trgNoText;
-  SMITrigger? _trgThink;
-  SMITrigger? _trgHappy;
-  SMITrigger? _trgSad;
-  SMITrigger? _trgClick;
-  SMITrigger? _trgNoClick;
-  SMITrigger? _trgFollowOff;
-  SMITrigger? _trgFollowOn;
+  // 🚀 BỘ ĐIỀU KHIỂN TRẠNG THÁI RIVE MASCOT ALDO (Rive 0.14+)
+  File? _riveFile;
+  RiveWidgetController? _riveController;
+
+  void _fireMascotState(String stateName) {
+    final sm = _riveController?.stateMachine;
+    if (sm == null) return;
+
+    // 🚀 TÌM KIẾM INPUT THÔNG MINH KHÔNG PHÂN BIỆT CHỮ HOA CHỮ THƯỜNG
+    dynamic findInput(String name) {
+      try {
+        return sm.inputs.firstWhere(
+          (i) => i.name.toLowerCase().trim() == name.toLowerCase().trim(),
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+
+    // 🚀 BỘ ÁNH XẠ TRẠNG THÁI (STATE MAPPER)
+    final stateMap = <String, double>{
+      'Sleep': 0.0,
+      'Idle': 1.0,
+      'Happy': 2.0,
+      'Think': 3.0,
+      'Wink': 4.0,
+      'Sad': 5.0,
+      'No': 6.0,
+      'Upset': 7.0,
+      'Mail': 8.0,
+    };
+
+    if (stateMap.containsKey(stateName)) {
+      final stateInput = findInput('State');
+      if (stateInput != null) {
+        // Sử dụng dynamic setter để ép kiểu tự động bỏ qua rào cản Number/Enum
+        stateInput.value = stateMap[stateName]!;
+        return; 
+      }
+    }
+
+    // 🚀 XỬ LÝ TEXT, BONG BÓNG THOẠI VÀ CHUYỂN CẢNH BẰNG DUCK TYPING (DYNAMIC RUNTIME CALL)
+    final targetInput = findInput(stateName);
+    if (targetInput != null) {
+      try {
+        // 1. Nếu đối tượng expose phương thức fire() -> Kích hoạt như một Trigger
+        targetInput.fire();
+        return;
+      } catch (_) {
+        try {
+          // 2. Nếu không có fire(), thử gán value như một Boolean hoặc Number/Enum đại diện
+          targetInput.value = true;
+          return;
+        } catch (_) {
+          try {
+            targetInput.value = 1.0;
+            return;
+          } catch (_) {}
+        }
+      }
+    }
+
+    // 🚀 XỬ LÝ CÁC HẬU TỐ TẮT/BẬT ĐỘNG (Off / On)
+    if (stateName.toLowerCase().endsWith(' off')) {
+      final baseName = stateName.substring(0, stateName.length - 4);
+      final blOff = findInput(baseName);
+      if (blOff != null) {
+        try {
+          blOff.value = false;
+          return;
+        } catch (_) {}
+      }
+    }
+    if (stateName.toLowerCase().endsWith(' on')) {
+      final baseName = stateName.substring(0, stateName.length - 3);
+      final blOn = findInput(baseName);
+      if (blOn != null) {
+        try {
+          blOn.value = true;
+          return;
+        } catch (_) {}
+      }
+    }
+
+    // 4. Safe Ignore
+    debugPrint("Rive State Warning: Cannot map '$stateName' to any State Number, Trigger, or Bool. Ignored safely.");
+  }
 
   // 🚀 Tọa độ kéo thả hít biên (Mặc định ở Top-Left dưới nút Back)
   double _dx = 16.0;
@@ -78,6 +152,7 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
 
+    _loadRiveMascot();
     _initMascotState();
   }
 
@@ -95,34 +170,45 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
     _periodicCareTimer?.cancel();
     _animationController.dispose();
     _riveController?.dispose();
+    _riveFile?.dispose();
     super.dispose();
   }
 
-  // 🚀 HÀM KHỞI TẠO RIVE ARTBOARD VÀ BẮT STATE MACHINE TỰ ĐỘNG
-  void _onRiveInit(Artboard artboard) {
-    StateMachineController? controller;
-    // Quét lấy State Machine khả dụng đầu tiên của Aldo Mascot
-    for (var sm in artboard.stateMachines) {
-      controller = StateMachineController.fromArtboard(artboard, sm.name);
-      if (controller != null) break;
-    }
-    
-    if (controller != null) {
-      artboard.addController(controller);
-      _riveController = controller;
-      
-      // Mapping chính xác các Trigger theo tài liệu Aldo Mascot
-      _trgHello = controller.findSMI('Text-Hello') as SMITrigger?;
-      _trgHow = controller.findSMI('Text-How') as SMITrigger?;
-      _trgLetsDoIt = controller.findSMI('Text-LetsdoIt') as SMITrigger?;
-      _trgNoText = controller.findSMI('NoText') as SMITrigger?;
-      _trgThink = controller.findSMI('Think') as SMITrigger?;
-      _trgHappy = controller.findSMI('Happy') as SMITrigger?;
-      _trgSad = controller.findSMI('Sad') as SMITrigger?;
-      _trgClick = controller.findSMI('Click') as SMITrigger?;
-      _trgNoClick = controller.findSMI('NoClick') as SMITrigger?;
-      _trgFollowOff = controller.findSMI('Follow Off') as SMITrigger?;
-      _trgFollowOn = controller.findSMI('Follow On') as SMITrigger?;
+  // 🚀 HÀM KHỞI TẠO RIVE FILE + STATE MACHINE (API 0.14+)
+  Future<void> _loadRiveMascot() async {
+    try {
+      final file = await File.asset(
+        'assets/lottie/27606-52145-aldo.riv',
+        riveFactory: Factory.rive,
+      );
+      if (!mounted || file == null) return;
+
+      _riveFile = file;
+      _riveController = RiveWidgetController(
+        file,
+        stateMachineSelector: StateMachineSelector.byName('State Machine 1'),
+      );
+
+      if (mounted) setState(() {});
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final sm = _riveController?.stateMachine;
+        if (sm == null) {
+          debugPrint('🚨 [CRITICAL] KHÔNG THỂ KẾT NỐI STATE MACHINE');
+          return;
+        }
+
+        debugPrint('====================================================');
+        debugPrint('🔍 [RIVE CORE MAP] DỮ LIỆU INPUT THỰC TẾ TRÊN RAM');
+        debugPrint('====================================================');
+        for (var input in sm.inputs) {
+          debugPrint('👉 INPUT TÊN: "${input.name}" | TYPE: ${input.runtimeType}');
+        }
+        debugPrint('====================================================');
+      });
+    } catch (e) {
+      debugPrint('🚨 Rive load failed: $e');
     }
   }
 
@@ -130,7 +216,9 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
   Future<void> _initMascotState() async {
     final prefs = await SharedPreferences.getInstance();
     
-    _isMascotDismissed = prefs.getBool('is_mascot_dismissed_session') ?? false;
+    // Mascot chỉ bị tắt trong RAM của phiên hiện tại.
+// Khi app bị kill và mở lại, static state reset → mascot xuất hiện lại.
+_isMascotDismissed = false;
     _dx = prefs.getDouble('mascot_dx') ?? 16.0;
     _dy = prefs.getDouble('mascot_dy') ?? 120.0;
     _isAnchoredLeft = _dx < 100;
@@ -182,8 +270,8 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
         }
 
         // THỰC THI CHUỖI HỘI THOẠI TUẦN TỰ FADED (2 giây / câu)
-        _trgHello?.fire(); // 🚀 Mascot: Vẫy tay và hiện Text Hello
-        _trgHappy?.fire(); // 🚀 Mascot: Cười thân thiện
+        _fireMascotState('Text-Hello'); // 🚀 Mascot: Vẫy tay và hiện Text Hello
+        _fireMascotState('Happy'); // 🚀 Mascot: Cười thân thiện
         await _executeFadedDialogue('Chào mừng $displayName trở lại VN Share!');
         await _executeFadedDialogue('Chúc $displayName có một $timeOfDay nhiều năng lượng.');
         await _executeFadedDialogue('Ngày hôm nay của bạn thế nào?');
@@ -270,8 +358,8 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
 
       setState(() => _bubbleOpacity = 1.0);
       HapticFeedback.selectionClick(); 
-      _trgThink?.fire(); // 🚀 Mascot: Nghiêng đầu suy nghĩ tư vấn
-      _trgHow?.fire();   // 🚀 Mascot: Bật bong bóng mồi câu
+      _fireMascotState('Think'); // 🚀 Mascot: Nghiêng đầu suy nghĩ tư vấn
+      _fireMascotState('Text-How');   // 🚀 Mascot: Bật bong bóng mồi câu
 
       _bubbleTimer = Timer(const Duration(seconds: 4), () {
         if (mounted) setState(() => _bubbleOpacity = 0.0);
@@ -286,8 +374,8 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
       _isSnapping = false;
       _bubbleOpacity = 0.0; // Ẩn chữ đi khi đang kéo cho gọn thông qua Opacity
     });
-    _trgClick?.fire();     // 🚀 Mascot: Chuyển tư thế nhấc chân, co người (Vật lý)
-    _trgFollowOff?.fire(); // 🚀 Mascot: Ngắt Tracking ánh mắt để lướt tự do
+    _fireMascotState('Click');     // 🚀 Mascot: Chuyển tư thế nhấc chân, co người (Vật lý)
+    _fireMascotState('Follow Off'); // 🚀 Mascot: Ngắt Tracking ánh mắt để lướt tự do
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
@@ -330,34 +418,32 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
     Future.delayed(const Duration(milliseconds: 200), () {
       if (mounted) {
         setState(() => _isSnapping = false);
-        _trgNoClick?.fire();  // 🚀 Mascot: Chạm đất, bung người nẩy quán tính
-        _trgFollowOn?.fire(); // 🚀 Mascot: Bật lại ánh mắt dính theo User
+        _fireMascotState('NoClick');  // 🚀 Mascot: Chạm đất, bung người nẩy quán tính
+        _fireMascotState('Follow On'); // 🚀 Mascot: Bật lại ánh mắt dính theo User
         HapticFeedback.lightImpact(); 
       }
     });
   }
 
-  Future<void> _dismissMascotPermanently() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('is_mascot_dismissed_session', true);
-    setState(() {
-      _isMascotDismissed = true;
-      _bubbleOpacity = 0.0;
-    });
-  }
-
+  void _dismissMascotPermanently() {
+  setState(() {
+    _isMascotDismissed = true;
+    _bubbleOpacity = 0.0;
+  });
+}
   void _openMiniChatPopup() {
     setState(() {
       _bubbleOpacity = 0.0;
       _isChatPopupOpen = true;
     });
     HapticFeedback.mediumImpact();
-    _trgLetsDoIt?.fire(); // 🚀 Mascot: Hoạt họa vung tay mời thao tác
-    _trgHappy?.fire();    // 🚀 Mascot: Cảm xúc tươi tắn chốt sale
+    _fireMascotState('Text-LetsdoIt'); // 🚀 Mascot: Hoạt họa vung tay mời thao tác
+    _fireMascotState('Happy');    // 🚀 Mascot: Cảm xúc tươi tắn chốt sale
   }
 
   @override
   Widget build(BuildContext context) {
+    debugPrint("BUILD RIVE");
     if (_isMascotDismissed) return const SizedBox.shrink();
 
     return Stack(
@@ -392,10 +478,14 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
                           border: Border.all(color: const Color(0xFF80BF84), width: 1.5),
                         ),
                         child: ClipOval( // Bo tròn hoạt họa Rive
-                          child: RiveAnimation.asset(
-                            'assets/lottie/27606-52145-aldo.riv',
-                            fit: BoxFit.cover, // 🚀 Chuẩn hóa viết hoa enum Flutter
-                            onInit: _onRiveInit, // 🚀 Chuẩn hóa CamelCase tham số Rive SDK
+                          child: Transform.scale(
+                            scale: 2, // 🚀 Zoom mascot Aldo (tăng/giảm tại đây)
+                            child: _riveController == null
+                                ? const SizedBox.shrink()
+                                : RiveWidget(
+                                    controller: _riveController!,
+                                    fit: Fit.cover,
+                                  ),
                           ),
                         ),
                       ),
@@ -460,8 +550,8 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
           GestureDetector(
             onTap: () {
               setState(() => _isChatPopupOpen = false);
-              _trgNoText?.fire(); // 🚀 Mascot: Xóa Box Text ảo
-              _trgSad?.fire();    // 🚀 Mascot: Phản hồi buồn vì User đóng Form
+              _fireMascotState('NoText'); // 🚀 Mascot: Xóa Box Text ảo
+              _fireMascotState('Sad');    // 🚀 Mascot: Phản hồi buồn vì User đóng Form
             },
             child: Container(color: Colors.transparent),
           ),
@@ -497,8 +587,8 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
                           GestureDetector(
                             onTap: () {
                               setState(() => _isChatPopupOpen = false);
-                              _trgNoText?.fire();
-                              _trgSad?.fire();
+                              _fireMascotState('NoText');
+                              _fireMascotState('Sad');
                             },
                             child: const Icon(Icons.close, color: Colors.white60, size: 18),
                           ),
@@ -510,15 +600,23 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
                         style: const TextStyle(color: Color(0xFFEEEEEE), fontSize: 13, height: 1.4, fontWeight: FontWeight.w500),
                       ),
                       const SizedBox(height: 14),
-                      // 🚀 LOGIC PHÂN LUỒNG NGHIỆP VỤ: Xác định Role đăng bài để hiển thị nút
+                      // REPLACE
+                      // 🚀 LOGIC PHÂN LUỒNG NGHIỆP VỤ BỌC THÉP: Xác định Role đăng bài để hiển thị nút
                       Builder(
                         builder: (context) {
-                          // Điều kiện Luồng 1 (USER): Cả 2 tham số cấu hình đối tác và dịch vụ đều trống
-                          final isUserRole = (widget.currentVideo.partnerId == null || widget.currentVideo.partnerId!.isEmpty) && 
-                                             (widget.currentVideo.serviceId == null || widget.currentVideo.serviceId!.isEmpty) &&
-                                             (widget.currentVideo.feedType != 'SERVICE_VIDEO');
+                          final String authorRole = widget.currentVideo.author['role']?.toString().toUpperCase() ?? 'USER';
+                          
+                          // Điều kiện 1: Đăng bởi Partner
+                          final bool isPartnerAuthor = (authorRole == 'PARTNER_ADMIN' || authorRole == 'PARTNER');
+                          
+                          // Điều kiện 2: Đăng bởi Creator nhưng phải gắn đủ cả PartnerID và ServiceID để chuyển đổi Affiliate
+                          final bool isCreatorWithAffiliate = (authorRole == 'CREATOR' && 
+                              widget.currentVideo.partnerId != null && widget.currentVideo.partnerId!.isNotEmpty &&
+                              widget.currentVideo.serviceId != null && widget.currentVideo.serviceId!.isNotEmpty);
+
+                          final bool shouldShowActions = isPartnerAuthor || isCreatorWithAffiliate;
                                              
-                          if (isUserRole) {
+                          if (!shouldShowActions) {
                             return const Text(
                               'Video này là nhật ký chia sẻ hành trình cá nhân, hiện chưa ghim thông tin cơ sở khám chữa bệnh nào.',
                               style: TextStyle(color: Color(0xFF617D79), fontSize: 12, fontStyle: FontStyle.italic),
@@ -535,6 +633,7 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
                               child: GestureDetector(
                                 onTap: () {
                                   setState(() => _isChatPopupOpen = false);
+                                  
                                   showModalBottomSheet(
                                     context: context,
                                     isScrollControlled: true,
@@ -568,18 +667,36 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
                             child: GestureDetector(
                               onTap: () {
                                 setState(() => _isChatPopupOpen = false);
-                                // Trích xuất mã ID Đối tác/Cơ sở từ video (Fallback về mã người tạo nếu là cá nhân)
-                                final partnerId = widget.currentVideo.partnerId?.isNotEmpty == true 
-                                    ? widget.currentVideo.partnerId! 
+                                // 🚀 BỌC THÉP ROUTING: Trích xuất chính xác ID và Tên Đối tác an toàn qua cấu trúc thô author của VideoModel
+                                final String targetPartnerId = (widget.currentVideo.partnerId != null && widget.currentVideo.partnerId!.isNotEmpty)
+                                    ? widget.currentVideo.partnerId!
                                     : widget.currentVideo.authorId;
-                                final partnerName = widget.currentVideo.author['full_name']?.toString() ?? 'Chuyên gia';
+                                
+                                String targetPartnerName = 'Trợ lý AI Cơ Sở';
+                                final dynamic authorData = widget.currentVideo.author;
+                                
+                                if (isCreatorWithAffiliate) {
+                                  // Kiểm tra an toàn các khóa chứa tên đối tác liên kết trong thực thể author/partner của map thô
+                                  if (authorData is Map && authorData.containsKey('partner') && authorData['partner'] is Map) {
+                                    targetPartnerName = authorData['partner']['full_name']?.toString() ?? 
+                                                        authorData['partner']['company_name']?.toString() ?? 
+                                                        'Trợ lý AI Cơ Sở';
+                                  }
+                                } else if (isPartnerAuthor) {
+                                  // Nếu tự Partner đăng thì lấy trực tiếp tên hiển thị của chính Partner đó
+                                  if (authorData is Map) {
+                                    targetPartnerName = authorData['full_name']?.toString() ?? 
+                                                        authorData['company_name']?.toString() ?? 
+                                                        'Trợ lý AI Cơ Sở';
+                                  }
+                                }
                                 
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (context) => PartnerAIChatScreen(
-                                      partnerId: partnerId,
-                                      partnerName: partnerName,
+                                      partnerId: targetPartnerId,
+                                      partnerName: targetPartnerName,
                                     ),
                                   ),
                                 );
@@ -593,7 +710,7 @@ class _AiMascotOverlayState extends State<AiMascotOverlay> with SingleTickerProv
                                 ),
                                 child: const Center(
                                   child: Text(
-                                    'TƯ VẤN 24/7 NGAY',
+                                    'TƯ VẤN 24/7',
                                     style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 10, letterSpacing: 0.2),
                                   ),
                                 ),

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../data/services/partner_api_service.dart';
 import '../../widgets/app_toast.dart';
+import 'dart:convert';
 
 class PartnerDashboardScreen extends StatefulWidget {
   const PartnerDashboardScreen({super.key});
@@ -127,11 +128,13 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
       return;
     }
     AppToast.show(context: context, message: 'Đang tạo lệnh rút tiền...', isSuccess: true, duration: const Duration(seconds: 1));
+    
+    // 🚀 ĐỒNG BỘ CHỮ KÝ HÀM: Đóng gói an toàn duy nhất 1 Map chứa 4 trường dữ liệu ngân hàng chuẩn xác theo đặc tả của PartnerApiService
     final success = await PartnerApiService.requestWithdrawal({
       'amount': amount,
-      'bank_name': _bankCtrl.text,
-      'account_number': _accNumCtrl.text,
-      'account_name': _accNameCtrl.text,
+      'bank_name': _bankCtrl.text.trim(),
+      'account_number': _accNumCtrl.text.trim(),
+      'account_name': _accNameCtrl.text.trim().toUpperCase(),
     });
     if (success && mounted) {
       AppToast.show(context: context, message: 'Đã gửi yêu cầu rút tiền!', isSuccess: true);
@@ -548,30 +551,41 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
     if (_withdrawals.isEmpty) return Center(child: Text('Bạn chưa có lệnh rút tiền nào.', style: TextStyle(color: _textSub, fontWeight: FontWeight.w500)));
 
     return Column(
-      children: _withdrawals.map((w) => Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(_formatCurrency(w['amount']), style: TextStyle(color: _textMain, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-                Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: w['status'] == 'COMPLETED' ? Colors.green.shade50 : w['status'] == 'REJECTED' ? Colors.red.shade50 : Colors.amber.shade50, borderRadius: BorderRadius.circular(8)), child: Text(w['status'], style: TextStyle(color: w['status'] == 'COMPLETED' ? Colors.green.shade700 : w['status'] == 'REJECTED' ? Colors.redAccent : Colors.amber.shade700, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5))),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text('${w['payout_info']?['bank_name']} - ${w['payout_info']?['account_number']}', style: TextStyle(color: _textSub, fontSize: 13, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Text(_formatDate(w['created_at']), style: TextStyle(color: _borderColor, fontSize: 11, fontWeight: FontWeight.w500)),
-            if (w['admin_note'] != null && w['admin_note'].toString().isNotEmpty)
+      children: _withdrawals.map((w) {
+        // 🚀 BỌC THÉP GIẢI MÃ (Lỗ hổng 2): Giải mã chuỗi JSON String thô từ database Postgres để tránh lỗi sập giao diện Type Cast Exception
+        Map<String, dynamic> payoutInfo = {};
+        if (w['payout_info'] is String) {
+          try {
+            payoutInfo = jsonDecode(w['payout_info'] as String) as Map<String, dynamic>;
+          } catch (_) {}
+        } else if (w['payout_info'] is Map) {
+          payoutInfo = w['payout_info'] as Map<String, dynamic>;
+        }
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(_formatCurrency(w['amount']), style: TextStyle(color: _textMain, fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                  Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: w['status'] == 'COMPLETED' ? Colors.green.shade50 : w['status'] == 'REJECTED' ? Colors.red.shade50 : Colors.amber.shade50, borderRadius: BorderRadius.circular(8)), child: Text(w['status'], style: TextStyle(color: w['status'] == 'COMPLETED' ? Colors.green.shade700 : w['status'] == 'REJECTED' ? Colors.redAccent : Colors.amber.shade700, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5))),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text('${payoutInfo['bank_name'] ?? 'N/A'} - ${payoutInfo['account_number'] ?? 'N/A'}', style: TextStyle(color: _textSub, fontSize: 13, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text(_formatDate(w['created_at']), style: TextStyle(color: _borderColor, fontSize: 11, fontWeight: FontWeight.w500)),
+              if (w['admin_note'] != null && w['admin_note'].toString().isNotEmpty)
                Padding(padding: const EdgeInsets.only(top: 12), child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)), child: Text('Ghi chú: ${w['admin_note']}', style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontStyle: FontStyle.italic, fontWeight: FontWeight.w500))))
           ],
         ),
-      )).toList(),
-    );
+      );
+    }).toList());
   }
 
 

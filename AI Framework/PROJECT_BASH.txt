@@ -3,7 +3,7 @@
 
 *Được, hãy triển khai sửa code, cô lập, xác định, giải quyết gọn, không mở rộng ảnh hưởng đến các logic khác.
 
-Chưa cần code, hãy cô lập, xác định, giải quyết gọn, không mở rộng ảnh hưởng đến các logic khác. Xác định vấn đề thật sự, không ngộ nhận, ảo giác.
+Chưa cần code, hãy cô lập, xác định, giải quyết gọn, không mở rộng ảnh hưởng đến các logic khác. Xác định vấn đề thật sự, không ngộ nhận, ảo giác. Lấy dẫn chứng chứng minh.
 
 cd /d "E:\AI Project\AI Project_AI Health Share\frontend_mobile"
 
@@ -54,7 +54,7 @@ git status
 
 git add .
 
-git commit -m "Notification System Upgrade"
+git commit -m "MASCOT UPDATE"
 
 git push origin main
 

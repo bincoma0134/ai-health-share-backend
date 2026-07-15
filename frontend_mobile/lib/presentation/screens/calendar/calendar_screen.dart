@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Đã bổ sung: Phục vụ tương tác hệ thống Clipboard sao chép một chạm
@@ -1977,6 +1978,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
 
   void _showQrPaymentDialog(String appointmentId, Map<String, dynamic> inAppData) {
     bool isChecking = false;
+    Timer? pollingTimer;
     
     // Tìm thông tin đối tác ứng với lịch hẹn để lấy avatar/tên bồi đắp cho Premium Header
     final currentAppt = _appointments.firstWhere((a) => a.id == appointmentId, orElse: () => _appointments.first);
@@ -1988,7 +1990,27 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
       builder: (qrContext) {
         return StatefulBuilder(
           builder: (context, setState) {
-            return Dialog(
+            
+            // 🚀 BỌC THÉP LIFECYCLE: Khởi tạo Polling chạy ngầm mỗi 3 giây để bắt lệnh Webhook tự động ngay trong app (Zero-touch verification)
+            pollingTimer ??= Timer.periodic(const Duration(seconds: 3), (timer) async {
+              if (!mounted || isChecking) return;
+              try {
+                final res = await ApiClient.instance.get('/appointments/payment/verify?orderCode=${inAppData['order_code']}');
+                if (res.statusCode == 200 && res.data['status'] == 'success') {
+                  timer.cancel(); // Hủy lặp ngay lập tức khi phát hiện tiền vào
+                  if (Navigator.canPop(qrContext)) Navigator.pop(qrContext);
+                  if (mounted) AppToast.show(context: context, message: '🎉 Thanh toán hoàn tất bảo chứng tự động!', isSuccess: true);
+                  _loadData();
+                }
+              } catch (_) {}
+            });
+
+            return WillPopScope(
+              onWillPop: () async {
+                pollingTimer?.cancel();
+                return true;
+              },
+              child: Dialog(
               insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
               backgroundColor: Colors.white,
@@ -2030,7 +2052,10 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                             ),
                             IconButton(
                               icon: const Icon(Icons.close_rounded, size: 22, color: Colors.black38),
-                              onPressed: () => Navigator.pop(qrContext),
+                              onPressed: () {
+                                pollingTimer?.cancel();
+                                Navigator.pop(qrContext);
+                              },
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                             ),
@@ -2166,11 +2191,12 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                               try {
                                 final res = await ApiClient.instance.get('/appointments/payment/verify?orderCode=${inAppData['order_code']}');
                                 if (res.statusCode == 200 && res.data['status'] == 'success') {
+                                  pollingTimer?.cancel();
                                   Navigator.pop(qrContext); // Giải phóng hộp thoại QR an toàn
                                   if (mounted) AppToast.show(context: context, message: '🎉 Thanh toán hoàn tất bảo chứng!', isSuccess: true);
                                   _loadData(); // Tải mới danh sách thời gian thực
                                 } else {
-                                  if (mounted) AppToast.show(context: context, message: '⏳ Chưa ghi nhận dòng tiền đến PayOS. Vui lòng đợi!', isSuccess: false);
+                                  if (mounted) AppToast.show(context: context, message: '⏳ Chưa ghi nhận dòng tiền đến PayOS. Giao dịch đang được quét ngầm!', isSuccess: false);
                                   setState(() => isChecking = false);
                                 }
                               } catch (e) {
@@ -2202,7 +2228,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                   ),
                 ),
               ),
-            );
+            ),);
           },
         );
       },
@@ -2338,14 +2364,12 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                   ),
                   onPressed: () async {
                     Navigator.pop(dialogContext); // Đóng Dialog an toàn
-                    try {
-                      await ApiClient.instance.post('/appointments/$id/confirm', data: {
-                        'is_satisfied': isSatisfied,
-                        'feedback': feedbackCtrl.text.trim(),
-                      });
+                    // 🚀 BỌC THÉP ENDPOINT 404/405: Đồng bộ hóa lệnh giải ngân thông qua Service đã được bảo chứng thay vì tự gọi thủ công sai URL
+                    final bool isSuccess = await CalendarApiService.confirmCompletion(id);
+                    if (isSuccess) {
                       if (mounted) AppToast.show(context: context, message: '🎉 Cảm ơn bạn! Đã ký xác nhận và giải ngân tiền cho Cơ sở.', isSuccess: true);
                       _loadData();
-                    } catch (e) {
+                    } else {
                       if (mounted) AppToast.show(context: context, message: '❌ Lỗi hệ thống, chưa thể xác nhận.', isSuccess: false);
                     }
                   },
@@ -2366,6 +2390,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
     for (var controller in _checkInControllers.values) {
       controller.dispose();
     }
+    _checkInControllers.clear(); // 🚀 BỌC THÉP RAM: Hủy hoàn toàn các tham chiếu con trỏ Controller ra khỏi bộ nhớ Heap
     super.dispose();
   }
 }

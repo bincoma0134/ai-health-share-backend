@@ -9,6 +9,7 @@ class VoucherModel {
   final String validFrom;
   final String validUntil;
   final String issuerType;
+  final String? issuerId; // 🚀 Bổ sung trường định danh Đối tác phát hành
   final String? partnerName;
   final String? partnerUsername;
   final String? walletStatus;
@@ -25,6 +26,7 @@ class VoucherModel {
     required this.validFrom,
     required this.validUntil,
     required this.issuerType,
+    this.issuerId,
     this.partnerName,
     this.partnerUsername,
     this.walletStatus,
@@ -43,6 +45,7 @@ class VoucherModel {
       validFrom: json['valid_from'] ?? '',
       validUntil: json['valid_until'] ?? '',
       issuerType: (json['issuer_type'] ?? 'PARTNER').toString().toUpperCase(),
+      issuerId: json['issuer_id']?.toString(), // 🚀 Ánh xạ chính xác ID đối tác phát hành để đồng bộ Auto-Apply Voucher
       partnerName: json['partner_name'],
       partnerUsername: json['partner_username'],
       walletStatus: json['wallet_status'],
