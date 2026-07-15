@@ -1466,7 +1466,11 @@ Quy tắc hỗ trợ:
             temperature=0.6, 
             max_tokens=1024
         )
-        bot_reply = chat_completion.choices[0].message.content
+        raw_reply = chat_completion.choices[0].message.content
+        
+        # 🚀 BỌC THÉP REGEX: Hậu xử lý triệt tiêu hoàn toàn khối văn bản nằm trong thẻ <think> của các mô hình Reasoning
+        import re
+        bot_reply = re.sub(r'<think>.*?</think>', '', raw_reply, flags=re.DOTALL).strip()
 
         # 3. Lưu cặp tin nhắn MỚI NHẤT vào Database để tránh lặp dữ liệu
         last_user_msg = payload.messages[-1].content if payload.messages else ""
