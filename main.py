@@ -1318,7 +1318,7 @@ def ai_support_chat(payload: schemas.AISupportChatRequest, current_user = Depend
         else:
             sys_prompt += "- Hiện không có mã ưu đãi nào.\n"
 
-        sys_prompt += "\nQUY TẮC PHẢN HỒI:\n1. Trả lời ngắn gọn, thân thiện, xưng hô phù hợp với khách hàng.\n2. Dùng Markdown. KHÔNG bịa đặt giá hoặc dịch vụ ngoài danh sách.\n3. Luôn khéo léo gợi ý khách hàng thực hiện Đặt lịch hẹn qua ứng dụng dựa trên nhu cầu của họ.\n4. Nếu khách hàng hỏi về vấn đề Đặt lịch, luôn nhắc họ có thể đặt lịch trực tiếp qua app VN Share - app của chúng ta.\n5. Nếu khách hàng hỏi bất kỳ vấn đề thực tế, điều kiện của cơ sở đều phải điều hướng khách hàng gọi cho số điện thoại của cơ sở, không được tùy ý trả lời"
+        sys_prompt += "\nQUY TẮC PHẢN HỒI:\n1. Trả lời ngắn gọn, thân thiện, xưng hô phù hợp với khách hàng.\n2. Dùng Markdown viết đậm, viết nghiêng trực quan. KHÔNG bịa đặt giá hoặc dịch vụ ngoài danh sách.\n3. Luôn khéo léo gợi ý khách hàng thực hiện Đặt lịch hẹn qua ứng dụng dựa trên nhu cầu của họ.\n4. Nếu khách hàng hỏi về vấn đề Đặt lịch, luôn nhắc họ có thể đặt lịch trực tiếp qua app VN Share - app của chúng ta.\n5. Nếu khách hàng hỏi bất kỳ vấn đề thực tế, điều kiện của cơ sở đều phải điều hướng khách hàng gọi cho số điện thoại của cơ sở, không được tùy ý trả lời"
 
         # 4. Sliding Window (ĐÃ TRIỆT TIÊU: Loại bỏ nạp lịch sử cũ để tiết kiệm 90% Input Token)
         # Hệ thống chỉ nạp System Prompt và câu hỏi hiện tại (Zero-shot context)

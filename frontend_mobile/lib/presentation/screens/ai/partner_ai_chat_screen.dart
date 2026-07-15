@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 import '../../../core/network/api_client.dart';
 import '../../widgets/app_toast.dart';
@@ -461,14 +462,32 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              content,
-              style: TextStyle(
-                color: isMe ? Colors.white : _darkBgColor,
-                fontSize: 14,
-                height: 1.4,
-              ),
-            ),
+            isMe
+                ? Text(
+                    content,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
+                  )
+                : MarkdownBody(
+                    data: content,
+                    styleSheet: MarkdownStyleSheet(
+                      p: TextStyle(
+                        color: _darkBgColor,
+                        fontSize: 14,
+                        height: 1.4,
+                      ),
+                      strong: TextStyle(
+                        color: _darkBgColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      listBullet: TextStyle(
+                        color: _partnerColor,
+                      ),
+                    ),
+                  ),
             const SizedBox(height: 4),
             Align(
               alignment: Alignment.bottomRight,
