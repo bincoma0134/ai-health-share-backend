@@ -25,8 +25,6 @@ from firebase_admin import credentials, auth as firebase_auth
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 from pydantic import BaseModel
-import re
-
 
 
 # 🚀 HOTFIX: Đồng bộ từ khóa biến môi trường với hạ tầng Neon / Render
@@ -1444,7 +1442,16 @@ def chat_with_llama(payload: schemas.AIChatRequest, current_user = Depends(verif
             cur.execute("UPDATE ai_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = %s", (conversation_id,))
 
         # 2. Xử lý Logic AI LLM (Groq)
-        messages = [{"role": "system", "content": "Bạn là Trợ lý VN Share. Dùng Markdown. Trả lời trực tiếp, rõ ràng."}]
+        
+        # 🚀 BỌC THÉP SYSTEM PROMPT: Nhồi kiến thức định danh nền tảng VN Share và dập tắt hoàn toàn các thẻ suy luận (Chain-of-Thought) của Qwen/Reasoning Models
+        system_instruction = """
+Bạn là Trợ lý Sức khỏe AI độc quyền của ứng dụng chăm sóc sức khỏe - VN Share.
+CRITICAL RULE: You must reason silently. Do NOT output any internal thinking process or text enclosed in <think>...</think> tags under any circumstances. Directly output your final, friendly, and helpful response in Vietnamese.
+Quy tắc hỗ trợ:
+1. Nếu khách hàng hỏi về cách đặt lịch, hãy hướng dẫn họ sử dụng tính năng "Bản đồ khám phá" hoặc "Lịch hẹn" trên ứng dụng VN Share.
+2. Trả lời trực tiếp, rõ ràng, luôn xưng hô lịch sự và dùng định dạng Markdown.
+"""
+        messages = [{"role": "system", "content": system_instruction}]
         
         # 🚀 BỌC THÉP TOKEN: Chỉ trích xuất duy nhất câu hỏi cuối cùng của mảng gửi lên (Phá vỡ vòng lặp nạp Context rác)
         if payload.messages:
@@ -1457,16 +1464,7 @@ def chat_with_llama(payload: schemas.AIChatRequest, current_user = Depends(verif
             temperature=0.6, 
             max_tokens=1024
         )
-
-        bot_reply = chat_completion.choices[0].message.content or ""
-
-        # xóa toàn bộ thinking của qwen
-        bot_reply = re.sub(
-            r"<think>[\s\s]*?</think>",
-            "",
-            bot_reply,
-            flags=re.ignorecase
-        ).strip()
+        bot_reply = chat_completion.choices[0].message.content
 
         # 3. Lưu cặp tin nhắn MỚI NHẤT vào Database để tránh lặp dữ liệu
         last_user_msg = payload.messages[-1].content if payload.messages else ""
