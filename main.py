@@ -3240,7 +3240,7 @@ async def get_partner_services_for_creator(partner_id: str, current_user = Depen
     [Phase 2.6] Creator xem danh mục toàn bộ dịch vụ của một Partner cụ thể,
     gồm thông tin dịch vụ và tỷ lệ % hoa hồng lấy gốc trực tiếp từ bảng services.
     """
-    cur = conn.cursor(cursor_Factory=RealDictCursor)
+    cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         # 1. Xác thực thông tin định danh username của Partner từ id nhận được sử dụng ép kiểu UUID tường minh
         cur.execute("SELECT id, username FROM users WHERE id = %s::uuid AND role = 'PARTNER_ADMIN'", (partner_id,))
