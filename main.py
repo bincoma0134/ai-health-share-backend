@@ -1247,10 +1247,6 @@ def create_tiktok_feed(payload: schemas.TikTokFeedCreate, current_user = Depends
                 raise HTTPException(status_code=400, detail="Video dịch vụ y khoa bắt buộc phải cấu hình giá niêm yết cụ thể!")
             if not payload.affiliate_rate or payload.affiliate_rate <= 0:
                 raise HTTPException(status_code=400, detail="Video giới thiệu dịch vụ bắt buộc phải điền tỷ lệ phần trăm hoa hồng affiliate!")
-            
-            # 🚀 ISOLATED FIX: Chặn gửi 2 lần lên Queue bằng cách trả về tín hiệu ảo (Fake Success). 
-            # Dữ liệu sẽ tự động được sinh ra khi Moderator duyệt bản ghi gốc bên bảng services.
-            return {"status": "success", "message": "Nhiệm vụ tự động đồng bộ khi Dịch Vụ được duyệt.", "data": {"id": "sync_pending", "status": "PENDING"}}
 
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
@@ -1610,35 +1606,7 @@ def moderate_item(item_type: str, item_id: str, payload: dict, current_user = De
             vid = cur.fetchone()
             if vid:
                 cur.execute("UPDATE users SET video_count = video_count + 1 WHERE id = %s", (vid[0] if isinstance(vid, tuple) else vid["author_id"],))
-
-        # 🚀 ISOLATED FIX (DUYỆT 1 ĐƯỢC 2): Tự động đồng bộ Video Dịch Vụ sang bảng TikTok Feeds
-        if table == "services" and status == "APPROVED":
-            cur.execute("SELECT partner_id, service_name, description, price, video_url, affiliate_rate FROM services WHERE id = %s", (item_id,))
-            svc_row = cur.fetchone()
-            if svc_row:
-                p_id = svc_row["partner_id"] if isinstance(svc_row, dict) else svc_row[0]
-                s_name = svc_row["service_name"] if isinstance(svc_row, dict) else svc_row[1]
-                s_desc = svc_row["description"] if isinstance(svc_row, dict) else svc_row[2]
-                s_price = svc_row["price"] if isinstance(svc_row, dict) else svc_row[3]
-                s_video = svc_row["video_url"] if isinstance(svc_row, dict) else svc_row[4]
-                s_aff_rate = svc_row["affiliate_rate"] if isinstance(svc_row, dict) else svc_row[5]
                 
-                if s_video:
-                    cur.execute("SELECT id FROM tiktok_feeds WHERE service_id = %s", (item_id,))
-                    if not cur.fetchone():
-                        cur.execute("""
-                            INSERT INTO tiktok_feeds 
-                            (author_id, title, content, video_url, price, affiliate_rate, partner_id, service_id, feed_type, status) 
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'SERVICE_VIDEO', 'APPROVED')
-                        """, (p_id, s_name, s_desc, s_video, s_price, s_aff_rate, p_id, item_id))
-                        cur.execute("UPDATE users SET video_count = video_count + 1 WHERE id = %s", (p_id,))
-                    else:
-                        cur.execute("""
-                            UPDATE tiktok_feeds 
-                            SET title = %s, content = %s, video_url = %s, price = %s, affiliate_rate = %s
-                            WHERE service_id = %s
-                        """, (s_name, s_desc, s_video, s_price, s_aff_rate, item_id))
-                        
         conn.commit()
         return {"status": "success", "message": "Xử lý thành công"}
     finally: cur.close()
