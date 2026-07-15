@@ -402,13 +402,9 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
 
     AppToast.show(
       context: context, 
-      message: "Đang mở thư viện. Vui lòng không chọn file > 500MB để tránh ứng dụng bị đơ cứng...", 
+      message: "Đang truy xuất thư viện tệp, vui lòng đợi...", 
       isSuccess: true
     );
-
-    // BỌC THÉP UX: Thêm nhịp nghỉ 300ms để Main Thread kịp vẽ Toast lên màn hình 
-    // trước khi bị OS chiếm luồng mở Gallery
-    await Future.delayed(const Duration(milliseconds: 300));
 
     Permission statusPermission = Permission.videos;
     PermissionStatus status = await statusPermission.status;
@@ -624,12 +620,12 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
           }
         }
 
-        // 🚀 ISOLATED FIX: Khử trùng lặp API. Đối tác đăng video dịch vụ sẽ được Backend lo việc đồng bộ (Atom Sync Flow)
+        // 🚀 ISOLATED FIX: Ngắt luồng gọi API /tiktok/feeds nếu Đối tác đang đăng Video Dịch vụ
         bool shouldCreateFeed = true;
         if ((currentUserRole == "PARTNER_ADMIN" || currentUserRole == "PARTNER") && partnerMode == "SERVICE_VIDEO") {
           shouldCreateFeed = false;
           
-          // Fallback cập nhật video cho Dịch vụ có sẵn nếu Đối tác chọn nhúng thay vì tạo mới
+          // Fallback: Nếu Đối tác chọn nhúng video vào một dịch vụ đã có sẵn (Thay vì tạo mới), ta cập nhật video URL cho dịch vụ đó
           if (targetedServiceId != null) {
             try {
               await ApiClient.instance.patch('/partner/my-services/$targetedServiceId', data: {
@@ -643,7 +639,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
         }
 
         if (shouldCreateFeed) {
-          // 4. Create Feed Post (Dành cho TIKTOK_FEED hoặc CREATOR/USER thông thường)
+          // 4. Create Feed Post (Chỉ chạy với TIKTOK_FEED thông thường của Đối tác, Creator hoặc User)
           final Map<String, dynamic> payload = {
             'title': title,
             'content': content.isEmpty ? null : content,
@@ -665,9 +661,9 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
             }
           }
         } else {
-          // Thông báo thành công cho luồng Service Video đã được tối ưu
+          // Kết thúc êm ái luồng Service Video mà không gọi thêm API Feed
           if (navigator.context.mounted) {
-            AppToast.show(context: navigator.context, message: "Video dịch vụ đã lưu thành công, đang chờ kiểm duyệt!", isSuccess: true);
+            AppToast.show(context: navigator.context, message: "Video dịch vụ đã được lưu thành công, đang chờ kiểm duyệt!", isSuccess: true);
           }
         }
       } catch (e) {
