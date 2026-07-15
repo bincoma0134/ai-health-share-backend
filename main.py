@@ -1320,15 +1320,17 @@ def ai_support_chat(payload: schemas.AISupportChatRequest, current_user = Depend
 
         sys_prompt += "\nQUY TẮC PHẢN HỒI:\n1. Trả lời ngắn gọn, thân thiện, xưng hô phù hợp với khách hàng.\n2. Dùng Markdown. KHÔNG bịa đặt giá hoặc dịch vụ ngoài danh sách.\n3. Luôn khéo léo gợi ý khách hàng thực hiện Đặt lịch hẹn qua ứng dụng dựa trên nhu cầu của họ.\n4. Nếu khách hàng hỏi về vấn đề Đặt lịch, luôn nhắc họ có thể đặt lịch trực tiếp qua app VN Share - app của chúng ta.\n5. Nếu khách hàng hỏi bất kỳ vấn đề thực tế, điều kiện của cơ sở đều phải điều hướng khách hàng gọi cho số điện thoại của cơ sở, không được tùy ý trả lời"
 
-        # 4. Sliding Window (ĐÃ TRIỆT TIÊU: Loại bỏ nạp lịch sử cũ để tiết kiệm 90% Input Token)
+        # 4. BỌC THÉP TOKEN: Nhồi chốt chặn tư duy và chống vỡ giao diện cho mô hình
+        sys_prompt += "\nCRITICAL RULE: You must reason silently. Do NOT output any internal thinking process or text enclosed in <think>...</think> tags under any circumstances. Directly output your final response."
+        
         # Hệ thống chỉ nạp System Prompt và câu hỏi hiện tại (Zero-shot context)
         messages = [{"role": "system", "content": sys_prompt}]
         messages.append({"role": "user", "content": payload.message})
 
-        # 5. Truyền sang LLM 70B của Groq
+        # 5. Truyền sang LLM Qwen3.6-27B (Đã nâng cấp từ Llama theo lịch Decommission của Groq)
         chat_completion = groq_client.chat.completions.create(
             messages=messages, 
-            model="llama-3.3-70b-versatile", # Ép cứng cấu hình gọi thẳng não 70B
+            model="qwen/qwen3.6-27b", 
             temperature=0.3, # Giảm sáng tạo để thông tin y khoa chính xác
             max_tokens=1024
         )
