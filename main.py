@@ -199,6 +199,41 @@ def health_check(): return {"status": "success", "message": "Backend AI Health �
 # ==========================================
 # 0. AUTH TỰ CHỦ (VÁ LỖ HỔNG SUPABASE MIGRATE)
 # ==========================================
+def create_refresh_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(days=30) # Refresh token sống 30 ngày
+    to_encode.update({"exp": expire, "type": "refresh"})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+@app.post("/auth/refresh", tags=["Auth"])
+def refresh_token_api(payload: RefreshTokenRequest):
+    try:
+        decoded = jwt.decode(payload.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        if decoded.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Token không hợp lệ")
+        
+        user_id = decoded.get("sub")
+        email = decoded.get("email")
+        role = decoded.get("role")
+        
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Dữ liệu token không hợp lệ")
+            
+        new_access_token = create_access_token({"sub": user_id, "email": email, "role": role})
+        new_refresh_token = create_refresh_token({"sub": user_id, "email": email, "role": role})
+        
+        return {
+            "status": "success",
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token,
+            "token_type": "bearer"
+        }
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Refresh token đã hết hạn hoặc không hợp lệ")
+
 @app.post("/auth/login", tags=["Auth"])
 def login(payload: schemas.UserLogin, conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -217,7 +252,8 @@ def login(payload: schemas.UserLogin, conn=Depends(get_db_connection)):
                 raise HTTPException(status_code=401, detail="Sai tài khoản hoặc mật khẩu!")
 
         token = create_access_token({"sub": str(user["id"]), "email": user["email"], "role": user["role"]})
-        return {"status": "success", "access_token": token, "user": {"id": user["id"], "email": user["email"], "role": user["role"], "full_name": user.get("full_name")}}
+        refresh_token = create_refresh_token({"sub": str(user["id"]), "email": user["email"], "role": user["role"]})
+        return {"status": "success", "access_token": token, "refresh_token": refresh_token, "user": {"id": user["id"], "email": user["email"], "role": user["role"], "full_name": user.get("full_name")}}
     finally: cur.close()
 
 @app.post("/auth/register", tags=["Auth"])
@@ -279,10 +315,12 @@ def firebase_login(payload: schemas.FirebaseLogin, conn=Depends(get_db_connectio
         
         # 3. Tạo System JWT Token bảo mật nội bộ
         token = create_access_token({"sub": str(user["id"]), "email": user["email"], "role": user["role"]})
+        refresh_token = create_refresh_token({"sub": str(user["id"]), "email": user["email"], "role": user["role"]})
         
         return {
             "status": "success", 
             "access_token": token, 
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "is_new_user": is_new_user,
             "user": {

@@ -24,9 +24,44 @@ class AuthInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) async {
-    // Đồng bộ xử lý dọn dẹp phiên khi Backend trả về mã lỗi 401 Unauthorized
+    // Xử lý khi Backend trả về mã lỗi 401 Unauthorized
     if (err.response?.statusCode == 401) {
-      debugPrint('Token hết hạn hoặc không hợp lệ. Kích hoạt logout toàn cục...');
+      final refreshToken = await SecureStorageService.getRefreshToken();
+      
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        try {
+          debugPrint('Token hết hạn. Đang tiến hành refresh ngầm...');
+          // Tạo một Dio instance mới để tránh vòng lặp Interceptor
+          final dio = Dio(BaseOptions(baseUrl: err.requestOptions.baseUrl));
+          
+          final refreshResponse = await dio.post(
+            '/auth/refresh', // API endpoint xử lý cấp lại token bên Backend
+            data: {'refresh_token': refreshToken},
+          );
+
+          if (refreshResponse.statusCode == 200) {
+            final newAccessToken = refreshResponse.data['access_token'];
+            final newRefreshToken = refreshResponse.data['refresh_token'];
+            
+            // Lưu token mới xuống Local
+            await SecureStorageService.saveToken(newAccessToken);
+            if (newRefreshToken != null) {
+              await SecureStorageService.saveRefreshToken(newRefreshToken);
+            }
+
+            // Gọi lại request ban đầu bị lỗi (401) bằng token mới vừa lấy
+            final options = err.requestOptions;
+            options.headers['Authorization'] = 'Bearer $newAccessToken';
+            
+            final retryResponse = await dio.fetch(options);
+            return handler.resolve(retryResponse);
+          }
+        } catch (e) {
+          debugPrint('Refresh token thất bại hoặc hết hạn.');
+        }
+      }
+
+      debugPrint('Không thể cứu vãn phiên. Kích hoạt logout toàn cục...');
       await AuthNotifier.instance.logout();
     }
     super.onError(err, handler);

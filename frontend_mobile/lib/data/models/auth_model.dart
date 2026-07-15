@@ -14,11 +14,13 @@ class UserLoginRequest {
 /// Model nhận Token và Role từ Backend (Khớp với @app.post("/auth/login"))
 class AuthResponse {
   final String accessToken;
+  final String? refreshToken;
   final String tokenType;
   final String role;
 
   AuthResponse({
     required this.accessToken,
+    this.refreshToken,
     required this.tokenType,
     required this.role,
   });
@@ -26,6 +28,7 @@ class AuthResponse {
   factory AuthResponse.fromJson(Map<String, dynamic> json) {
     return AuthResponse(
       accessToken: json['access_token'] ?? '',
+      refreshToken: json['refresh_token'],
       tokenType: json['token_type'] ?? 'bearer',
       role: json['role'] ?? 'USER',
     );
