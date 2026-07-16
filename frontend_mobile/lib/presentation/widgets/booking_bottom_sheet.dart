@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/network/api_client.dart';
 import 'auth_guard.dart';
 import '../widgets/app_toast.dart';
+import 'shimmer_wrapper.dart';
 
 class BookingBottomSheet extends StatefulWidget {
   final dynamic video;
@@ -20,6 +21,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   final _affiliateCtrl = TextEditingController(); 
   
   bool _isLoading = false;
+  bool _isAutofilling = true; // 🚀 Mặc định khóa form và bật Shimmer khi bắt đầu mở BottomSheet
   
   // --- STATE QUẢN LÝ VOUCHER & HÓA ĐƠN ---
   String? _appliedVoucherCode;
@@ -30,6 +32,13 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   // --- STATE VÍ VOUCHER NGƯỜI DÙNG ---
   List<dynamic> _myVouchers = [];
   bool _isLoadingWallet = false;
+
+  // --- STATE DỊCH VỤ ĐỘNG (THAY THẾ GETTER TĨNH) ---
+  List<dynamic> _partnerServices = [];
+  bool _isLoadingServices = true;
+  String? _selectedServiceId;
+  String _selectedServiceName = 'Dịch vụ đang chọn';
+  double _selectedPrice = 0.0;
 
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
 
@@ -82,8 +91,46 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   @override
   void initState() {
     super.initState();
+    // 1. Chuyển đổi Getter tĩnh thành State động để khởi tạo mặc định
+    _selectedServiceId = _videoServiceId;
+    _selectedPrice = _basePrice;
+    
+    // Tự động quét Tên dịch vụ mặc định từ VideoModel nếu có nhúng sẵn
+    if (widget.video is Map && widget.video['service'] != null && widget.video['service']['service_name'] != null) {
+      _selectedServiceName = widget.video['service']['service_name'];
+    } else if (widget.video is! Map) {
+      try { _selectedServiceName = widget.video.service['service_name'] ?? 'Dịch vụ niêm yết'; } catch (_) { _selectedServiceName = 'Dịch vụ niêm yết'; }
+    }
+
     _preloadUserData(); // Kích hoạt luồng Auto-fill thông tin khách hàng
+    _fetchPartnerServices(); // 🚀 Tải ngầm danh sách dịch vụ cho Dropdown
     _processAutoVoucherAndFetchWallet(); 
+  }
+
+  // 🚀 TẢI NGẦM DANH SÁCH DỊCH VỤ TỪ PARTNER ID LIÊN KẾT
+  Future<void> _fetchPartnerServices() async {
+    try {
+      final res = await ApiClient.instance.get('/services?user_id=$_partnerId');
+      if (mounted && res.data != null) {
+        setState(() {
+          if (res.data is List) {
+            _partnerServices = res.data;
+          } else if (res.data is Map && res.data['data'] != null) {
+            _partnerServices = res.data['data'];
+          }
+          
+          // Chốt chặn Fail-safe: Đồng bộ lại tên dịch vụ mặc định nếu tìm thấy trong list trả về
+          if (_selectedServiceId != null && _selectedServiceName == 'Dịch vụ niêm yết') {
+            final match = _partnerServices.firstWhere((s) => s['id'] == _selectedServiceId, orElse: () => null);
+            if (match != null) _selectedServiceName = match['service_name'] ?? 'Dịch vụ niêm yết';
+          }
+        });
+      }
+    } catch (_) {
+      // Im lặng nếu lỗi mạng, giữ nguyên giá trị mặc định lúc khởi tạo
+    } finally {
+      if (mounted) setState(() => _isLoadingServices = false);
+    }
   }
 
   // 🚀 AUTO-FILL LUỒNG 4: Trích xuất danh tính ngầm định (Silent Extraction)
@@ -116,6 +163,11 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
       }
     } catch (_) {
       // 5. Fail-safe: Im lặng bỏ qua, để trống form cho khách tự nhập nếu lỗi mạng
+    } finally {
+      // 6. Luôn mở khóa TextField bất kể thành công hay thất bại để trả quyền kiểm soát cho người dùng
+      if (mounted) {
+        setState(() => _isAutofilling = false);
+      }
     }
   }
 
@@ -147,7 +199,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         if (targetVoucher != null) {
           final double minOrder = (targetVoucher['min_order_value'] ?? 0).toDouble();
           // Bảo vệ Logic kinh doanh: Chỉ tự động áp dụng nếu đạt giá trị đơn tối thiểu
-          if (_basePrice >= minOrder) {
+          if (_selectedPrice >= minOrder) {
             _applyVoucherLocal(targetVoucher, isAutoInjection: true);
           }
         }
@@ -204,7 +256,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
               final bool isPartnerValid = isAdmin || rawIssuerId == _partnerId;
 
               final double minOrder = (v['min_order_value'] ?? 0).toDouble();
-              if (_basePrice < minOrder || !isPartnerValid) continue;
+              if (_selectedPrice < minOrder || !isPartnerValid) continue;
 
               final String dType = v['discount_type'] ?? 'FIXED';
               final double dValue = (v['discount_value'] ?? 0).toDouble();
@@ -212,7 +264,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
               double currentDiscount = 0.0;
               if (dType == 'PERCENTAGE') {
-                currentDiscount = _basePrice * (dValue / 100);
+                currentDiscount = _selectedPrice * (dValue / 100);
                 if (maxDiscountAmount > 0 && currentDiscount > maxDiscountAmount) {
                   currentDiscount = maxDiscountAmount;
                 }
@@ -220,7 +272,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                 currentDiscount = dValue;
               }
 
-              if (currentDiscount > _basePrice) currentDiscount = _basePrice;
+              if (currentDiscount > _selectedPrice) currentDiscount = _selectedPrice;
 
               if (currentDiscount > maxDiscount) {
                 maxDiscount = currentDiscount;
@@ -254,7 +306,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     
     double calculatedDiscount = 0;
     if (type == 'PERCENTAGE') {
-      calculatedDiscount = _basePrice * (value / 100);
+      calculatedDiscount = _selectedPrice * (value / 100);
       if (maxDiscount > 0 && calculatedDiscount > maxDiscount) {
         calculatedDiscount = maxDiscount; 
       }
@@ -262,12 +314,12 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
       calculatedDiscount = value;
     }
 
-    if (calculatedDiscount > _basePrice) calculatedDiscount = _basePrice;
+    if (calculatedDiscount > _selectedPrice) calculatedDiscount = _selectedPrice;
 
     // 🚀 BƯỚC 3.2: Cập nhật UI & Đảm bảo thành tiền tối thiểu 10.000đ
-    double expectedFinalPrice = _basePrice - calculatedDiscount;
-    if (expectedFinalPrice < 10000 && _basePrice >= 10000) {
-      calculatedDiscount = _basePrice - 10000;
+    double expectedFinalPrice = _selectedPrice - calculatedDiscount;
+    if (expectedFinalPrice < 10000 && _selectedPrice >= 10000) {
+      calculatedDiscount = _selectedPrice - 10000;
     }
 
     setState(() {
@@ -333,12 +385,12 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
       final payload = {
         'partner_id': _partnerId,
-        'service_id': _videoServiceId,
+        'service_id': _selectedServiceId, // 🚀 Sử dụng ID của dịch vụ được chọn tại Dropdown
         'video_id': _videoId,
         'customer_name': _nameCtrl.text.trim(),
         'customer_phone': _phoneCtrl.text.trim(),
         'note': _noteCtrl.text.trim(),
-        'total_amount': _basePrice.toInt(), // Đã đồng bộ: Gửi giá gốc nguyên bản để Backend tự xử lý logic Voucher
+        'total_amount': _selectedPrice.toInt(), // 🚀 Sử dụng Giá của dịch vụ được chọn tại Dropdown
         'voucher_code': _appliedVoucherCode,
         'affiliate_code': finalAffiliateCode,
       };
@@ -367,19 +419,26 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     });
   }
 
-  Widget _buildSoftInput(TextEditingController controller, String hint, IconData icon, {bool isPhone = false}) {
-    return Container(
+  Widget _buildSoftInput(TextEditingController controller, String hint, IconData icon, {bool isPhone = false, bool isAutoFilledField = false}) {
+    final bool shouldLock = isAutoFilledField && _isAutofilling;
+    
+    Widget inputWidget = Container(
       margin: const EdgeInsets.only(bottom: 16),
       child: TextField(
         controller: controller,
+        enabled: !shouldLock, // 🚀 Tạm khóa tương tác nếu đang quét thông tin
         keyboardType: isPhone ? TextInputType.phone : TextInputType.text,
-        style: const TextStyle(color: Color(0xFF1E293B), fontSize: 14, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          color: shouldLock ? const Color(0xFF94A3B8) : const Color(0xFF1E293B), 
+          fontSize: 14, 
+          fontWeight: FontWeight.w600
+        ),
         decoration: InputDecoration(
-          hintText: hint,
+          hintText: shouldLock ? 'Đang tải dữ liệu...' : hint,
           hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14, fontWeight: FontWeight.w400),
-          prefixIcon: Icon(icon, color: const Color(0xFF64748B), size: 18),
+          prefixIcon: Icon(icon, color: shouldLock ? const Color(0xFFCBD5E1) : const Color(0xFF64748B), size: 18),
           filled: true,
-          fillColor: Colors.white,
+          fillColor: shouldLock ? const Color(0xFFF8FAFC) : Colors.white, // Nền xám nhạt nếu khóa
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
@@ -389,12 +448,134 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             borderRadius: BorderRadius.circular(16),
             borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
           ),
+          disabledBorder: OutlineInputBorder( // 🚀 Định dạng viền khi bị khóa
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFFF1F5F9), width: 1),
+          ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
             borderSide: const BorderSide(color: Color(0xFF80BF84), width: 1.5),
           ),
         ),
       ),
+    );
+
+    // Bọc hiệu ứng quét sáng Shimmer nếu đây là field chờ Autofill và cờ đang bật
+    if (shouldLock) {
+      return ShimmerWrapper(child: inputWidget);
+    }
+    return inputWidget;
+  }
+
+  // 🚀 NGĂN KÉO CHỌN DỊCH VỤ ĐỘNG CỦA ĐỐI TÁC (DROPDOWN MODAL)
+  void _showServiceSelectionSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (BuildContext ctx) {
+        return ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              height: MediaQuery.of(context).size.height * 0.65, 
+              padding: const EdgeInsets.only(top: 16, left: 24, right: 24),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.95),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              ),
+              child: Column(
+                children: [
+                  Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black.withOpacity(0.12), borderRadius: BorderRadius.circular(10))),
+                  const Text('Chọn Dịch Vụ', style: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 16),
+                  
+                  Expanded(
+                    child: _partnerServices.isEmpty
+                        ? Center(child: Text(_isLoadingServices ? 'Đang tải dịch vụ...' : 'Cơ sở hiện chưa có dịch vụ nào', style: const TextStyle(color: Colors.black45)))
+                        : ListView.builder(
+                            itemCount: _partnerServices.length,
+                            itemBuilder: (context, index) {
+                              final svc = _partnerServices[index];
+                              final String svcId = svc['id'] ?? '';
+                              final String svcName = svc['service_name'] ?? 'Dịch vụ';
+                              final double svcPrice = (svc['price'] ?? 0).toDouble();
+                              final bool isSelected = _selectedServiceId == svcId;
+
+                              return InkWell(
+                                onTap: () {
+                                  Navigator.pop(ctx);
+                                  setState(() {
+                                    // 1. Cập nhật State dịch vụ mới
+                                    _selectedServiceId = svcId;
+                                    _selectedServiceName = svcName;
+                                    _selectedPrice = svcPrice;
+                                    
+                                    // 2. 🚀 CHỐT CHẶN BẢO VỆ VOUCHER: Gỡ bỏ tự động nếu giá dịch vụ mới rớt chuẩn Min Order
+                                    if (_isVoucherSuccess && _appliedVoucherCode != null) {
+                                      final targetVoucher = _myVouchers.firstWhere(
+                                        (v) => (v['code'] ?? '') == _appliedVoucherCode,
+                                        orElse: () => null,
+                                      );
+                                      if (targetVoucher != null) {
+                                        final minOrder = (targetVoucher['min_order_value'] ?? 0).toDouble();
+                                        if (_selectedPrice < minOrder) {
+                                          _isVoucherSuccess = false;
+                                          _appliedVoucherCode = null;
+                                          _appliedVoucherTitle = '';
+                                          _discountAmount = 0.0;
+                                          AppToast.show(
+                                            context: context, 
+                                            message: 'Đã gỡ Voucher do dịch vụ mới không đạt giá trị đơn tối thiểu!', 
+                                            isSuccess: false
+                                          );
+                                        } else {
+                                          // Gọi lại để tính toán lại giá trị giảm giá phòng trường hợp PERCENTAGE dội trần tối đa
+                                          _applyVoucherLocal(targetVoucher, isAutoInjection: false);
+                                        }
+                                      }
+                                    } else {
+                                      // Thử dò tìm xem có mã nào tự động ngon hơn không sau khi đổi dịch vụ
+                                      _processAutoVoucherAndFetchWallet();
+                                    }
+                                  });
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? const Color(0xFF80BF84).withOpacity(0.1) : Colors.black.withOpacity(0.03),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: isSelected ? const Color(0xFF80BF84) : Colors.transparent, width: 1.5),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, color: isSelected ? const Color(0xFF5B9E5F) : Colors.black26),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(svcName, style: TextStyle(color: Colors.black87, fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600, fontSize: 15)),
+                                            const SizedBox(height: 4),
+                                            Text(_currencyFormat.format(svcPrice), style: const TextStyle(color: Color(0xFF388E3C), fontSize: 13, fontWeight: FontWeight.w700)),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -465,7 +646,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                 } catch (_) {}
                               }
                               
-                              final bool isPriceValid = _basePrice >= minOrder;
+                              final bool isPriceValid = _selectedPrice >= minOrder;
                               // 🚀 Khớp điều kiện: So khớp chuẩn xác với mã partnerId (authorId) thực tế trích xuất từ mô hình video
                               final bool isPartnerValid = isAdmin || rawIssuerId == _partnerId;
                               
@@ -631,8 +812,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                 const Text('Thông tin của bạn sẽ được bảo mật an toàn tuyệt đối.', style: TextStyle(color: Colors.black54, fontSize: 13, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 24),
                 
-                _buildSoftInput(_nameCtrl, 'Họ và tên của bạn', Icons.person_rounded),
-                _buildSoftInput(_phoneCtrl, 'Số điện thoại liên hệ', Icons.phone_rounded, isPhone: true),
+                _buildSoftInput(_nameCtrl, 'Họ và tên của bạn', Icons.person_rounded, isAutoFilledField: true),
+                _buildSoftInput(_phoneCtrl, 'Số điện thoại liên hệ', Icons.phone_rounded, isPhone: true, isAutoFilledField: true),
                 _buildSoftInput(_noteCtrl, 'Bạn cần lưu ý thêm điều gì không?', Icons.edit_note_rounded),
                 _buildSoftInput(_affiliateCtrl, 'Mã giới thiệu (Affiliate) nếu có', Icons.handshake_rounded),
 
@@ -706,12 +887,42 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                   child: Column(
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Giá dịch vụ niêm yết', style: TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500)),
-                          Text(_currencyFormat.format(_basePrice), style: const TextStyle(color: Color(0xFF1E293B), fontSize: 13, fontWeight: FontWeight.w700)),
-                        ],
+                      // 🚀 NÚT DROPDOWN CHỌN DỊCH VỤ ĐỘNG
+                      GestureDetector(
+                        onTap: () => _isLoadingServices ? null : _showServiceSelectionSheet(),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          color: Colors.transparent, // Bắt sự kiện Tap dễ dàng hơn
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.center, // Neo giữa dòng để không bị lệch nếu tên dịch vụ dài
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Text('Dịch vụ áp dụng', style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w600)),
+                                        if (_isLoadingServices)
+                                          const Padding(
+                                            padding: EdgeInsets.only(left: 6),
+                                            child: SizedBox(width: 10, height: 10, child: CircularProgressIndicator(color: Color(0xFF64748B), strokeWidth: 1.5)),
+                                          )
+                                        else
+                                          const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF64748B), size: 18),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(_selectedServiceName, style: const TextStyle(color: Color(0xFF1E293B), fontSize: 14, fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Text(_currencyFormat.format(_selectedPrice), style: const TextStyle(color: Color(0xFF1E293B), fontSize: 14, fontWeight: FontWeight.w800)),
+                            ],
+                          ),
+                        ),
                       ),
                       if (_discountAmount > 0) ...[
                         const SizedBox(height: 10),
@@ -738,11 +949,11 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                             children: [
                               if (_discountAmount > 0)
                                 Text(
-                                  _currencyFormat.format(_basePrice), 
+                                  _currencyFormat.format(_selectedPrice), 
                                   style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12, decoration: TextDecoration.lineThrough, fontWeight: FontWeight.w500)
                                 ),
                               Text(
-                                _currencyFormat.format(_finalPrice), 
+                                _currencyFormat.format(_selectedPrice - _discountAmount < 0 ? 0 : _selectedPrice - _discountAmount), // Tính final inline 
                                 style: const TextStyle(color: Color(0xFF0F172A), fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5, height: 1.1)
                               ),
                             ],

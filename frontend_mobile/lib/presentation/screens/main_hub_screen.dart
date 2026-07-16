@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
@@ -89,12 +90,14 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
                   height: 70,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.35), // Nền Frost White bảo vệ độ tương phản Icon
                     borderRadius: BorderRadius.circular(35),
+                    border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.2), // Viền quang học bắt sáng
                     boxShadow: [
                       BoxShadow(
-                        color: AppTheme.zinc950.withOpacity(0.03),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
+                        color: Colors.black.withOpacity(0.08), // Bóng tản sáng trung tính giúp đẩy khối nổi lên
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
                       )
                     ],
                   ),
@@ -223,7 +226,7 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
     );
   }
 
-  // --- WIDGET CON: Phân bổ trục dọc phẳng tích hợp lớp nền lót mỏng sinh học Premium chống mờ thị giác ---
+  // --- WIDGET CON: Phân bổ trục dọc phẳng tích hợp Giọt sáng sinh học Premium Wellness ---
   Widget _buildNavItem(int index, IconData activeIcon, IconData icon, String label, BuildContext context) {
     final isActive = widget.navigationShell.currentIndex == index;
     return GestureDetector(
@@ -232,51 +235,53 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
       child: Container(
         height: double.infinity,
         alignment: Alignment.center,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutQuad,
-          // Khóa cứng kích thước đối xứng tuyệt đối (chiều rộng 76px, chiều cao 54px) giúp triệt tiêu lỗi kén to kén nhỏ
-          width: 76,
-          height: 54,
-          alignment: Alignment.center, // Ép trục dọc Column vào tâm khối lót cố định
-          decoration: BoxDecoration(
-            // Lót vệt sáng Mint mờ nhẹ tương thích cao với nền Liquid Glass mờ
-            color: isActive ? const Color(0xFF10B981).withOpacity(0.08) : Colors.transparent,
-            // Đồng bộ hoàn hảo với thông số bo tròn tuyệt đối (35px) của thanh điều hướng Liquid Glass bên ngoài
-            borderRadius: BorderRadius.circular(35), 
-          ),
+        child: SizedBox(
+          // KHOÁ CỨNG KHÔNG GIAN BỌC THÉP: Chống va chạm tràn viền (Bottom Overflow)
+          height: 54, 
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: MainAxisAlignment.end, // Neo phần tử từ dưới lên để giữ Text luôn cố định
             mainAxisSize: MainAxisSize.min,
             children: [
-              ColorFiltered(
-                colorFilter: isActive 
-                    ? const ColorFilter.matrix([
-                        1.2, 0,   0,   0,   0,
-                        0,   1.2, 0,   0,   0,
-                        0,   0,   1.2, 0,   0,
-                        0,   0,   0,   1,   0,
-                      ])
-                    : const ColorFilter.mode(Colors.transparent, BlendMode.dst),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 180),
-                  transitionBuilder: (child, animation) => ScaleTransition(scale: animation, child: child),
+              // Khối lót phát sáng hữu cơ "Giọt sương ngọc bích" bọc riêng Icon
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutQuad, // Sử dụng đồ thị siêu phẳng triệt tiêu độ nảy lố gây giật
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4), // Thu gọn biên an toàn
+                decoration: BoxDecoration(
+                  color: isActive ? const Color(0xFFE6F7F4) : Colors.transparent, // Sáng nền xanh Mint nhẹ nhàng
+                  borderRadius: BorderRadius.circular(16), 
+                  border: Border.all(
+                    color: isActive ? const Color(0xFF10B981).withOpacity(0.3) : Colors.transparent,
+                    width: 0.5,
+                  ),
+                  boxShadow: isActive ? [
+                    BoxShadow(
+                      color: const Color(0xFF10B981).withOpacity(0.2), // Tỏa sáng Glow nhiệt sinh học
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    )
+                  ] : [],
+                ),
+                child: AnimatedScale(
+                  duration: const Duration(milliseconds: 250),
+                  scale: isActive ? 1.05 : 1.0, // Tối thiểu hóa biên độ phóng to để nảy an toàn (Max 5%)
+                  curve: Curves.easeOutBack,
                   child: Icon(
-                    isActive ? activeIcon : icon, 
-                    key: ValueKey<bool>(isActive),
-                    color: isActive ? const Color(0xFF10B981) : AppTheme.zinc400, 
-                    size: 26, // Cân đối lại kích cỡ thấu kính Icon lồng trong khối lót
+                    isActive ? activeIcon : icon,
+                    color: isActive ? const Color(0xFF10B981) : const Color(0xFF6B8A84), // Xanh sương mù
+                    size: 22, // Hạ size cơ sở 1 bậc để mở rộng đệm thở (Breathing Room)
                   ),
                 ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 4),
+              // Text tự do, neo vững ở đáy
               AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 180),
+                duration: const Duration(milliseconds: 200),
                 style: TextStyle(
                   fontSize: 10,
-                  fontWeight: isActive ? FontWeight.w800 : FontWeight.w500,
-                  color: isActive ? const Color(0xFF10B981) : AppTheme.zinc400,
-                  letterSpacing: -0.1,
+                  fontWeight: isActive ? FontWeight.w900 : FontWeight.w600, // Tăng cường độ nhấn mạnh
+                  color: isActive ? const Color(0xFF10B981) : const Color(0xFF6B8A84),
+                  letterSpacing: -0.2,
                 ),
                 child: Text(label),
               ),

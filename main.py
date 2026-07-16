@@ -119,6 +119,10 @@ async def startup_event():
                     -- 🚀 AUTO-MIGRATION: Nâng cấp Bảng notifications phục vụ Smart Fallback & ACK
                     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(50) DEFAULT 'PENDING';
                     ALTER TABLE notifications ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP;
+
+                    -- 🚀 AUTO-MIGRATION: Bọc thép hệ thống lưu trữ Affiliate Commission
+                    ALTER TABLE appointments ADD COLUMN IF NOT EXISTS affiliate_code TEXT;
+                    ALTER TABLE bookings_transactions ADD COLUMN IF NOT EXISTS affiliate_id UUID;
                 """)
             conn.commit()
         except Exception as e:
@@ -2244,6 +2248,7 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
         customer_phone = payload.get("customer_phone", "")
         note = payload.get("note", "")
         voucher_code = payload.get("voucher_code")
+        affiliate_code = payload.get("affiliate_code", None)
 
         cur.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS applied_user_voucher_id UUID")
         
@@ -2274,10 +2279,10 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
 
         cur.execute("""
             INSERT INTO appointments 
-            (user_id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, status, applied_user_voucher_id, created_at) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WAITING_PARTNER', %s, NOW()) 
+            (user_id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, status, applied_user_voucher_id, affiliate_code, created_at) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WAITING_PARTNER', %s, %s, NOW()) 
             RETURNING *
-        """, (current_user.id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, applied_uv_id))
+        """, (current_user.id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, applied_uv_id, affiliate_code))
         
         new_appt = cur.fetchone()
         
@@ -2474,13 +2479,24 @@ def create_appointment_payment(appointment_id: str, request: Request, current_us
         applied_v_id = best_voucher["voucher_id"] if best_voucher else None
         funded_by = best_voucher["issuer_type"] if best_voucher else None
         
+        affiliate_id = None
+        raw_affiliate_code = appt.get("affiliate_code")
+        if raw_affiliate_code:
+            try:
+                cur.execute("SELECT id FROM users WHERE username = %s OR id::text = %s LIMIT 1", (raw_affiliate_code, raw_affiliate_code))
+                affiliate_user = cur.fetchone()
+                if affiliate_user:
+                    affiliate_id = affiliate_user["id"]
+            except Exception:
+                pass
+        
         cur.execute("""INSERT INTO bookings_transactions 
                        (user_id, service_id, video_id, total_amount, payment_status, service_status, order_code, 
-                        customer_name, customer_phone, note, applied_voucher_id, voucher_discount_amount, discount_funded_by, final_paid_amount)
-                       VALUES (%s, %s, %s, %s, 'UNPAID', 'PENDING', %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                        customer_name, customer_phone, note, applied_voucher_id, voucher_discount_amount, discount_funded_by, final_paid_amount, affiliate_id)
+                       VALUES (%s, %s, %s, %s, 'UNPAID', 'PENDING', %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
                     (current_user.id, appt.get("service_id"), appt.get("video_id"), original_amount, order_code, 
                      appt.get("customer_name"), appt.get("customer_phone"), appt.get("note"), 
-                     applied_v_id, max_discount, funded_by, final_amount))
+                     applied_v_id, max_discount, funded_by, final_amount, affiliate_id))
         booking_id = cur.fetchone()["id"]
         
         cur.execute("UPDATE appointments SET booking_id = %s WHERE id = %s", (booking_id, appointment_id))

@@ -204,7 +204,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-                        child: Icon(Icons.person_outline_rounded, color: _crtSecondary, size: 24),
+                        child: Icon(Icons.person_rounded, color: _crtPrimary, size: 24),
                       ),
                       const SizedBox(width: 16),
                       const Expanded(
@@ -230,15 +230,12 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildSaaSInputField(controller: _nameCtrl, label: 'Tên hiển thị'),
-                        const SizedBox(height: 24),
-                        _buildSaaSInputField(controller: _usernameCtrl, label: 'Tên đăng nhập'),
-                        const SizedBox(height: 24),
-                        _buildSaaSInputField(controller: _phoneCtrl, label: 'Số điện thoại', keyboardType: TextInputType.phone),
-                        const SizedBox(height: 24),
+                        _buildSaaSField(controller: _nameCtrl, label: 'Tên hiển thị'),
+                        _buildSaaSField(controller: _usernameCtrl, label: 'Tên đăng nhập'),
+                        _buildSaaSField(controller: _phoneCtrl, label: 'Số điện thoại', keyboardType: TextInputType.phone),
                         _buildSaaSLockedField(label: 'Email xác thực', value: _emailCtrl.text, badgeText: 'Bảo mật'),
-                        const SizedBox(height: 24),
-                        _buildSaaSInputField(controller: _bioCtrl, label: 'Tiểu sử / Giới thiệu kênh', maxLines: 3),
+                        const SizedBox(height: 20),
+                        _buildSaaSField(controller: _bioCtrl, label: 'Tiểu sử / Giới thiệu kênh', maxLines: 3),
                       ],
                     ),
                   ),
@@ -260,7 +257,9 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                           Navigator.pop(context);
                           _handleUpdateProfile();
                         },
-                        child: const Text('Lưu thay đổi', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                        child: _isUpdatingProfile
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text('Lưu thay đổi', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                       ),
                     ],
                   ),
@@ -273,48 +272,113 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     );
   }
 
-  Widget _buildSaaSInputField({required TextEditingController controller, required String label, int maxLines = 1, TextInputType keyboardType = TextInputType.text}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(label, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 14, fontWeight: FontWeight.w500)),
-        ),
-        Container(
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE5E5EA))),
-          child: TextField(
-            controller: controller, maxLines: maxLines, keyboardType: keyboardType,
-            decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.all(16)),
+  Widget _buildSaaSField({
+    required TextEditingController controller,
+    required String label,
+    int maxLines = 1,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    IconData prefixIcon = Icons.edit_note_rounded;
+    if (label.contains('Tên hiển thị')) prefixIcon = Icons.badge_rounded;
+    else if (label.contains('Tên đăng nhập')) prefixIcon = Icons.alternate_email_rounded;
+    else if (label.contains('Số điện thoại')) prefixIcon = Icons.phone_iphone_rounded;
+    else if (label.contains('Tiểu sử')) prefixIcon = Icons.auto_stories_rounded;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1A3A35).withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+            spreadRadius: -2,
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 15, fontWeight: FontWeight.w600),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500),
+          floatingLabelStyle: TextStyle(color: _crtPrimary, fontSize: 13, fontWeight: FontWeight.bold),
+          prefixIcon: Icon(prefixIcon, color: const Color(0xFF94A3B8), size: 18),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: _crtPrimary, width: 1.5),
           ),
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildSaaSLockedField({required String label, required String value, required String badgeText}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(label, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 14, fontWeight: FontWeight.w500)),
-        ),
-        Container(
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+      ),
+      child: InkWell(
+        onTap: () {
+          AppToast.show(
+            context: context,
+            message: 'Trường thông tin xác thực mặc định đã được hệ thống mã hóa bảo vệ an toàn.',
+            isSuccess: false,
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(color: const Color(0xFFF2F2F7), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE5E5EA))),
           child: Row(
             children: [
-              Expanded(child: Text(value.isEmpty ? 'Trống' : value, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 16))),
+              const Icon(Icons.mail_lock_rounded, color: Color(0xFF94A3B8), size: 18),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 2),
+                    Text(
+                      value.isEmpty ? 'Chưa cập nhật dữ liệu' : value,
+                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 14, fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-                child: Text(badgeText, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 12, fontWeight: FontWeight.w600)),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                ),
+                child: Text(badgeText, style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
         ),
-      ],
+      ),
     );
   }
 

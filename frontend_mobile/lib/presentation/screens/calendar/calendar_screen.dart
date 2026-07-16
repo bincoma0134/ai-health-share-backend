@@ -777,7 +777,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
   Widget _buildPremiumHeaderDock() {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(20, MediaQuery.paddingOf(context).top + 10, 20, 16),
+      padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + 10, 20, 16),
       color: Colors.white,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -785,129 +785,86 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Sử dụng AnimatedCrossFade để chuyển đổi mượt mà giữa trạng thái Tiêu đề tháng và Thanh tìm kiếm Inline
-              Expanded(
-                child: AnimatedCrossFade(
-                  duration: const Duration(milliseconds: 250),
-                  firstCurve: Curves.easeInOut,
-                  secondCurve: Curves.easeInOut,
-                  crossFadeState: _isSearching ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-                  firstChild: Row(
-                    children: [
-                      PopupMenuButton<int>(
-                        offset: const Offset(0, 40),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        color: Colors.white,
-                        elevation: 3,
-                        onSelected: (int selectedMonth) {
-                          final newDate = DateTime(_selectedDate.year, selectedMonth, 1);
-                          _updateWeekDaysBasedOnDate(newDate);
-                        },
-                        itemBuilder: (BuildContext context) {
-                          return List.generate(12, (index) {
-                            final monthNumber = index + 1;
-                            final dummyDate = DateTime(_selectedDate.year, monthNumber, 1);
-                            final isCurrentMonth = monthNumber == _selectedDate.month;
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87, size: 20),
+                    onPressed: () {
+                      if (context.canPop()) {
+                        context.pop();
+                      } else {
+                        context.go('/');
+                      }
+                    },
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 8),
+                  PopupMenuButton<int>(
+                    offset: const Offset(0, 40),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    color: Colors.white,
+                    elevation: 3,
+                    onSelected: (int selectedMonth) {
+                      final newDate = DateTime(_selectedDate.year, selectedMonth, 1);
+                      _updateWeekDaysBasedOnDate(newDate);
+                    },
+                    itemBuilder: (BuildContext context) {
+                      return List.generate(12, (index) {
+                        final monthNumber = index + 1;
+                        final dummyDate = DateTime(_selectedDate.year, monthNumber, 1);
+                        final isCurrentMonth = monthNumber == _selectedDate.month;
 
-                            return PopupMenuItem<int>(
-                              value: monthNumber,
-                              child: Text(
-                                DateFormat('MMMM').format(dummyDate),
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: isCurrentMonth ? FontWeight.bold : FontWeight.normal,
-                                  color: isCurrentMonth ? const Color(0xFF80BF84) : Colors.black87,
-                                ),
-                              ),
-                            );
-                          });
-                        },
-                        child: Row(
-                          children: [
-                            Text(
-                              DateFormat('MMMM').format(_selectedDate),
-                              style: const TextStyle(color: Colors.black, fontSize: 22, fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(width: 4),
-                            const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.black54, size: 22),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      InkWell(
-                        onTap: () => _updateWeekDaysBasedOnDate(DateTime.now()),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF80BF84).withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.3), width: 1),
-                          ),
-                          child: const Text(
-                            'Today',
+                        return PopupMenuItem<int>(
+                          value: monthNumber,
+                          child: Text(
+                            DateFormat('MMMM').format(dummyDate),
                             style: TextStyle(
-                              color: Color(0xFF4C8D50),
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              fontWeight: isCurrentMonth ? FontWeight.bold : FontWeight.normal,
+                              color: isCurrentMonth ? const Color(0xFF80BF84) : Colors.black87,
+                            ),
+                          ),
+                        );
+                      });
+                    },
+                    child: Row(
+                      children: [
+                        Text(
+                          DateFormat('MMMM').format(_selectedDate),
+                          style: const TextStyle(color: Colors.black, fontSize: 22, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.black54, size: 22),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  InkWell(
+                    onTap: () => _updateWeekDaysBasedOnDate(DateTime.now()),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF80BF84).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.3), width: 1),
+                      ),
+                      child: const Text(
+                        'Today',
+                        style: TextStyle(
+                          color: Color(0xFF4C8D50),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
                   ),
-                    ],
-                  ),
-                  secondChild: Container(
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF4F7F6),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: TextField(
-                      controller: _searchController,
-                      autofocus: true,
-                      style: const TextStyle(fontSize: 14, color: Colors.black87),
-                      decoration: InputDecoration(
-                        hintText: _isMyClient ? 'Tìm tên khách hàng, dịch vụ...' : 'Tìm tên dịch vụ, cơ sở đặt lịch...',
-                        hintStyle: const TextStyle(fontSize: 13, color: Colors.black38),
-                        prefixIcon: const Icon(Icons.search_rounded, color: Colors.black45, size: 18),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 11),
-                        suffixIcon: IconButton(
-                          icon: const Icon(Icons.clear_rounded, color: Colors.black45, size: 18),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _searchQuery = '');
-                          },
-                        ),
-                      ),
-                      onChanged: (value) {
-                        setState(() => _searchQuery = value);
-                      },
-                    ),
-                  ),
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    icon: Icon(_isSearching ? Icons.close_rounded : Icons.search_rounded, color: Colors.black87, size: 22), 
-                    onPressed: () {
-                      setState(() {
-                        if (_isSearching) {
-                          _isSearching = false;
-                          _searchController.clear();
-                          _searchQuery = '';
-                        } else {
-                          _isSearching = true;
-                        }
-                      });
-                    }
-                  ),
-                  const SizedBox(width: 2), // Điều chỉnh khoảng cách thông thoáng
-                  
-                  // 🚀 NÚT THÔNG BÁO TÍCH HỢP GÓC PHẢI HEADER DÀNH CHO LỊCH HẸN
                   ListenableBuilder(
                     listenable: NotificationNotifier.instance,
                     builder: (context, child) {
@@ -925,20 +882,21 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                   width: 9,
                                   height: 9,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFFE2C55), // Badge màu đỏ hồng nổi bật
+                                    color: const Color(0xFFFE2C55),
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 1.5), // Viền trắng đục lỗ chuẩn Apple Layout
+                                    border: Border.all(color: Colors.white, width: 1.5),
                                   ),
                                 ),
                               ),
                           ],
                         ),
                         onPressed: () => context.push('/notifications'),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
                       );
                     },
                   ),
-                  const SizedBox(width: 2),
-                  
+                  const SizedBox(width: 12),
                   Container(
                     width: 32,
                     height: 32,
@@ -952,7 +910,6 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                           ? Image.network(
                               _avatarUrl!,
                               fit: BoxFit.cover,
-                              // 🚀 THUẬT TOÁN NÉN PHẦN CỨNG: Ép bộ giải mã chỉ render bitmap 120px, tối ưu 90% bộ nhớ RAM
                               cacheWidth: 120,
                               cacheHeight: 120,
                               loadingBuilder: (context, child, loadingProgress) {
@@ -983,6 +940,70 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                 ],
               )
             ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Thanh tìm kiếm được đẩy xuống dưới
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 250),
+            firstCurve: Curves.easeInOut,
+            secondCurve: Curves.easeInOut,
+            crossFadeState: _isSearching ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            firstChild: GestureDetector(
+              onTap: () => setState(() => _isSearching = true),
+              child: Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4F7F6),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.black.withOpacity(0.05)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.search_rounded, color: Colors.black45, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      _isMyClient ? 'Tìm tên khách hàng, dịch vụ...' : 'Tìm tên dịch vụ, cơ sở đặt lịch...',
+                      style: const TextStyle(fontSize: 13, color: Colors.black38),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            secondChild: Container(
+              height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF4F7F6),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.5)),
+              ),
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                style: const TextStyle(fontSize: 14, color: Colors.black87),
+                decoration: InputDecoration(
+                  hintText: _isMyClient ? 'Tìm tên khách hàng, dịch vụ...' : 'Tìm tên dịch vụ, cơ sở đặt lịch...',
+                  hintStyle: const TextStyle(fontSize: 13, color: Colors.black38),
+                  prefixIcon: const Icon(Icons.search_rounded, color: const Color(0xFF80BF84), size: 18),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 11),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.clear_rounded, color: Colors.black45, size: 18),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() {
+                        _searchQuery = '';
+                        _isSearching = false;
+                      });
+                    },
+                  ),
+                ),
+                onChanged: (value) {
+                  setState(() => _searchQuery = value);
+                },
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           

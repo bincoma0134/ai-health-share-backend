@@ -416,7 +416,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
           return Container(
-            height: MediaQuery.of(context).size.height * 0.88, 
+            height: MediaQuery.of(context).size.height * 0.88,
             padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
             decoration: const BoxDecoration(color: Color(0xFFF2F2F7), borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
             child: Column(
@@ -425,49 +425,34 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                 Center(
                   child: Container(
                     margin: const EdgeInsets.only(top: 12, bottom: 4),
-                    width: 40, 
-                    height: 5, 
+                    width: 40, height: 5,
                     decoration: BoxDecoration(color: const Color(0xFFD1D1D6), borderRadius: BorderRadius.circular(100)),
                   ),
                 ),
                 Container(
                   padding: const EdgeInsets.only(top: 12, left: 24, right: 16, bottom: 20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF2F2F7),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 4))],
-                  ),
+                  decoration: const BoxDecoration(color: Color(0xFFF2F2F7)),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
                         padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white, 
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 2))],
-                        ),
-                        child: const Icon(Icons.person_outline_rounded, color: Color(0xFF1C1C1E), size: 24),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+                        child: const Icon(Icons.person_rounded, color: Color(0xFF80BF84), size: 24),
                       ),
                       const SizedBox(width: 16),
-                      Expanded(
+                      const Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text('Hồ sơ cá nhân', style: TextStyle(color: Color(0xFF1C1C1E), fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
+                          children: [
+                            Text('Hồ sơ Cá nhân', style: TextStyle(color: Color(0xFF1C1C1E), fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
                             SizedBox(height: 4),
-                            Text('Cập nhật dữ liệu hệ thống', style: TextStyle(color: Color(0xFF8E8E93), fontSize: 14, fontWeight: FontWeight.w500)),
+                            Text('Cập nhật dữ liệu thông tin cá nhân', style: TextStyle(color: Color(0xFF8E8E93), fontSize: 14)),
                           ],
                         ),
                       ),
                       IconButton(
                         onPressed: () => Navigator.pop(context),
-                        icon: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: const BoxDecoration(color: Color(0xFFE5E5EA), shape: BoxShape.circle),
-                          child: const Icon(Icons.close_rounded, color: Color(0xFF8E8E93), size: 18),
-                        ),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
+                        icon: const Icon(Icons.close_rounded, color: Color(0xFF8E8E93)),
                       ),
                     ],
                   ),
@@ -479,39 +464,28 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildSaaSField(controller: _nameController, label: 'Tên hiển thị'),
-                        const SizedBox(height: 24),
                         _buildSaaSField(controller: _usernameController, label: 'Tên đăng nhập'),
-                        const SizedBox(height: 24),
                         _buildSaaSField(controller: _phoneController, label: 'Số điện thoại', keyboardType: TextInputType.phone),
-                        const SizedBox(height: 24),
                         _buildSaaSLockedField(label: 'Email xác thực', value: _emailController.text, badgeText: 'Bảo mật'),
-                        const SizedBox(height: 24),
-                        _buildSaaSField(controller: _bioController, label: 'Tiểu sử / Giới thiệu', maxLines: 3),
+                        const SizedBox(height: 20),
+                        _buildSaaSField(controller: _bioController, label: 'Tiểu sử & Giới thiệu', maxLines: 3),
                       ],
                     ),
                   ),
                 ),
                 Container(
                   padding: const EdgeInsets.only(left: 24, right: 24, top: 16, bottom: 32),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, -4))],
-                  ),
+                  decoration: const BoxDecoration(color: Colors.white),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       TextButton(
                         onPressed: () => Navigator.pop(context),
-                        style: TextButton.styleFrom(
-                          backgroundColor: const Color(0xFFF2F2F7),
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
                         child: const Text('Hủy bỏ', style: TextStyle(color: Color(0xFF8E8E93), fontSize: 15, fontWeight: FontWeight.w600)),
                       ),
                       const SizedBox(width: 12),
                       ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1C1C1E), foregroundColor: Colors.white, elevation: 0),
                         onPressed: _isUpdating ? null : () async {
                           final name = _nameController.text.trim();
                           final uname = _usernameController.text.trim();
@@ -540,14 +514,6 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                             AppToast.show(context: context, message: 'Cập nhật thất bại. Username có thể đã tồn tại!', isSuccess: false);
                           }
                         },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1C1C1E),
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          disabledBackgroundColor: const Color(0xFFD1D1D6),
-                        ),
                         child: _isUpdating 
                             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
                             : const Text('Lưu thay đổi', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
@@ -569,34 +535,53 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
     int maxLines = 1,
     TextInputType keyboardType = TextInputType.text,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(label, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 14, fontWeight: FontWeight.w500)),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE5E5EA), width: 1),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+    IconData prefixIcon = Icons.edit_note_rounded;
+    if (label.contains('Tên hiển thị')) prefixIcon = Icons.badge_rounded;
+    else if (label.contains('Tên đăng nhập')) prefixIcon = Icons.alternate_email_rounded;
+    else if (label.contains('Số điện thoại')) prefixIcon = Icons.phone_iphone_rounded;
+    else if (label.contains('Tiểu sử')) prefixIcon = Icons.auto_stories_rounded;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1A3A35).withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+            spreadRadius: -2,
           ),
-          child: TextField(
-            controller: controller,
-            maxLines: maxLines,
-            keyboardType: keyboardType,
-            textAlign: TextAlign.left,
-            style: const TextStyle(color: Color(0xFF1C1C1E), fontSize: 16, fontWeight: FontWeight.w400),
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              isDense: true,
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            ),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 15, fontWeight: FontWeight.w600),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500),
+          floatingLabelStyle: const TextStyle(color: Color(0xFF80BF84), fontSize: 13, fontWeight: FontWeight.bold),
+          prefixIcon: Icon(prefixIcon, color: const Color(0xFF94A3B8), size: 18),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFF80BF84), width: 1.5),
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -634,50 +619,56 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
   }
 
   Widget _buildSaaSLockedField({required String label, required String value, required String badgeText}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(label, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 14, fontWeight: FontWeight.w500)),
-        ),
-        InkWell(
-          onTap: () {
-            AppToast.show(context: context, message: 'Trường dữ liệu này đã được hệ thống bảo vệ.', isSuccess: false);
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF2F2F7),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE5E5EA), width: 1),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    value.isEmpty ? 'Trống' : value,
-                    textAlign: TextAlign.left,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 16, fontWeight: FontWeight.w400),
-                  ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC), // Tone màu nền xám mờ bảo vệ dữ liệu khóa
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+      ),
+      child: InkWell(
+        onTap: () {
+          AppToast.show(
+            context: context,
+            message: 'Trường thông tin xác thực mặc định đã được hệ thống mã hóa bảo vệ an toàn.',
+            isSuccess: false,
+          );
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              const Icon(Icons.mail_lock_rounded, color: Color(0xFF94A3B8), size: 18),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 2),
+                    Text(
+                      value.isEmpty ? 'Chưa cập nhật dữ liệu' : value,
+                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 14, fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFE5E5EA), width: 1),
-                  ),
-                  child: Text(badgeText, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 12, fontWeight: FontWeight.w600)),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
                 ),
-              ],
-            ),
+                child: Text(badgeText, style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -1996,7 +1987,11 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)),
+      decoration: BoxDecoration(
+        color: Colors.white, 
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFE2ECEB), width: 0.8),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2005,6 +2000,23 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
           _buildSaaSFieldDisabled(label: 'Giới thiệu', value: profile['bio'] ?? 'Chưa thiết lập tiểu sử', icon: Icons.text_snippet_outlined),
           _buildSaaSFieldDisabled(label: 'Điện thoại', value: profile['phone'] ?? 'Chưa cập nhật', icon: Icons.phone_android_rounded),
           _buildSaaSFieldDisabled(label: 'Email bảo mật', value: profile['email'] ?? 'Chưa liên kết email', icon: Icons.mail_lock_rounded),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE8F5E9),
+                foregroundColor: const Color(0xFF1A3A35),
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                side: BorderSide(color: const Color(0xFF80BF84).withOpacity(0.3), width: 1),
+              ),
+              onPressed: _showEditModal,
+              icon: const Icon(Icons.edit_rounded, size: 16),
+              label: const Text('Chỉnh sửa thông tin cá nhân', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+            ),
+          ),
         ],
       ),
     );

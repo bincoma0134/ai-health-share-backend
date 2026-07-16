@@ -2092,7 +2092,10 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)
               ),
-              onPressed: _showAddServiceModal, 
+              onPressed: () {
+                final currentRole = widget.profile['role'] ?? 'PARTNER';
+                context.push('/upload-studio', extra: currentRole.toString());
+              }, 
               icon: const Icon(Icons.add_rounded, size: 18), 
               label: const Text('Thêm mới', style: TextStyle(fontWeight: FontWeight.bold))
             ),
@@ -2279,7 +2282,10 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)
               ),
-              onPressed: _showAddVideoModal, 
+              onPressed: () {
+                final currentRole = widget.profile['role'] ?? 'PARTNER';
+                context.push('/upload-studio', extra: currentRole.toString());
+              }, 
               icon: const Icon(Icons.video_call_rounded, size: 18), 
               label: const Text('Tải lên', style: TextStyle(fontWeight: FontWeight.bold))
             ),

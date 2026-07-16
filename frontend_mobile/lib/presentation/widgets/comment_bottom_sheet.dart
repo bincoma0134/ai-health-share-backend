@@ -25,6 +25,9 @@ class CommentBottomSheet extends StatefulWidget {
 
 class _CommentBottomSheetState extends State<CommentBottomSheet> {
   List<CommentModel> _comments = [];
+  List<CommentModel> _parentComments = [];
+  Map<String, List<CommentModel>> _childrenMap = {};
+  
   bool _isLoading = true;
   bool _isSending = false;
   final _commentController = TextEditingController();
@@ -34,6 +37,8 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
   String? _replyToId;
   String? _replyToName;
   final FocusNode _focusNode = FocusNode();
+  
+  final List<String> _quickEmojis = ['❤️', '😂', '👍', '😮', '🎉', '🙏'];
 
   @override
   void initState() {
@@ -53,21 +58,38 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
       final res = await ApiClient.instance.get('/tiktok/feeds/${widget.videoId}/comments');
       if (res.statusCode == 200 && res.data['status'] == 'success') {
         final List<dynamic> data = res.data['data'];
-        setState(() {
-          _comments = data.map((json) => CommentModel.fromJson(json)).toList();
-          _isLoading = false;
-        });
+        final parsedComments = data.map((json) => CommentModel.fromJson(json)).toList();
+        _processCommentTree(parsedComments);
       }
     } catch (e) {
       setState(() => _isLoading = false);
     }
   }
 
+  void _processCommentTree(List<CommentModel> allComments) {
+    final parents = <CommentModel>[];
+    final childrenMap = <String, List<CommentModel>>{};
+
+    for (var c in allComments) {
+      if (c.parentId == null || c.parentId!.isEmpty) {
+        parents.add(c);
+      } else {
+        childrenMap.putIfAbsent(c.parentId!, () => []).add(c);
+      }
+    }
+
+    setState(() {
+      _comments = allComments;
+      _parentComments = parents;
+      _childrenMap = childrenMap;
+      _isLoading = false;
+    });
+  }
+
   Future<void> _postComment() async {
     final text = _commentController.text.trim();
     if (text.isEmpty) return;
 
-    // Đã thay thế việc đọc ổ cứng bằng đọc trực tiếp trạng thái RAM từ AuthNotifier
     if (!AuthNotifier.instance.isAuthenticated) {
       Navigator.pop(context); 
       widget.onAuthRequired(); 
@@ -75,26 +97,43 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
     }
 
     setState(() => _isSending = true);
+    
+    // 1. Optimistic Update: Thêm fake comment vào UI ngay lập tức
+    final tempComment = CommentModel(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      content: text,
+      parentId: _replyToId,
+      createdAt: DateTime.now().toIso8601String(),
+      user: {'full_name': 'Bạn', 'role': 'USER', 'avatar_url': null},
+    );
+    
+    final currentComments = List<CommentModel>.from(_comments)..insert(0, tempComment);
+    _processCommentTree(currentComments);
+    
+    final targetReplyId = _replyToId;
+    
+    _commentController.clear();
+    setState(() {
+      _replyToId = null;
+      _replyToName = null;
+    });
+    widget.onCommentAdded();
+
+    // 2. Gọi API ngầm dưới nền
     try {
       final res = await ApiClient.instance.post(
         '/tiktok/feeds/${widget.videoId}/comments',
         data: {
           'content': text,
-          if (_replyToId != null) 'parent_id': _replyToId // Đính kèm ID của bình luận cha
+          if (targetReplyId != null) 'parent_id': targetReplyId
         },
       );
 
       if (res.statusCode == 200) {
-        _commentController.clear();
-        setState(() {
-          _replyToId = null;
-          _replyToName = null;
-        });
-        widget.onCommentAdded(); 
-        await _fetchComments();  
+        _fetchComments(); // Đồng bộ lại ID thực tế sau khi thành công
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lỗi gửi bình luận')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lỗi mạng. Vui lòng thử lại!')));
     } finally {
       setState(() => _isSending = false);
     }
@@ -256,16 +295,13 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    // Phân loại bình luận Cha
-    final parentComments = _comments.where((c) {
-      return c.parentId == null || c.parentId!.isEmpty;
-    }).toList();
-
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15), // Glassmorphism XanhSM
-        child: Container(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutQuart,
           height: MediaQuery.of(context).size.height * 0.75,
           margin: const EdgeInsets.only(top: kToolbarHeight), 
           padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -296,23 +332,19 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
                 ),
               ),
               const Divider(height: 1, color: Colors.black12),
-              
+
               // Danh sách bình luận
               Expanded(
-                child: _isLoading 
+                child: _isLoading
                     ? _buildShimmerLoading()
                     : _comments.isEmpty
                         ? const Center(child: Text('Chưa có bình luận nào. Hãy là người đầu tiên!', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)))
                         : ListView.builder(
                             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                            itemCount: parentComments.length,
+                            itemCount: _parentComments.length,
                             itemBuilder: (context, index) {
-                              final parent = parentComments[index];
-                              // Lọc các bình luận con thuộc về cha này
-                              final children = _comments.where((c) {
-                                return c.parentId == parent.id;
-                              }).toList();
-                              
+                              final parent = _parentComments[index];
+                              final children = _childrenMap[parent.id] ?? [];
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -323,63 +355,126 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
                             },
                           ),
               ),
-              
-              // Thanh nhập liệu (Có cờ báo Reply)
+
+              // MỚI: Thanh Quick Emoji Bar và Text Input kết hợp thành thiết kế lơ lửng, bọc Glow
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -2))],
-                ),
-                child: Column(
-                  children: [
-                    // Cờ báo hiệu đang Reply ai đó
-                    if (_replyToId != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8.0, left: 8, right: 8),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Đang trả lời @$_replyToName', style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
-                            GestureDetector(
-                              onTap: () => setState(() { _replyToId = null; _replyToName = null; }),
-                              child: const Icon(Icons.close_rounded, size: 16, color: Colors.grey),
-                            )
-                          ],
-                        ),
-                      ),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _commentController,
-                            focusNode: _focusNode,
-                            decoration: InputDecoration(
-                              hintText: _replyToId != null ? 'Viết câu trả lời...' : 'Thêm bình luận...',
-                              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
-                              filled: true,
-                              fillColor: Colors.grey.shade100,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: _isSending ? null : _postComment,
-                          child: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: const BoxDecoration(color: Color(0xFF80BF84), shape: BoxShape.circle),
-                            child: _isSending 
-                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                          ),
-                        )
-                      ],
+                margin: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF80BF84).withOpacity(0.2),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 4),
+                    ),
+                    const BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 10,
+                      offset: Offset(0, 2),
                     ),
                   ],
                 ),
-              )
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_replyToId != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF80BF84).withOpacity(0.1),
+                              border: const Border(bottom: BorderSide(color: Colors.black12, width: 0.5)),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.reply_rounded, size: 14, color: Color(0xFF80BF84)),
+                                    const SizedBox(width: 6),
+                                    Text('Trả lời ', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                                    Text('@$_replyToName', style: const TextStyle(fontSize: 12, color: Color(0xFF80BF84), fontWeight: FontWeight.w900)),
+                                  ],
+                                ),
+                                GestureDetector(
+                                  onTap: () => setState(() { _replyToId = null; _replyToName = null; }),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: BoxDecoration(color: Colors.grey.shade200, shape: BoxShape.circle),
+                                    child: const Icon(Icons.close_rounded, size: 12, color: Colors.grey),
+                                  ),
+                                )
+                              ],
+                            ),
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: _quickEmojis.map((emoji) => GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () {
+                                _commentController.text += emoji;
+                                _commentController.selection = TextSelection.fromPosition(TextPosition(offset: _commentController.text.length));
+                                _focusNode.requestFocus();
+                              },
+                              child: Text(emoji, style: const TextStyle(fontSize: 20)),
+                            )).toList(),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _commentController,
+                                  focusNode: _focusNode,
+                                  maxLines: 4,
+                                  minLines: 1,
+                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                                  decoration: InputDecoration(
+                                    hintText: _replyToId != null ? 'Thêm bình luận...' : 'Để lại bình luận yêu thương...',
+                                    hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13, fontStyle: FontStyle.italic),
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+                                    filled: true,
+                                    fillColor: Colors.grey.shade100.withOpacity(0.8),
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                    isDense: true,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: _isSending ? null : _postComment,
+                                child: Container(
+                                  height: 42, width: 42,
+                                  margin: const EdgeInsets.only(bottom: 2),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(colors: [Color(0xFF80BF84), Color(0xFF5A9B60)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 2))],
+                                  ),
+                                  child: _isSending
+                                      ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                      : const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
