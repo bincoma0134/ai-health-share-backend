@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart'; // Bổ sung thư viện
-import 'package:rive/rive.dart';
 import 'core/router/app_router.dart';
 import 'presentation/widgets/auth_guard.dart';
 import 'core/network/global_cache_engine.dart'; // Nạp Engine để xả RAM toàn cục
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'presentation/widgets/notification_notifier.dart';
 import 'core/router/deep_link_engine.dart';
-import 'core/router/app_router.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // 🚀 Bổ sung thư viện hiển thị nội bộ
+import 'dart:convert'; // Bổ sung giải mã JSON cho Payload
 
 // Cấu hình Kênh thông báo độ ưu tiên cao khớp hoàn toàn với định danh của Backend
 const AndroidNotificationChannel channel = AndroidNotificationChannel(
@@ -72,7 +71,9 @@ void main() async {
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         final String? payload = response.payload;
         if (payload != null && rootNavigatorKey.currentContext != null) {
-          DeepLinkEngine.instance.handleNotificationTap(rootNavigatorKey.currentContext, payload);
+          dynamic decodedPayload = payload;
+          try { decodedPayload = jsonDecode(payload); } catch (_) {}
+          DeepLinkEngine.instance.handleNotificationTap(rootNavigatorKey.currentContext, decodedPayload);
         }
       },
     );
@@ -108,6 +109,14 @@ class VNShareApp extends StatefulWidget {
 
 // Chuyển đổi sang StatefulWidget và tích hợp WidgetsBindingObserver để lắng nghe OS
 class _VNShareAppState extends State<VNShareApp> with WidgetsBindingObserver {
+  // 🚀 Helper an toàn: Chuyển đổi String Payload từ FCM sang Map để Router hoạt động
+  dynamic _parsePayload(dynamic rawPayload) {
+    if (rawPayload is String) {
+      try { return jsonDecode(rawPayload); } catch (_) { return rawPayload; }
+    }
+    return rawPayload;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -115,7 +124,7 @@ class _VNShareAppState extends State<VNShareApp> with WidgetsBindingObserver {
     
     // 1. Xử lý chạm thông báo khi App đang chạy nền (Background)
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      final payload = message.data['payload'] ?? message.data;
+      final payload = _parsePayload(message.data['payload'] ?? message.data);
       if (payload != null) {
         DeepLinkEngine.instance.handleNotificationTap(rootNavigatorKey.currentContext, payload);
       }
@@ -124,7 +133,7 @@ class _VNShareAppState extends State<VNShareApp> with WidgetsBindingObserver {
     // 2. Xử lý chạm thông báo khi App bị tắt hoàn toàn (Terminated / Cold Start)
     FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
       if (message != null) {
-        final payload = message.data['payload'] ?? message.data;
+        final payload = _parsePayload(message.data['payload'] ?? message.data);
         if (payload != null) {
           // Đợi Flutter dựng xong khung Widget (Frame đầu tiên) rồi mới kích hoạt Router
           WidgetsBinding.instance.addPostFrameCallback((_) {

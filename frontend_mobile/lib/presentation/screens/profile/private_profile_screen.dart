@@ -1542,6 +1542,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                                   child: InkWell(
                                     onTap: () {
                                       final titleCtrl = TextEditingController(text: v['title']?.toString() ?? '');
+                                      final contentCtrl = TextEditingController(text: v['content']?.toString() ?? ''); // 🚀 ĐỒNG BỘ: Tạo controller lấy trường Mô tả
                                       bool isSubmitting = false;
 
                                       showModalBottomSheet(
@@ -1552,7 +1553,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                                         builder: (context) => StatefulBuilder(
                                           builder: (context, setModalState) {
                                             return Container(
-                                              height: MediaQuery.of(context).size.height * 0.6,
+                                              height: MediaQuery.of(context).size.height * 0.75, // 🚀 KHẮC PHỤC LỖI: Tăng không gian chiều cao an toàn cho Form nhập liệu 2 trường
                                               padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 12),
                                               decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
                                               child: Column(
@@ -1563,52 +1564,72 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                                                   const SizedBox(height: 24),
                                                   Expanded(
                                                     child: SingleChildScrollView(
+                                                      physics: const BouncingScrollPhysics(),
                                                       child: Column(
                                                         crossAxisAlignment: CrossAxisAlignment.start,
                                                         children: [
-                                                          const Padding(padding: EdgeInsets.only(left: 4, bottom: 8), child: Text('Tiêu đề / Nội dung chia sẻ', style: TextStyle(color: Color(0xFF617D79), fontSize: 13, fontWeight: FontWeight.bold))),
+                                                          const Padding(padding: EdgeInsets.only(left: 4, bottom: 8), child: Text('Tiêu đề video', style: TextStyle(color: Color(0xFF617D79), fontSize: 13, fontWeight: FontWeight.bold))),
                                                           Container(
                                                             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE5E5EA), width: 1)),
                                                             child: TextField(
                                                               controller: titleCtrl,
-                                                              maxLines: 3,
+                                                              maxLines: 1, // Tiêu đề rút gọn về 1 dòng tinh tế
                                                               style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 15, fontWeight: FontWeight.w500),
-                                                              decoration: const InputDecoration(border: InputBorder.none, contentPadding: EdgeInsets.all(16)),
+                                                              decoration: const InputDecoration(border: InputBorder.none, contentPadding: EdgeInsets.all(16), hintText: "Nhập tiêu đề video..."),
                                                             ),
                                                           ),
+                                                          const SizedBox(height: 20),
+                                                          const Padding(padding: EdgeInsets.only(left: 4, bottom: 8), child: Text('Mô tả chi tiết', style: TextStyle(color: Color(0xFF617D79), fontSize: 13, fontWeight: FontWeight.bold))),
+                                                          Container(
+                                                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE5E5EA), width: 1)),
+                                                            child: TextField(
+                                                              controller: contentCtrl, // 🚀 ĐỒNG BỘ: Nhận diện trường Mô tả
+                                                              maxLines: 3,
+                                                              style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 15, fontWeight: FontWeight.w500),
+                                                              decoration: const InputDecoration(border: InputBorder.none, contentPadding: EdgeInsets.all(16), hintText: "Nhập mô tả chi tiết nội dung..."),
+                                                            ),
+                                                          ),
+                                                          const SizedBox(height: 24),
+                                                          // 🚀 KHẮC PHỤC LỖI: Đưa nút Lưu thay đổi vào vùng cuộn để tránh bàn phím ảo chèn ép gây lỗi Bottom Overflow
+                                                          SizedBox(
+                                                            width: double.infinity,
+                                                            height: 52,
+                                                            child: ElevatedButton(
+                                                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A3A35), foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                                                              onPressed: isSubmitting ? null : () async {
+                                                                if (titleCtrl.text.trim().isEmpty) {
+                                                                  AppToast.show(context: context, message: 'Vui lòng điền nội dung tiêu đề!', isSuccess: false);
+                                                                  return;
+                                                                }
+                                                                setModalState(() => isSubmitting = true);
+                                                                try {
+                                                                  final res = await ApiClient.instance.patch(
+                                                                    '/user/my-tiktok-feeds/${v['id']}', 
+                                                                    data: {
+                                                                      'title': titleCtrl.text.trim(),
+                                                                      'content': contentCtrl.text.trim().isEmpty ? null : contentCtrl.text.trim(), // 🚀 ĐỒNG BỘ: Cập nhật song hành cả Tiêu đề & Mô tả
+                                                                    },
+                                                                  );
+                                                                  if (res.statusCode == 200) {
+                                                                    Navigator.pop(context);
+                                                                    _hasFetchedStudio = false;
+                                                                    _loadUserStudioIfNeeded();
+                                                                    AppToast.show(context: context, message: 'Yêu cầu sửa đổi đã gửi lên hàng đợi duyệt!', isSuccess: true);
+                                                                  } else {
+                                                                    setModalState(() => isSubmitting = false);
+                                                                    AppToast.show(context: context, message: 'Lỗi đồng bộ dữ liệu!', isSuccess: false);
+                                                                  }
+                                                                } catch (e) {
+                                                                  setModalState(() => isSubmitting = false);
+                                                                  AppToast.show(context: context, message: 'Kết nối máy chủ thất bại!', isSuccess: false);
+                                                                }
+                                                              },
+                                                              child: isSubmitting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('LƯU THAY ĐỔI', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                                            ),
+                                                          ),
+                                                          const SizedBox(height: 24),
                                                         ],
                                                       ),
-                                                    ),
-                                                  ),
-                                                  Container(
-                                                    width: double.infinity,
-                                                    height: 52,
-                                                    margin: const EdgeInsets.only(bottom: 32),
-                                                    child: ElevatedButton(
-                                                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A3A35), foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                                                      onPressed: isSubmitting ? null : () async {
-                                                        if (titleCtrl.text.trim().isEmpty) {
-                                                          AppToast.show(context: context, message: 'Vui lòng điền nội dung tiêu đề!', isSuccess: false);
-                                                          return;
-                                                        }
-                                                        setModalState(() => isSubmitting = true);
-                                                        try {
-                                                          final res = await ApiClient.instance.patch('/user/my-tiktok-feeds/${v['id']}', data: {'title': titleCtrl.text.trim()});
-                                                          if (res.statusCode == 200) {
-                                                            Navigator.pop(context);
-                                                            _hasFetchedStudio = false;
-                                                            _loadUserStudioIfNeeded();
-                                                            AppToast.show(context: context, message: 'Yêu cầu sửa đổi đã gửi lên hàng đợi duyệt!', isSuccess: true);
-                                                          } else {
-                                                            setModalState(() => isSubmitting = false);
-                                                            AppToast.show(context: context, message: 'Lỗi đồng bộ dữ liệu!', isSuccess: false);
-                                                          }
-                                                        } catch (e) {
-                                                          setModalState(() => isSubmitting = false);
-                                                          AppToast.show(context: context, message: 'Kết nối máy chủ thất bại!', isSuccess: false);
-                                                        }
-                                                      },
-                                                      child: isSubmitting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('LƯU THAY ĐỔI', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                                                     ),
                                                   ),
                                                 ],
@@ -1695,7 +1716,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                 ),
               );
             },
-          ),
+          ),  
         ],
       );
     }

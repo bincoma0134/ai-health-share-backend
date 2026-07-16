@@ -156,18 +156,36 @@ class NotificationService:
                 "screen": "partner_wallet"
             }
         }
-        return events.get(event_type)
+        
+        mapped_event = events.get(event_type)
+        if mapped_event and metadata:
+            # Cho phép ghi đè động từ metadata để đồng bộ router màn hình với Mobile
+            return {
+                "category": metadata.get("category") or mapped_event.get("category"),
+                "title": metadata.get("title") or mapped_event.get("title"),
+                "message": metadata.get("message") or mapped_event.get("message"),
+                "screen": metadata.get("screen") or mapped_event.get("screen")
+            }
+        return mapped_event
 
     @staticmethod
     def _create_and_save_record(conn, user_id, category, title, message, deep_link, sender_id):
         cur = conn.cursor()
         try:
+            # Phòng vệ dữ liệu trống trước khi ép kiểu SQL để tránh crash giao dịch trên Postgres
+            safe_user_id = user_id if user_id and str(user_id).strip() else None
+            safe_sender_id = sender_id if sender_id and str(sender_id).strip() else None
+
             cur.execute("SAVEPOINT notif_insert_sp")
             cur.execute("""
                 INSERT INTO notifications (user_id, sender_id, category, title, short_message, deep_link_payload)
-                VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s::jsonb)
+                VALUES (
+                    CASE WHEN %s IS NULL THEN NULL ELSE %s::uuid END,
+                    CASE WHEN %s IS NULL THEN NULL ELSE %s::uuid END,
+                    %s, %s, %s, %s::jsonb
+                )
                 RETURNING id
-            """, (user_id, sender_id, category, title, message, json.dumps(deep_link)))
+            """, (safe_user_id, safe_user_id, safe_sender_id, safe_sender_id, category, title, message, json.dumps(deep_link)))
             record = cur.fetchone()
             cur.execute("RELEASE SAVEPOINT notif_insert_sp")
             return str(record[0]) if record else None

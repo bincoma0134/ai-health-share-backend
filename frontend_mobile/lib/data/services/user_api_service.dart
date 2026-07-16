@@ -6,27 +6,27 @@ import '../../core/network/api_client.dart';
 class UserApiService {
   static final Dio _dio = ApiClient.instance;
 
-  // 0. Authentication
+  // 0. Authentication (Ném lỗi trực tiếp lên UI để hiển thị Toast/Alert chính xác)
   static Future<Map<String, dynamic>?> loginEmail(String email, String password) async {
-    try {
-      final res = await _dio.post('/auth/login', data: {'email': email, 'password': password});
-      if (res.statusCode == 200 && res.data['status'] == 'success') return res.data;
-      return null;
-    } catch (e) {
-      return null;
-    }
+    final res = await _dio.post('/auth/login', data: {'email': email, 'password': password});
+    if (res.statusCode == 200 && res.data['status'] == 'success') return res.data;
+    throw DioException(
+      requestOptions: res.requestOptions,
+      response: res,
+      error: res.data['detail'] ?? 'Đăng nhập thất bại',
+    );
   }
 
   static Future<Map<String, dynamic>?> registerEmail(String email, String password, String username, String fullName) async {
-    try {
-      final res = await _dio.post('/auth/register', data: {
-        'email': email, 'password': password, 'username': username, 'full_name': fullName
-      });
-      if (res.statusCode == 200 && res.data['status'] == 'success') return res.data;
-      return null;
-    } catch (e) {
-      return null;
-    }
+    final res = await _dio.post('/auth/register', data: {
+      'email': email, 'password': password, 'username': username, 'full_name': fullName
+    });
+    if (res.statusCode == 200 && res.data['status'] == 'success') return res.data;
+    throw DioException(
+      requestOptions: res.requestOptions,
+      response: res,
+      error: res.data['detail'] ?? 'Đăng ký thất bại',
+    );
   }
 
   static Future<Map<String, dynamic>?> loginFirebase(String idToken) async {
@@ -191,8 +191,6 @@ class UserApiService {
     }
     throw Exception(res.data['detail'] ?? 'Backend không trả về trạng thái thành công');
   }
-
-  // 6. Lấy danh sách nội dung đã lưu
 
   // 6. Lấy danh sách nội dung đã lưu
   static Future<List<dynamic>> fetchSavedItems() async {

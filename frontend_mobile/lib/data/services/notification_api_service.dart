@@ -4,12 +4,17 @@ import '../../core/network/api_client.dart';
 class NotificationApiService {
   static final Dio _dio = ApiClient.instance;
 
-  // Cập nhật FCM Token lên Server
-  static Future<bool> updateFcmToken(String token) async {
+  // Cập nhật FCM Token lên Server (Chuẩn hóa Payload theo FCMTokenUpdate Schema)
+  static Future<bool> updateFcmToken(String token, {String? deviceId, String? platform}) async {
     try {
-      final res = await _dio.post('/notifications/token', data: {'token': token});
+      final res = await _dio.post('/notifications/token', data: {
+        'token': token,
+        if (deviceId != null) 'device_id': deviceId,
+        if (platform != null) 'platform': platform,
+      });
       return res.statusCode == 200 && res.data['status'] == 'success';
     } catch (e) {
+      print('[NotificationApiService] updateFcmToken Error: $e');
       return false;
     }
   }
@@ -57,12 +62,13 @@ class NotificationApiService {
     }
   }
 
-  // 🚀 VOUCHER DROP: Lưu voucher rơi vào ví
+  // 🚀 VOUCHER DROP: Lưu voucher rơi vào ví (Đồng bộ Route Backend /vouchers/claim)
   static Future<bool> claimVoucher(String code) async {
     try {
-      final res = await _dio.post('/vouchers/$code/claim');
+      final res = await _dio.post('/vouchers/claim', queryParameters: {'code': code});
       return res.statusCode == 200 && res.data['status'] == 'success';
     } catch (e) {
+      print('[NotificationApiService] claimVoucher Error: $e');
       return false;
     }
   }

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import '../../../data/services/creator_api_service.dart';
 import '../../../data/services/user_api_service.dart';
 import '../../../core/network/global_cache_engine.dart';
@@ -1588,10 +1589,11 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     final titleCtrl = TextEditingController(text: vid['title']?.toString() ?? '');
     final contentCtrl = TextEditingController(text: vid['content']?.toString() ?? '');
     final priceCtrl = TextEditingController(text: vid['price']?.toString() ?? '0'); // 🚀 ĐỒNG BỘ: Thêm biến điều khiển hiển thị Giá
+    final rateCtrl = TextEditingController(text: vid['affiliate_rate']?.toString() ?? (vid['service'] is Map ? vid['service']['affiliate_rate']?.toString() : null) ?? '0'); // 🚀 ĐỒNG BỘ: Thêm biến điều khiển hiển thị Hoa hồng
     
     // 🚀 ĐỒNG BỘ: Trạng thái liên kết thương mại cho luồng Video Affiliate (Creator)
-    String? selectedPartnerId = vid['partner_id']?.toString();
-    String? selectedServiceId = vid['service_id']?.toString();
+    String? selectedPartnerId = vid['partner_id']?.toString() ?? (vid['partner'] is Map ? (vid['partner']['partner_id'] ?? vid['partner']['id'])?.toString() : null);
+    String? selectedServiceId = vid['service_id']?.toString() ?? (vid['service'] is Map ? vid['service']['id']?.toString() : null);
     String? selectedVoucherCode = vid['voucher_code']?.toString();
     
     List<dynamic> creatorPartners = [];
@@ -1624,7 +1626,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                 // Nếu video đang sửa đã có nhúng Affiliate, tự động tải các dịch vụ/voucher tương ứng
                 if (selectedPartnerId != null) {
                   setModalState(() => isFetchingServices = true);
-                  ApiClient.instance.get('/user/public/partner/$selectedPartnerId/services').then((sRes) {
+                  ApiClient.instance.get('/creator/affiliate/partners/$selectedPartnerId/services').then((sRes) {
                     if (sRes.statusCode == 200 && context.mounted) {
                       List<dynamic> rawServices = [];
                       if (sRes.data is Map && sRes.data.containsKey('data')) {
@@ -1702,110 +1704,181 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         // 🚀 ĐỒNG BỘ: Thêm trường Giá Read-only
                         Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: priceCtrl, enabled: false, style: const TextStyle(color: Color(0xFF617D79), fontWeight: FontWeight.bold), decoration: _premiumInputDeco('Giá tham khảo đính kèm (VNĐ)', Icons.monetization_on_outlined))),
                         const SizedBox(height: 16),
+
+                        // 🚀 ĐỒNG BỘ: Thêm trường Hoa hồng Read-only
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: rateCtrl, enabled: false, style: const TextStyle(color: Color(0xFF617D79), fontWeight: FontWeight.bold), decoration: _premiumInputDeco('Hoa hồng Affiliate (%)', Icons.percent_rounded))),
+                        const SizedBox(height: 16),
                         
                         // 🚀 ĐỒNG BỘ: Tích hợp Dropdown Đối tác (Affiliate) với cấu trúc Premium chống tràn
-                        Container(
-                          decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
-                          child: DropdownButtonFormField<String>(
-                            isExpanded: true,
-                            value: creatorPartners.any((p) => p['partner_id'].toString() == selectedPartnerId) ? selectedPartnerId : null,
-                            decoration: _premiumInputDeco(isFetchingPartners ? 'Đang tải Đối tác...' : 'Chọn Cơ sở Đối tác Y tế', Icons.maps_home_work_rounded),
-                            dropdownColor: Colors.white,
-                            icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
-                            items: [
-                              const DropdownMenuItem(value: null, child: Text('Không liên kết đối tác', style: TextStyle(color: Color(0xFF617D79)), overflow: TextOverflow.ellipsis, maxLines: 1)),
-                              ...creatorPartners.map((p) {
-                                return DropdownMenuItem<String>(
-                                  value: p['partner_id'].toString(),
-                                  child: Text(p['full_name'] ?? 'Đối tác', style: const TextStyle(color: Color(0xFF1A3A35)), overflow: TextOverflow.ellipsis, maxLines: 1),
-                                );
-                              }).toList(),
-                            ],
-                            onChanged: (val) {
-                              setModalState(() {
-                                selectedPartnerId = val;
-                                selectedServiceId = null;
-                                selectedVoucherCode = null;
-                                partnerServices = [];
-                                partnerVouchers = [];
-                              });
-                              if (val != null) {
-                                setModalState(() => isFetchingServices = true);
-                                ApiClient.instance.get('/user/public/partner/$val/services').then((sRes) {
-                                  if (sRes.statusCode == 200 && context.mounted) {
-                                    List<dynamic> rawServices = [];
-                                    if (sRes.data is Map && sRes.data.containsKey('data')) {
-                                      rawServices = sRes.data['data'] is List ? sRes.data['data'] : [];
-                                    } else if (sRes.data is List) {
-                                      rawServices = sRes.data;
-                                    }
-                                    setModalState(() {
-                                      partnerServices = rawServices.where((s) => s['status'] == 'APPROVED').toList();
-                                      isFetchingServices = false;
-                                    });
-                                  }
-                                }).catchError((_) { if (context.mounted) setModalState(() => isFetchingServices = false); });
-
-                                try {
-                                  final partner = creatorPartners.firstWhere((p) => p['partner_id'].toString() == val);
-                                  if (partner['username'] != null) {
-                                    setModalState(() => isFetchingVouchers = true);
-                                    ApiClient.instance.get('/user/public/${partner['username']}').then((vRes) {
-                                      if (vRes.statusCode == 200 && context.mounted) {
-                                        final resBody = vRes.data as Map<String, dynamic>?;
-                                        final profileData = resBody?['data'] as Map<String, dynamic>?;
-                                        final now = DateTime.now();
-                                        final allVouchers = profileData?['vouchers'] as List<dynamic>? ?? [];
-                                        setModalState(() {
-                                          partnerVouchers = allVouchers.where((v) {
-                                            if (v['valid_until'] == null) return false;
-                                            try { return DateTime.parse(v['valid_until'].toString()).isAfter(now); } catch (_) { return false; }
-                                          }).toList();
-                                          isFetchingVouchers = false;
-                                        });
+                        GestureDetector(
+                          onTap: () {
+                            AppToast.show(
+                              context: context,
+                              message: 'Cơ sở đối tác liên kết đã được cố định cho video này!',
+                              isSuccess: false,
+                            );
+                          },
+                          behavior: HitTestBehavior.opaque,
+                          child: Opacity(
+                            opacity: 0.6,
+                            child: IgnorePointer(
+                              ignoring: true,
+                              child: Container(
+                                decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
+                                child: DropdownButtonFormField<String>(
+                                  isExpanded: true,
+                                  value: creatorPartners.any((p) => p['partner_id'].toString() == selectedPartnerId) ? selectedPartnerId : null,
+                                  decoration: _premiumInputDeco(isFetchingPartners ? 'Đang tải Đối tác...' : 'Chọn Cơ sở Đối tác Y tế', Icons.maps_home_work_rounded),
+                                  dropdownColor: Colors.white,
+                                  icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
+                              items: [
+                                const DropdownMenuItem(value: null, child: Text('Không liên kết đối tác', style: TextStyle(color: Color(0xFF617D79)), overflow: TextOverflow.ellipsis, maxLines: 1)),
+                                ...creatorPartners.map((p) {
+                                  return DropdownMenuItem<String>(
+                                    value: p['partner_id'].toString(),
+                                    child: Text(p['full_name'] ?? 'Đối tác', style: const TextStyle(color: Color(0xFF1A3A35)), overflow: TextOverflow.ellipsis, maxLines: 1),
+                                  );
+                                }).toList(),
+                              ],
+                              onChanged: (val) {
+                                setModalState(() {
+                                  selectedPartnerId = val;
+                                  selectedServiceId = null;
+                                  selectedVoucherCode = null;
+                                  partnerServices = [];
+                                  partnerVouchers = [];
+                                  priceCtrl.text = '0'; // 🚀 ĐỒNG BỘ: Reset giá khi đổi đối tác
+                                  rateCtrl.text = '0';  // 🚀 ĐỒNG BỘ: Reset hoa hồng khi đổi đối tác
+                                });
+                                if (val != null) {
+                                  setModalState(() => isFetchingServices = true);
+                                  ApiClient.instance.get('/creator/affiliate/partners/$val/services').then((sRes) {
+                                    if (sRes.statusCode == 200 && context.mounted) {
+                                      List<dynamic> rawServices = [];
+                                      if (sRes.data is Map && sRes.data.containsKey('data')) {
+                                        rawServices = sRes.data['data'] is List ? sRes.data['data'] : [];
+                                      } else if (sRes.data is List) {
+                                        rawServices = sRes.data;
                                       }
-                                    }).catchError((_) { if (context.mounted) setModalState(() => isFetchingVouchers = false); });
-                                  }
-                                } catch (_) {}
-                              }
-                            },
+                                      setModalState(() {
+                                        partnerServices = rawServices.where((s) => s['status'] == 'APPROVED').toList();
+                                        isFetchingServices = false;
+                                      });
+                                    }
+                                  }).catchError((_) { if (context.mounted) setModalState(() => isFetchingServices = false); });
+
+                                  try {
+                                    final partner = creatorPartners.firstWhere((p) => p['partner_id'].toString() == val);
+                                    if (partner['username'] != null) {
+                                      setModalState(() => isFetchingVouchers = true);
+                                      ApiClient.instance.get('/user/public/${partner['username']}').then((vRes) {
+                                        if (vRes.statusCode == 200 && context.mounted) {
+                                          final resBody = vRes.data as Map<String, dynamic>?;
+                                          final profileData = resBody?['data'] as Map<String, dynamic>?;
+                                          final now = DateTime.now();
+                                          final allVouchers = profileData?['vouchers'] as List<dynamic>? ?? [];
+                                          setModalState(() {
+                                            partnerVouchers = allVouchers.where((v) {
+                                              if (v['valid_until'] == null) return false;
+                                              try { return DateTime.parse(v['valid_until'].toString()).isAfter(now); } catch (_) { return false; }
+                                            }).toList();
+                                            isFetchingVouchers = false;
+                                          });
+                                        }
+                                      }).catchError((_) { if (context.mounted) setModalState(() => isFetchingVouchers = false); });
+                                    }
+                                  } catch (_) {}
+                                }
+                              },
+                            ),
                           ),
                         ),
+                      ),
+                    ),
                         const SizedBox(height: 16),
                         
                         // 🚀 ĐỒNG BỘ: Tích hợp Dropdown Dịch vụ (Affiliate)
-                        Container(
-                          decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
-                          child: DropdownButtonFormField<String>(
-                            isExpanded: true,
-                            value: partnerServices.any((s) => s['id'].toString() == selectedServiceId) ? selectedServiceId : null,
-                            decoration: _premiumInputDeco(isFetchingServices ? 'Đang tải Dịch vụ...' : 'Liên kết Gói dịch vụ y khoa', Icons.medical_services_rounded),
-                            dropdownColor: Colors.white,
-                            icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
-                            items: [
-                              const DropdownMenuItem(value: null, child: Text('Không liên kết dịch vụ', style: TextStyle(color: Color(0xFF617D79)), overflow: TextOverflow.ellipsis, maxLines: 1)),
-                              ...partnerServices.map((s) {
-                                return DropdownMenuItem<String>(
-                                  value: s['id'].toString(),
-                                  child: Text(s['service_name'] ?? 'Dịch vụ', style: const TextStyle(color: Color(0xFF1A3A35)), overflow: TextOverflow.ellipsis, maxLines: 1),
-                                );
-                              }).toList(),
-                            ],
-                            onChanged: selectedPartnerId == null ? null : (val) {
-                              setModalState(() {
-                                selectedServiceId = val;
-                                if (val != null) {
-                                  try {
-                                    final svc = partnerServices.firstWhere((s) => s['id'].toString() == val);
-                                    priceCtrl.text = svc['price']?.toString() ?? '0';
-                                  } catch (_) {}
-                                } else {
-                                  priceCtrl.text = '0';
-                                }
-                              });
-                            },
+                        GestureDetector(
+                          onTap: () {
+                            AppToast.show(
+                              context: context,
+                              message: 'Gói dịch vụ liên kết đã được cố định cho video này!',
+                              isSuccess: false,
+                            );
+                          },
+                          behavior: HitTestBehavior.opaque,
+                          child: Opacity(
+                            opacity: 0.6,
+                            child: IgnorePointer(
+                              ignoring: true,
+                              child: Container(
+                                decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
+                                child: DropdownButtonFormField<String>(
+                                  isExpanded: true,
+                                  itemHeight: null, // 🚀 KHẮC PHỤC LỖI: Cho phép menu tự động co giãn chiều cao linh hoạt
+                              value: partnerServices.any((s) => s['id'].toString() == selectedServiceId) ? selectedServiceId : null,
+                              decoration: _premiumInputDeco(isFetchingServices ? 'Đang tải Dịch vụ...' : 'Liên kết Gói dịch vụ y khoa', Icons.medical_services_rounded),
+                              dropdownColor: Colors.white,
+                              icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
+                              selectedItemBuilder: (BuildContext context) {
+                                return [
+                                  const Text('Không liên kết dịch vụ', style: TextStyle(color: Color(0xFF617D79)), overflow: TextOverflow.ellipsis, maxLines: 1),
+                                  ...partnerServices.map((s) {
+                                    return Text(s['service_name'] ?? 'Dịch vụ', style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600, fontSize: 14), overflow: TextOverflow.ellipsis, maxLines: 1);
+                                  }).toList(),
+                                ];
+                              },
+                              items: [
+                                const DropdownMenuItem(value: null, child: Text('Không liên kết dịch vụ', style: TextStyle(color: Color(0xFF617D79)), overflow: TextOverflow.ellipsis, maxLines: 1)),
+                                ...partnerServices.map((s) {
+                                  final formatCurrency = NumberFormat('#,###', 'vi_VN');
+                                  final double pPrice = double.tryParse(s['price']?.toString() ?? '0') ?? 0.0;
+                                  final double pRate = double.tryParse(s['affiliate_rate']?.toString() ?? '0') ?? 0.0;
+                                  return DropdownMenuItem<String>(
+                                    value: s['id'].toString(),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 4),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(s['service_name'] ?? 'Dịch vụ', style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600, fontSize: 14), overflow: TextOverflow.ellipsis, maxLines: 1),
+                                          const SizedBox(height: 4),
+                                          Wrap( // 🚀 KHẮC PHỤC LỖI: Dùng Wrap để tự động bẻ dòng tránh tràn ngang
+                                            spacing: 8,
+                                            runSpacing: 4,
+                                            children: [
+                                              Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(4)), child: Text('💰 ${formatCurrency.format(pPrice)}đ', style: const TextStyle(color: Color(0xFF2E7D32), fontSize: 11, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis, maxLines: 1)),
+                                              Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: const Color(0xFFFFF3E0), borderRadius: BorderRadius.circular(4)), child: Text('📈 Affiliate: ${pRate.toStringAsFixed(0)}%', style: const TextStyle(color: Color(0xFFE65100), fontSize: 11, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis, maxLines: 1)),
+                                            ],
+                                          )
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ],
+                              onChanged: selectedPartnerId == null ? null : (val) {
+                                setModalState(() {
+                                  selectedServiceId = val;
+                                  if (val != null) {
+                                    try {
+                                      final svc = partnerServices.firstWhere((s) => s['id'].toString() == val);
+                                      priceCtrl.text = svc['price']?.toString() ?? '0';
+                                      rateCtrl.text = svc['affiliate_rate']?.toString() ?? '0'; // 🚀 ĐỒNG BỘ: Cập nhật hiển thị hoa hồng
+                                    } catch (_) {}
+                                  } else {
+                                    priceCtrl.text = '0';
+                                    rateCtrl.text = '0';
+                                  }
+                                });
+                              },
+                            ),
                           ),
                         ),
+                      ),
+                    ),
                         const SizedBox(height: 16),
                         
                         // 🚀 ĐỒNG BỘ: Tích hợp Dropdown Voucher có chức năng check điều kiện theo DedicatedUploadScreen
@@ -1813,16 +1886,63 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                           decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
                           child: DropdownButtonFormField<String>(
                             isExpanded: true,
+                            itemHeight: null, // 🚀 KHẮC PHỤC LỖI: Cho phép menu tự động co giãn chiều cao linh hoạt
                             value: partnerVouchers.any((v) => v['code'].toString() == selectedVoucherCode) ? selectedVoucherCode : null,
                             decoration: _premiumInputDeco(isFetchingVouchers ? 'Đang tải Voucher...' : 'Đính kèm Mã ưu đãi (Voucher)', Icons.local_offer_rounded),
                             dropdownColor: Colors.white,
                             icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
+                            selectedItemBuilder: (BuildContext context) {
+                              return [
+                                const Text('Không dùng Voucher', style: TextStyle(color: Color(0xFF617D79)), overflow: TextOverflow.ellipsis, maxLines: 1),
+                                ...partnerVouchers.map((v) {
+                                  final formatCurrency = NumberFormat('#,###', 'vi_VN');
+                                  final String code = v['code']?.toString() ?? 'VOUCHER';
+                                  final String dType = v['discount_type']?.toString() ?? 'FIXED';
+                                  final double dVal = double.tryParse(v['discount_value']?.toString() ?? '0') ?? 0.0;
+                                  String discountStr = dType == 'PERCENTAGE' ? 'Giảm ${dVal.toStringAsFixed(0)}%' : 'Giảm ${formatCurrency.format(dVal)}đ';
+                                  return Text('$code ($discountStr)', style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis, maxLines: 1);
+                                }).toList(),
+                              ];
+                            },
                             items: [
                               const DropdownMenuItem(value: null, child: Text('Không dùng Voucher', style: TextStyle(color: Color(0xFF617D79)), overflow: TextOverflow.ellipsis, maxLines: 1)),
                               ...partnerVouchers.map((v) {
+                                final formatCurrency = NumberFormat('#,###', 'vi_VN');
+                                final String code = v['code']?.toString() ?? 'VOUCHER';
+                                final String dType = v['discount_type']?.toString() ?? 'FIXED';
+                                final double dVal = double.tryParse(v['discount_value']?.toString() ?? '0') ?? 0.0;
+                                final double minVal = double.tryParse(v['min_order_value']?.toString() ?? '0') ?? 0.0;
+                                
+                                String discountStr = dType == 'PERCENTAGE' ? 'Giảm ${dVal.toStringAsFixed(0)}%' : 'Giảm ${formatCurrency.format(dVal)}đ';
+                                String dateStr = 'Vô thời hạn';
+                                if (v['valid_until'] != null) {
+                                  try {
+                                    final DateTime parsed = DateTime.parse(v['valid_until'].toString());
+                                    dateStr = DateFormat('dd/MM/yyyy').format(parsed);
+                                  } catch (_) {}
+                                }
+                                
                                 return DropdownMenuItem<String>(
-                                  value: v['code'].toString(),
-                                  child: Text(v['code']?.toString() ?? 'VOUCHER', style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis, maxLines: 1),
+                                  value: code,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: const Color(0xFFFFEBEE), borderRadius: BorderRadius.circular(4)), child: Text(discountStr, style: const TextStyle(color: Color(0xFFC62828), fontSize: 11, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis, maxLines: 1)),
+                                            const SizedBox(width: 8),
+                                            Flexible(child: Text(code, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w800, fontSize: 13), overflow: TextOverflow.ellipsis, maxLines: 1)), // 🚀 KHẮC PHỤC LỖI: Dùng Flexible thay Expanded
+                                          ]
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text('⏳ HSD: $dateStr • 🛒 Đơn: ${formatCurrency.format(minVal)}đ', style: const TextStyle(color: Color(0xFF64748B), fontSize: 11), overflow: TextOverflow.ellipsis, maxLines: 1), // 🚀 KHẮC PHỤC LỖI: Cắt chữ an toàn
+                                      ],
+                                    ),
+                                  ),
                                 );
                               }).toList(),
                             ],
@@ -1882,17 +2002,73 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                           'title': titleCtrl.text,
                           'content': contentCtrl.text.isEmpty ? null : contentCtrl.text,
                           'price': priceCtrl.text.isEmpty ? null : double.tryParse(priceCtrl.text), // 🚀 ĐỒNG BỘ: Gắn giá trị hiện tại vào Payload
+                          'affiliate_rate': rateCtrl.text.isEmpty ? null : double.tryParse(rateCtrl.text), // 🚀 HOTFIX: Gắn Hoa hồng để Backend xác nhận lưu Dịch vụ mới
                           'partner_id': selectedPartnerId, // 🚀 ĐỒNG BỘ: Payload Metadata Affiliate Đối tác
                           'service_id': selectedServiceId, // 🚀 ĐỒNG BỘ: Payload Metadata Affiliate Dịch vụ
                           'voucher_code': selectedVoucherCode, // 🚀 ĐỒNG BỘ: Payload Metadata Voucher
+                          if (selectedPartnerId != null && selectedServiceId != null) 'is_affiliate': true,
                         };
                         
-                        final res = await ApiClient.instance.patch('/user/my-tiktok-feeds/${vid['id']}', data: payload);
+                        final res = await ApiClient.instance.patch('/user/my-tiktok-feeds/${vid['id']}', data: payload).catchError((err) {
+                          return null;
+                        });
+                        
                         setModalState(() => isUploading = false);
+
+                        if (res == null) {
+                          if (mounted) AppToast.show(context: context, message: 'Lỗi kết nối máy chủ hoặc dữ liệu không hợp lệ!', isSuccess: false);
+                          return;
+                        }
                         
                         if (res.statusCode == 200 && mounted) {
+                          // 🚀 ĐỒNG BỘ: Cập nhật đón đầu (Optimistic Update) thông tin thương mại vào Local Cache UI
+                          setState(() {
+                            vid['title'] = titleCtrl.text;
+                            vid['content'] = contentCtrl.text.isEmpty ? null : contentCtrl.text;
+                            vid['price'] = priceCtrl.text.isEmpty ? null : double.tryParse(priceCtrl.text);
+                            vid['partner_id'] = selectedPartnerId;
+                            vid['service_id'] = selectedServiceId;
+                            vid['voucher_code'] = selectedVoucherCode;
+                            
+                            // Cập nhật Tên Dịch Vụ và % Hoa Hồng hiển thị ngay lập tức
+                            if (selectedServiceId != null) {
+                              try {
+                                final svc = partnerServices.firstWhere(
+                                  (s) => s['id']?.toString() == selectedServiceId?.toString(),
+                                  orElse: () => null
+                                );
+                                
+                                if (svc != null) {
+                                  vid['service_name'] = svc['service_name'];
+                                  vid['affiliate_rate'] = svc['affiliate_rate'];
+                                  
+                                  // Dự phòng cập nhật cấu trúc Map nội bộ (Tránh lỗi UnmodifiableMap của Dart)
+                                  if (vid['service'] is Map) {
+                                    final Map<String, dynamic> currentService = Map<String, dynamic>.from(vid['service']);
+                                    currentService['id'] = svc['id'];
+                                    currentService['service_name'] = svc['service_name'];
+                                    currentService['affiliate_rate'] = svc['affiliate_rate'];
+                                    vid['service'] = currentService;
+                                  } else {
+                                    vid['service'] = {
+                                      'id': svc['id'],
+                                      'service_name': svc['service_name'],
+                                      'affiliate_rate': svc['affiliate_rate']
+                                    };
+                                  }
+                                }
+                              } catch (e) {
+                                debugPrint("Lỗi đồng bộ State Service: $e");
+                              }
+                            } else {
+                              vid['service_name'] = null;
+                              vid['affiliate_rate'] = null;
+                              vid['service'] = null;
+                            }
+                          });
+
                           Navigator.pop(context);
-                          _loadCreatorData();
+                          _loadCreatorData(); // Vẫn gọi ngầm để đồng bộ trạng thái thật từ máy chủ
                           AppToast.show(context: context, message: 'Bản sửa đổi video đã được lưu thành công!', isSuccess: true);
                         } else if (mounted) {
                           AppToast.show(context: context, message: 'Lỗi đường truyền!', isSuccess: false);

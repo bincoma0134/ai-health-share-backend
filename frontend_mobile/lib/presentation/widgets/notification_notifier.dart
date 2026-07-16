@@ -32,8 +32,15 @@ class NotificationNotifier extends ChangeNotifier {
   // Quản lý Banner Overlay hiện tại để xóa ngay nếu có thông báo mới dồn dập
   OverlayEntry? _activeBanner;
 
+  // Mở khóa cờ Token khi User đổi tài khoản
+  void resetSyncState() {
+    _hasSyncedToken = false;
+    _isSyncingToken = false;
+  }
+
   // 0. Xin quyền hệ thống (Chạy ngầm sau Đăng nhập)
-  Future<void> requestPermission() async {
+  Future<void> requestPermission({bool force = false}) async {
+    if (force) resetSyncState();
     if (_hasSyncedToken || _isSyncingToken) return;
     
     try {

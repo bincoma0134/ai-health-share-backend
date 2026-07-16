@@ -58,6 +58,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           _data = profileResult;
           // 🚀 BỌC THÉP API: Trích xuất trực tiếp danh sách video chuẩn xác của User từ endpoint public thay vì gọi hàm /tiktok/feeds gây nhiễu
           _fetchedVideos = profileResult['videos'] ?? [];
+          _fetchedServices = profileResult['services'] ?? [];
           _fetchedVouchers = profileResult['vouchers'] ?? [
             {
               'id': 'v1',
@@ -113,23 +114,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   // [LAZY LOADING ENGINE] Hàm nạp dữ liệu trễ chuyên dụng theo Tab
   bool _isLazyFetching = false;
   Future<void> _loadTabDataIfNeeded(String tab, String userId) async {
-    if (_isLazyFetching) return;
-    
-    bool needsFetch = false;
-    if (tab == 'services' && _fetchedServices.isEmpty) needsFetch = true;
-    // 🚀 Đã ngắt luồng nạp trễ API /tiktok/feeds cho Tab Video vì dữ liệu gốc đã có sẵn ở hàm loadData.
-    
-    if (!needsFetch) return;
-
-    _isLazyFetching = true;
-    try {
-      if (tab == 'services') {
-        final services = await UserApiService.fetchUserServices(userId);
-        if (mounted) setState(() => _fetchedServices = services);
-      }
-    } finally {
-      _isLazyFetching = false;
-    }
+    // 🚀 Đã ngắt toàn bộ luồng nạp trễ API (/services và /tiktok/feeds) 
+    // Dữ liệu chuẩn xác của riêng Partner đã được lấy đầy đủ từ public profile.
+    return;
   }
 
   Future<void> _handleToggleFollow() async {
@@ -219,7 +206,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       return status == 'APPROVED' || status == 'PUBLISHED';
     }).toList();
     
-    final services = _fetchedServices;
+    // 🚀 bọc thép: chỉ hiển thị các dịch vụ đã được admin phê duyệt
+    final services = _fetchedServices.where((s) {
+      final String status = (s['status'] ?? '').toString().toUpperCase();
+      return status == 'APPROVED';
+    }).toList();
 
     final String? rawCover = profile['cover_url'] != null && profile['cover_url'].toString().trim().isNotEmpty ? '${profile['cover_url']}?w=800&q=70' : null;
     final bool hasCover = rawCover != null;
@@ -508,9 +499,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                       // Đồng bộ hóa danh sách VideoModel thực thể tham chiếu gốc trực tiếp để kích hoạt re-render l lồng cha khi Like/Save thay đổi
                                       final List<VideoModel> models = videos.map((json) {
                                         final Map<String, dynamic> videoMap = Map<String, dynamic>.from(json);
-                                        if (!videoMap.containsKey('author') || videoMap['author'] == null) {
-                                          videoMap['author'] = profile;
-                                        }
+                                        // 🚀 CHUẨN HOÁ: Trích xuất đích danh thông tin tác giả, chống crash parse Model
+                                        videoMap['author'] = {
+                                          'id': profile['id'] ?? '',
+                                          'username': profile['username'] ?? '',
+                                          'full_name': profile['full_name'] ?? '',
+                                          'avatar_url': profile['avatar_url'] ?? '',
+                                        };
                                         return VideoModel.fromJson(videoMap);
                                       }).toList();
                                       
@@ -638,7 +633,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                               'comments_count': s['comments_count'] ?? 0,
                                               'is_liked': s['is_liked'] ?? false,
                                               'is_saved': s['is_saved'] ?? false,
-                                              'author': profile,
+                                              // 🚀 chuẩn hoá: trích xuất đích danh thông tin tác giả, chống crash parse model
+                                              'author': {
+                                                'id': profile['id'] ?? '',
+                                                'username': profile['username'] ?? '',
+                                                'full_name': profile['full_name'] ?? '',
+                                                'avatar_url': profile['avatar_url'] ?? '',
+                                              },
                                               'service_id': s['id'] ?? s['service_id'],
                                               'partner_id': profile['id'],
                                             };
