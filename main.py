@@ -349,15 +349,27 @@ def firebase_login(payload: schemas.FirebaseLogin, conn=Depends(get_db_connectio
 def get_services(user_id: str = None, conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        query = """
-            SELECT s.*, 
-                   json_build_object('id', u.id, 'avatar_url', u.avatar_url, 'full_name', u.full_name, 'username', u.username, 'physical_address', u.physical_address) as users
-            FROM services s
-            LEFT JOIN users u ON s.partner_id = u.id
-            WHERE s.status = 'APPROVED'
-            ORDER BY s.created_at DESC
-        """
-        cur.execute(query)
+        if user_id and user_id.strip() and user_id != "null":
+            query = """
+                SELECT s.*, 
+                       json_build_object('id', u.id, 'avatar_url', u.avatar_url, 'full_name', u.full_name, 'username', u.username, 'physical_address', u.physical_address) as users
+                FROM services s
+                LEFT JOIN users u ON s.partner_id = u.id
+                WHERE s.status = 'APPROVED' AND s.partner_id = %s
+                ORDER BY s.created_at DESC
+            """
+            cur.execute(query, (user_id.strip(),))
+        else:
+            query = """
+                SELECT s.*, 
+                       json_build_object('id', u.id, 'avatar_url', u.avatar_url, 'full_name', u.full_name, 'username', u.username, 'physical_address', u.physical_address) as users
+                FROM services s
+                LEFT JOIN users u ON s.partner_id = u.id
+                WHERE s.status = 'APPROVED'
+                ORDER BY s.created_at DESC
+            """
+            cur.execute(query)
+            
         services = cur.fetchall()
         for s in services: s["service_type_enum"] = s.get("service_type", "RELAXATION")
         return {"status": "success", "data": services}
