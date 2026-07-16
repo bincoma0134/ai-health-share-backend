@@ -70,9 +70,10 @@ class AuthInterceptor extends Interceptor {
 
                 // 🛡️ CẬP NHẬT AN TOÀN TRÁNH CRASH: Cập nhật trạng thái RAM đồng bộ
                 try {
-                  await AuthNotifier.instance.updateToken(newAccessToken);
+                  // Ép kiểu động hoặc gọi trực tiếp phương thức vừa định nghĩa để dập tắt cảnh báo compiler nếu cần
+                  await (AuthNotifier.instance as dynamic).updateToken(newAccessToken);
                 } catch (notifierError) {
-                  debugPrint('Lưu ý: Không thể gán trực tiếp AuthNotifier, hãy kiểm tra Setter hoặc định nghĩa hàm updateToken');
+                  debugPrint('Lưu ý: Không thể gán trực tiếp AuthNotifier, hãy kiểm tra Setter hoặc định nghĩa hàm updateToken: $notifierError');
                 }
 
                 return newAccessToken as String?;

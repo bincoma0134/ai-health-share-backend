@@ -4,7 +4,6 @@ import '../../core/network/api_client.dart';
 import '../models/service_model.dart';
 import '../models/partner_map_model.dart'; // Import Model bản đồ đối tác
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 
 class ExploreApiService {
   static final Dio _dio = ApiClient.instance;
@@ -65,11 +64,10 @@ class ExploreApiService {
   static Future<List<dynamic>> fetchAllServices() async {
     try {
       // Nhúng trực tiếp đường dẫn gốc R2/Render của Backend tương tự như cách Website thực thi
-      final url = Uri.parse('https://ai-health-share-backend.onrender.com/services');
-      final response = await http.get(url); // Sử dụng gói mạng http phổ quát an toàn
+      final response = await _dio.get('https://ai-health-share-backend.onrender.com/services');
       
       if (response.statusCode == 200) {
-        final Map<String, dynamic> decodedData = json.decode(response.body);
+        final Map<String, dynamic> decodedData = response.data is String ? json.decode(response.data) : response.data;
         if (decodedData['status'] == 'success' || decodedData['data'] != null) {
           return List<dynamic>.from(decodedData['data'] ?? []);
         }

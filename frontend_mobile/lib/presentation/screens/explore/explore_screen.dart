@@ -336,6 +336,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
           AuthNotifier.instance.refresh(); // Phát tín hiệu đồng bộ số dư sang tab Profile cá nhân
         }
       } catch (_) {
+        if (!mounted) return;
         AppToast.show(context: context, message: 'Hệ thống ghi nhận bạn đã điểm danh hôm nay.', isSuccess: false);
       } finally {
         if (mounted) setState(() => _isCheckingIn = false);
@@ -362,6 +363,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
           });
         }
       } catch (_) {
+        if (!mounted) return;
         AppToast.show(context: context, message: 'Mã ưu đãi này đã có trong ví hoặc đã hết lượt.', isSuccess: false);
       } finally {
         if (mounted) setState(() => _isClaimingVoucher = false);
@@ -385,6 +387,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
         AuthNotifier.instance.refresh();
       }
     } catch (_) {
+      if (!mounted) return;
       AppToast.show(context: context, message: 'Nhận thưởng thất bại. Vui lòng thử lại!', isSuccess: false);
     } finally {
       if (mounted) setState(() => _isClaimingMission = false);

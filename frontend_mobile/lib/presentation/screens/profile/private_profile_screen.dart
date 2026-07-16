@@ -99,6 +99,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
         '/user/creator-upgrade/request',
         data: {'reason_answer': _surveyAnswer},
       );
+      if (!mounted) return;
       if (res.statusCode == 200) {
         setState(() {
           _upgradeStatus = 'PENDING';
@@ -174,6 +175,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
 
   Future<void> _handleLogout() async {
     await AuthNotifier.instance.logout();
+    if (!mounted) return;
     setState(() {
       _profileData = null;
       _userVideos = [];
@@ -1610,6 +1612,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                                                                       'content': contentCtrl.text.trim().isEmpty ? null : contentCtrl.text.trim(), // 🚀 ĐỒNG BỘ: Cập nhật song hành cả Tiêu đề & Mô tả
                                                                     },
                                                                   );
+                                                                  if (!mounted) return;
                                                                   if (res.statusCode == 200) {
                                                                     Navigator.pop(context);
                                                                     _hasFetchedStudio = false;
@@ -1620,6 +1623,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                                                                     AppToast.show(context: context, message: 'Lỗi đồng bộ dữ liệu!', isSuccess: false);
                                                                   }
                                                                 } catch (e) {
+                                                                  if (!mounted) return;
                                                                   setModalState(() => isSubmitting = false);
                                                                   AppToast.show(context: context, message: 'Kết nối máy chủ thất bại!', isSuccess: false);
                                                                 }
@@ -1679,6 +1683,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                                       if (confirm == true) {
                                         try {
                                           final res = await ApiClient.instance.delete('/user/my-tiktok-feeds/${v['id']}');
+                                          if (!mounted) return;
                                           if (res.statusCode == 200) {
                                             _hasFetchedStudio = false;
                                             _loadUserStudioIfNeeded();
@@ -1691,6 +1696,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                                             AppToast.show(context: context, message: 'Lỗi thực thi lệnh gỡ!', isSuccess: false);
                                           }
                                         } catch (e) {
+                                          if (!mounted) return;
                                           AppToast.show(context: context, message: 'Lỗi kết nối máy chủ!', isSuccess: false);
                                         }
                                       }

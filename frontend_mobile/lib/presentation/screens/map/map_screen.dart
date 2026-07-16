@@ -98,7 +98,8 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
         AppToast.show(context: context, message: '⚡ Đồng bộ thành công ${data.length} cơ sở quanh bạn!', isSuccess: true);
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
       debugPrint("❌ SỰ CỐ TẠI LUỒNG KHỞI TẠO MAP: $e");
       AppToast.show(context: context, message: 'Mạng trục trặc, vui lòng kiểm tra lại!', isSuccess: false);
     } finally {

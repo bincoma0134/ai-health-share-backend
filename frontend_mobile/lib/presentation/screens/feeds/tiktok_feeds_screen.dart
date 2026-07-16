@@ -145,6 +145,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
     } catch (e) {
       // Fallback an toàn
       final feeds = await FeedApiService.fetchFeeds();
+      if (!mounted) return;
       setState(() {
         _videos = feeds;
         _isLoading = false;

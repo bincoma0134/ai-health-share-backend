@@ -215,7 +215,8 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
         debugPrint("⚠️ API ĐỒNG BỘ TRẢ VỀ MÃ LỖI: ${response.statusCode} - ${response.data}");
       }
     } catch (e) {
-      if (mounted) setState(() => _isTyping = false);
+      if (!context.mounted) return;
+      setState(() => _isTyping = false);
       // In lỗi thực tế ra Terminal (Logcat) giúp việc rà soát JWT hoặc Token đạt độ chuẩn xác tuyệt đối
       debugPrint("❌ CRITICAL ERROR TẠI AI CHAT FLOW: $e");
       AppToast.show(context: context, message: 'Đường truyền mạng trục trặc, vui lòng thử lại!', isSuccess: false);
@@ -397,10 +398,12 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
                           onPressed: () async {
                             try {
                               await ApiClient.instance.delete('/ai/conversations/${conv['id']}');
+                              if (!context.mounted) return;
                               if (_activeConvId == conv['id']) _createNewChat();
                               _loadConversations();
                               Navigator.pop(context);
                             } catch (e) {
+                              if (!context.mounted) return;
                               AppToast.show(context: context, message: 'Lỗi xóa', isSuccess: false);
                             }
                           },
@@ -659,8 +662,6 @@ class _AiOrbPainter extends CustomPainter {
     }
   }
 
-  @override
-  bool shouldRepbuild(covariant _AiOrbPainter oldDelegate) => true;
   @override
   bool shouldRepaint(covariant _AiOrbPainter oldDelegate) => true;
 }

@@ -134,7 +134,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             }
                             setModalState(() => isProcessing = true);
                             final ok = await AdminApiService.processWithdrawal(withdrawal['id'], 'REJECTED', noteCtrl.text);
-                            if (ok && mounted) {
+                            if (!context.mounted) return;
+                            if (ok) {
                               Navigator.pop(context);
                               _loadDashboardData();
                               AppToast.show(context: context, message: 'Đã từ chối lệnh rút tiền!', isSuccess: true);
@@ -150,7 +151,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           onPressed: isProcessing ? null : () async {
                             setModalState(() => isProcessing = true);
                             final ok = await AdminApiService.processWithdrawal(withdrawal['id'], 'COMPLETED', noteCtrl.text);
-                            if (ok && mounted) {
+                            if (!context.mounted) return;
+                            if (ok) {
                               Navigator.pop(context);
                               _loadDashboardData();
                               AppToast.show(context: context, message: 'Đã duyệt giải ngân thành công!', isSuccess: true);

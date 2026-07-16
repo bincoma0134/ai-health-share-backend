@@ -11,7 +11,7 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <USES-PERMISSION ANDROID:NAME="ANDROID.PERMISSION.VIBRATE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:label="VN Share"

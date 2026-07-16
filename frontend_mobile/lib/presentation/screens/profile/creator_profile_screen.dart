@@ -1450,6 +1450,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                     );
                                     if (confirm == true) {
                                       final res = await ApiClient.instance.delete('/user/my-tiktok-feeds/${v['id']}');
+                                      if (!mounted) return;
                                       if (res.statusCode == 200) {
                                         _loadCreatorData();
                                       }
@@ -1639,7 +1640,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         isFetchingServices = false;
                       });
                     }
-                  }).catchError((_) { if (context.mounted) setModalState(() => isFetchingServices = false); });
+                  }, onError: (_) { if (context.mounted) setModalState(() => isFetchingServices = false); });
 
                   try {
                     final partner = creatorPartners.firstWhere((p) => p['partner_id'].toString() == selectedPartnerId);
@@ -1659,12 +1660,12 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                             isFetchingVouchers = false;
                           });
                         }
-                      }).catchError((_) { if (context.mounted) setModalState(() => isFetchingVouchers = false); });
+                      }, onError: (_) { if (context.mounted) setModalState(() => isFetchingVouchers = false); });
                     }
                   } catch (_) {}
                 }
               }
-            }).catchError((_) {
+            }, onError: (_) {
               if (context.mounted) setModalState(() => isFetchingPartners = false);
             });
           }
@@ -1765,7 +1766,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                         isFetchingServices = false;
                                       });
                                     }
-                                  }).catchError((_) { if (context.mounted) setModalState(() => isFetchingServices = false); });
+                                  }, onError: (_) { if (context.mounted) setModalState(() => isFetchingServices = false); });
 
                                   try {
                                     final partner = creatorPartners.firstWhere((p) => p['partner_id'].toString() == val);
@@ -1785,7 +1786,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                             isFetchingVouchers = false;
                                           });
                                         }
-                                      }).catchError((_) { if (context.mounted) setModalState(() => isFetchingVouchers = false); });
+                                      }, onError: (_) { if (context.mounted) setModalState(() => isFetchingVouchers = false); });
                                     }
                                   } catch (_) {}
                                 }
@@ -2009,18 +2010,22 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                           if (selectedPartnerId != null && selectedServiceId != null) 'is_affiliate': true,
                         };
                         
-                        final res = await ApiClient.instance.patch('/user/my-tiktok-feeds/${vid['id']}', data: payload).catchError((err) {
-                          return null;
-                        });
+                        dynamic res;
+                        try {
+                          res = await ApiClient.instance.patch('/user/my-tiktok-feeds/${vid['id']}', data: payload);
+                        } catch (err) {
+                          res = null;
+                        }
                         
+                        if (!context.mounted) return;
                         setModalState(() => isUploading = false);
 
                         if (res == null) {
-                          if (mounted) AppToast.show(context: context, message: 'Lỗi kết nối máy chủ hoặc dữ liệu không hợp lệ!', isSuccess: false);
+                          AppToast.show(context: context, message: 'Lỗi kết nối máy chủ hoặc dữ liệu không hợp lệ!', isSuccess: false);
                           return;
                         }
                         
-                        if (res.statusCode == 200 && mounted) {
+                        if (res.statusCode == 200) {
                           // 🚀 ĐỒNG BỘ: Cập nhật đón đầu (Optimistic Update) thông tin thương mại vào Local Cache UI
                           setState(() {
                             vid['title'] = titleCtrl.text;
@@ -2070,7 +2075,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                           Navigator.pop(context);
                           _loadCreatorData(); // Vẫn gọi ngầm để đồng bộ trạng thái thật từ máy chủ
                           AppToast.show(context: context, message: 'Bản sửa đổi video đã được lưu thành công!', isSuccess: true);
-                        } else if (mounted) {
+                        } else {
                           AppToast.show(context: context, message: 'Lỗi đường truyền!', isSuccess: false);
                         }
                       },

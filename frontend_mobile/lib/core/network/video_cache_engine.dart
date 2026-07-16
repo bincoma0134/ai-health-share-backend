@@ -25,7 +25,7 @@ class VideoCacheEngine {
       
       // 2. MISS: Trả về URL mạng để UI không bị block, ĐỒNG THỜI nạp ngầm vào Disk Cache
       // 🚀 HOTFIX: Bọc bẫy lỗi để luồng tải Video nền không làm khóa (Deadlock) cơ sở dữ liệu Cache của luồng tải Ảnh
-      _videoCacheManager.downloadFile(url).catchError((_) => fileInfo);
+      _videoCacheManager.downloadFile(url).then((_) {}).catchError((_) {});
       return url;
     } catch (e) {
       // Fallback an toàn, luôn đảm bảo Video chạy được kể cả khi Disk I/O lỗi

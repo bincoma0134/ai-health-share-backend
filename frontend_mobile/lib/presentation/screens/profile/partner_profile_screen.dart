@@ -151,14 +151,16 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
       
       String folder = type == 'avatar' ? 'users/avatars' : 'users/covers';
       final url = await UserApiService.uploadMedia(File(image.path), folder);
+      if (!context.mounted) return;
       
       if (url != null) {
         await UserApiService.updateProfile({type == 'avatar' ? 'avatar_url' : 'cover_url': url});
+        if (!context.mounted) return;
         widget.onRefresh();
         _loadPartnerData();
-        if (mounted) AppToast.show(context: context, message: 'Đổi ảnh thành công!', isSuccess: true);
+        AppToast.show(context: context, message: 'Đổi ảnh thành công!', isSuccess: true);
       } else {
-        if (mounted) AppToast.show(context: context, message: 'Lỗi đường truyền hoặc tải tệp!', isSuccess: false);
+        AppToast.show(context: context, message: 'Lỗi đường truyền hoặc tải tệp!', isSuccess: false);
       }
     }
   }
@@ -190,9 +192,10 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     }
 
     final success = await UserApiService.updateProfile(payload);
+    if (!context.mounted) return;
     setState(() => _isUpdatingProfile = false);
     
-    if (success && mounted) {
+    if (success) {
       widget.onRefresh();
       _loadPartnerData();
       AppToast.show(context: context, message: 'Đã cập nhật hồ sơ doanh nghiệp!', isSuccess: true);
@@ -761,13 +764,14 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                       };
                       
                       final success = await PartnerApiService.createService(payload, null, mediaType);
+                      if (!context.mounted) return;
                       setModalState(() => isSubmitting = false);
                       
-                      if (success && mounted) {
+                      if (success) {
                         Navigator.pop(context);
                         _loadPartnerData();
                         AppToast.show(context: context, message: 'Đã gửi dịch vụ đi chờ kiểm duyệt!', isSuccess: true);
-                      } else if (mounted) {
+                      } else {
                         AppToast.show(context: context, message: 'Lỗi đường truyền!', isSuccess: false);
                       }
                     },
@@ -906,19 +910,21 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                       
                       try {
                         final res = await ApiClient.instance.post('/tiktok/feeds', data: payload);
+                        if (!context.mounted) return;
                         final success = res.statusCode == 200;
                         setModalState(() => isSubmitting = false);
                         
-                        if (success && mounted) {
+                        if (success) {
                           Navigator.pop(context);
                           _loadPartnerData();
                           AppToast.show(context: context, message: 'Đã gửi video đi chờ duyệt!', isSuccess: true);
-                        } else if (mounted) {
+                        } else {
                           AppToast.show(context: context, message: 'Lỗi dữ liệu không hợp lệ!', isSuccess: false);
                         }
                       } catch (e) {
+                        if (!context.mounted) return;
                         setModalState(() => isSubmitting = false);
-                        if (mounted) AppToast.show(context: context, message: 'Lỗi kết nối máy chủ!', isSuccess: false);
+                        AppToast.show(context: context, message: 'Lỗi kết nối máy chủ!', isSuccess: false);
                       }
                     },
                     child: isSubmitting ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('PHÁT SÓNG VIDEO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 0.5)),
@@ -997,10 +1003,11 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     AppToast.show(context: context, message: 'Đang gửi yêu cầu xóa...', isSuccess: true);
     
     final success = await PartnerApiService.deleteService(id);
-    if (success && mounted) {
+    if (!context.mounted) return;
+    if (success) {
       _loadPartnerData();
       AppToast.show(context: context, message: 'Đã gửi yêu cầu xóa chờ duyệt!', isSuccess: true);
-    } else if (mounted) {
+    } else {
       AppToast.show(context: context, message: 'Lỗi khi xóa dịch vụ!', isSuccess: false);
     }
   }
@@ -1093,13 +1100,14 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                         };
                         
                         final success = await PartnerApiService.updateService(svc['id'], payload);
+                        if (!context.mounted) return;
                         setModalState(() => isUploading = false);
                         
-                        if (success && mounted) {
+                        if (success) {
                           Navigator.pop(context);
                           _loadPartnerData();
                           AppToast.show(context: context, message: 'Bản sửa đổi đã được gửi duyệt lại!', isSuccess: true);
-                        } else if (mounted) {
+                        } else {
                           AppToast.show(context: context, message: 'Lỗi đường truyền!', isSuccess: false);
                         }
                       },
@@ -1179,10 +1187,11 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     AppToast.show(context: context, message: 'Đang gửi yêu cầu gỡ video...', isSuccess: true);
     
     final success = await PartnerApiService.deleteVideo(id);
-    if (success && mounted) {
+    if (!context.mounted) return;
+    if (success) {
       _loadPartnerData();
       AppToast.show(context: context, message: 'Đã gửi yêu cầu gỡ video chờ duyệt!', isSuccess: true);
-    } else if (mounted) {
+    } else {
       AppToast.show(context: context, message: 'Lỗi khi gỡ video!', isSuccess: false);
     }
   }
@@ -1226,7 +1235,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                   isFetchingVouchers = false;
                 });
               }
-            }).catchError((_) {
+            }, onError: (_) {
               if (context.mounted) setModalState(() => isFetchingVouchers = false);
             });
           }
