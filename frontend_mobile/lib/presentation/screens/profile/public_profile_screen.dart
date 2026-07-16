@@ -676,7 +676,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                             final Map<String, dynamic> adaptedVideoContext = {
                                               'id': svc['id'] ?? svc['service_id'] ?? '',
                                               'price': svc['price'] ?? 0.0,
-                                              'authorId': targetUserId,
+                                              'author_id': targetUserId,
+                                              'partner_id': targetUserId, // 🚀 Bổ sung định danh Đối tác cho Bottom Sheet
                                               'title': svc['service_name'] ?? '',
                                               'service_name': svc['service_name'] ?? '',
                                               'image_url': svc['image_url'],
@@ -886,7 +887,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 final Map<String, dynamic> defaultBookingContext = {
                                   'id': targetUserId, // Dùng ID cơ sở làm ID mặc định
                                   'price': 0.0,
-                                  'authorId': targetUserId,
+                                  'author_id': targetUserId,
+                                  'partner_id': targetUserId, // 🚀 Bổ sung định danh Đối tác cho Bottom Sheet
                                   'title': 'Khám / Tư vấn tại Cơ sở',
                                   'service_name': 'Khám / Tư vấn tại Cơ sở',
                                   'image_url': profile['avatar_url'],
