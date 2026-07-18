@@ -32,11 +32,13 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   // --- STATE VÍ VOUCHER NGƯỜI DÙNG ---
   List<dynamic> _myVouchers = [];
   bool _isLoadingWallet = false;
+  bool _showMultiServiceTooltip = false; // 🚀 NÂNG CẤP UX: Quản lý hộp thoại gợi ý đa chọn
 
   // --- STATE DỊCH VỤ ĐỘNG (THAY THẾ GETTER TĨNH) ---
   List<dynamic> _partnerServices = [];
   bool _isLoadingServices = true;
   String? _selectedServiceId;
+  List<String> _selectedServiceIds = []; // 🚀 NÂNG CẤP: Quản lý danh sách ID được chọn
   String _selectedServiceName = 'Dịch vụ đang chọn';
   double _selectedPrice = 0.0;
 
@@ -93,6 +95,9 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     super.initState();
     // 1. Chuyển đổi Getter tĩnh thành State động để khởi tạo mặc định
     _selectedServiceId = _videoServiceId;
+    if (_videoServiceId != null) {
+      _selectedServiceIds = [_videoServiceId!]; // 🚀 Khởi tạo danh sách mặc định
+    }
     _selectedPrice = _basePrice;
     
     // Tự động quét Tên dịch vụ mặc định từ VideoModel nếu có nhúng sẵn
@@ -105,6 +110,11 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     _preloadUserData(); // Kích hoạt luồng Auto-fill thông tin khách hàng
     _fetchPartnerServices(); // 🚀 Tải ngầm danh sách dịch vụ cho Dropdown
     _processAutoVoucherAndFetchWallet(); 
+    
+    // 🚀 NÂNG CẤP UX: Kích hoạt độ trễ 1 giây để hiển thị bong bóng gợi ý
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted) setState(() => _showMultiServiceTooltip = true);
+    });
   }
 
   // 🚀 TẢI NGẦM DANH SÁCH DỊCH VỤ TỪ PARTNER ID LIÊN KẾT
@@ -120,8 +130,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
           }
           
           // Chốt chặn Fail-safe: Đồng bộ lại tên dịch vụ mặc định nếu tìm thấy trong list trả về
-          if (_selectedServiceId != null && _selectedServiceName == 'Dịch vụ niêm yết') {
-            final match = _partnerServices.firstWhere((s) => s['id'] == _selectedServiceId, orElse: () => null);
+          if (_selectedServiceIds.isNotEmpty && _selectedServiceName == 'Dịch vụ niêm yết') {
+            final match = _partnerServices.firstWhere((s) => s['id'] == _selectedServiceIds.first, orElse: () => null);
             if (match != null) _selectedServiceName = match['service_name'] ?? 'Dịch vụ niêm yết';
           }
         });
@@ -474,106 +484,152 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (BuildContext ctx) {
-        return ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              height: MediaQuery.of(context).size.height * 0.65, 
-              padding: const EdgeInsets.only(top: 16, left: 24, right: 24),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.95),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-              ),
-              child: Column(
-                children: [
-                  Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black.withOpacity(0.12), borderRadius: BorderRadius.circular(10))),
-                  const Text('Chọn Dịch Vụ', style: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 16),
-                  
-                  Expanded(
-                    child: _partnerServices.isEmpty
-                        ? Center(child: Text(_isLoadingServices ? 'Đang tải dịch vụ...' : 'Cơ sở hiện chưa có dịch vụ nào', style: const TextStyle(color: Colors.black45)))
-                        : ListView.builder(
-                            itemCount: _partnerServices.length,
-                            itemBuilder: (context, index) {
-                              final svc = _partnerServices[index];
-                              final String svcId = svc['id'] ?? '';
-                              final String svcName = svc['service_name'] ?? 'Dịch vụ';
-                              final double svcPrice = (svc['price'] ?? 0).toDouble();
-                              final bool isSelected = _selectedServiceId == svcId;
-
-                              return InkWell(
-                                onTap: () {
-                                  Navigator.pop(ctx);
-                                  setState(() {
-                                    // 1. Cập nhật State dịch vụ mới
-                                    _selectedServiceId = svcId;
-                                    _selectedServiceName = svcName;
-                                    _selectedPrice = svcPrice;
-                                    
-                                    // 2. 🚀 CHỐT CHẶN BẢO VỆ VOUCHER: Gỡ bỏ tự động nếu giá dịch vụ mới rớt chuẩn Min Order
-                                    if (_isVoucherSuccess && _appliedVoucherCode != null) {
-                                      final targetVoucher = _myVouchers.firstWhere(
-                                        (v) => (v['code'] ?? '') == _appliedVoucherCode,
-                                        orElse: () => null,
-                                      );
-                                      if (targetVoucher != null) {
-                                        final minOrder = (targetVoucher['min_order_value'] ?? 0).toDouble();
-                                        if (_selectedPrice < minOrder) {
-                                          _isVoucherSuccess = false;
-                                          _appliedVoucherCode = null;
-                                          _appliedVoucherTitle = '';
-                                          _discountAmount = 0.0;
-                                          AppToast.show(
-                                            context: context, 
-                                            message: 'Đã gỡ Voucher do dịch vụ mới không đạt giá trị đơn tối thiểu!', 
-                                            isSuccess: false
-                                          );
-                                        } else {
-                                          // Gọi lại để tính toán lại giá trị giảm giá phòng trường hợp PERCENTAGE dội trần tối đa
-                                          _applyVoucherLocal(targetVoucher, isAutoInjection: false);
-                                        }
-                                      }
-                                    } else {
-                                      // Thử dò tìm xem có mã nào tự động ngon hơn không sau khi đổi dịch vụ
-                                      _processAutoVoucherAndFetchWallet();
-                                    }
-                                  });
-                                },
-                                child: Container(
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
-                                    color: isSelected ? const Color(0xFF80BF84).withOpacity(0.1) : Colors.black.withOpacity(0.03),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: isSelected ? const Color(0xFF80BF84) : Colors.transparent, width: 1.5),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, color: isSelected ? const Color(0xFF5B9E5F) : Colors.black26),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(svcName, style: TextStyle(color: Colors.black87, fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600, fontSize: 15)),
-                                            const SizedBox(height: 4),
-                                            Text(_currencyFormat.format(svcPrice), style: const TextStyle(color: Color(0xFF388E3C), fontSize: 13, fontWeight: FontWeight.w700)),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+        return StatefulBuilder( // 🚀 NÂNG CẤP: Sử dụng StatefulBuilder để cập nhật UI Modal tức thời
+          builder: (BuildContext context, StateSetter setModalState) {
+            return ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: Container(
+                  height: MediaQuery.of(context).size.height * 0.65, 
+                  padding: const EdgeInsets.only(top: 16, left: 24, right: 24),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.95),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
                   ),
-                ],
+                  child: Column(
+                    children: [
+                      Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black.withOpacity(0.12), borderRadius: BorderRadius.circular(10))),
+                      const Text('Chọn Dịch Vụ', style: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 16),
+                      
+                      Expanded(
+                        child: _partnerServices.isEmpty
+                            ? Center(child: Text(_isLoadingServices ? 'Đang tải dịch vụ...' : 'Cơ sở hiện chưa có dịch vụ nào', style: const TextStyle(color: Colors.black45)))
+                            : ListView.builder(
+                                itemCount: _partnerServices.length,
+                                itemBuilder: (context, index) {
+                                  final svc = _partnerServices[index];
+                                  final String svcId = svc['id'] ?? '';
+                                  final String svcName = svc['service_name'] ?? 'Dịch vụ';
+                                  final double svcPrice = (svc['price'] ?? 0).toDouble();
+                                  final bool isSelected = _selectedServiceIds.contains(svcId); // 🚀 Đổi sang kiểm tra mảng
+
+                                  return InkWell(
+                                    onTap: () {
+                                      setModalState(() {
+                                        // 1. Cập nhật State mảng dịch vụ
+                                        if (isSelected) {
+                                          if (_selectedServiceIds.length > 1) { // Bắt buộc chọn ít nhất 1
+                                            _selectedServiceIds.remove(svcId);
+                                          } else {
+                                            AppToast.show(context: ctx, message: 'Phải chọn ít nhất 1 dịch vụ!', isSuccess: false);
+                                            return;
+                                          }
+                                        } else {
+                                          _selectedServiceIds.add(svcId);
+                                        }
+                                        
+                                        // 2. Tính toán tổng tiền & Tên Combo
+                                        _selectedPrice = 0.0;
+                                        List<String> names = [];
+                                        for (var s in _partnerServices) {
+                                          if (_selectedServiceIds.contains(s['id'])) {
+                                            _selectedPrice += (s['price'] ?? 0).toDouble();
+                                            names.add(s['service_name'] ?? 'Dịch vụ');
+                                          }
+                                        }
+                                        
+                                        _selectedServiceId = _selectedServiceIds.join(',');
+                                        _selectedServiceName = names.length > 1 ? 'Combo: ${names.join(', ')}' : (names.isNotEmpty ? names.first : 'Dịch vụ');
+                                      });
+
+                                      setState(() {
+                                        // 3. 🚀 CHỐT CHẶN BẢO VỆ VOUCHER: Gỡ bỏ tự động nếu giá dịch vụ mới rớt chuẩn Min Order
+                                        if (_isVoucherSuccess && _appliedVoucherCode != null) {
+                                          final targetVoucher = _myVouchers.firstWhere(
+                                            (v) => (v['code'] ?? '') == _appliedVoucherCode,
+                                            orElse: () => null,
+                                          );
+                                          if (targetVoucher != null) {
+                                            final minOrder = (targetVoucher['min_order_value'] ?? 0).toDouble();
+                                            if (_selectedPrice < minOrder) {
+                                              _isVoucherSuccess = false;
+                                              _appliedVoucherCode = null;
+                                              _appliedVoucherTitle = '';
+                                              _discountAmount = 0.0;
+                                              AppToast.show(
+                                                context: context, 
+                                                message: 'Đã gỡ Voucher do tổng dịch vụ không đạt giá trị đơn tối thiểu!', 
+                                                isSuccess: false
+                                              );
+                                            } else {
+                                              // Gọi lại để tính toán lại giá trị giảm giá
+                                              _applyVoucherLocal(targetVoucher, isAutoInjection: false);
+                                            }
+                                          }
+                                        } else {
+                                          // Thử dò tìm xem có mã nào tự động ngon hơn không sau khi đổi dịch vụ
+                                          _processAutoVoucherAndFetchWallet();
+                                        }
+                                      });
+                                    },
+                                    child: Container(
+                                      margin: const EdgeInsets.only(bottom: 12),
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: isSelected ? const Color(0xFF80BF84).withOpacity(0.1) : Colors.black.withOpacity(0.03),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(color: isSelected ? const Color(0xFF80BF84) : Colors.transparent, width: 1.5),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            isSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded, // 🚀 UX đổi sang Checkbox đa chọn
+                                            color: isSelected ? const Color(0xFF5B9E5F) : Colors.black26
+                                          ),
+                                          const SizedBox(width: 16),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(svcName, style: TextStyle(color: Colors.black87, fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600, fontSize: 15)),
+                                                const SizedBox(height: 4),
+                                                Text(_currencyFormat.format(svcPrice), style: const TextStyle(color: Color(0xFF388E3C), fontSize: 13, fontWeight: FontWeight.w700)),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                      
+                      // 🚀 NÚT XÁC NHẬN ĐÓNG MODAL
+                      if (_partnerServices.isNotEmpty)
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(top: 12, bottom: 24),
+                          height: 50,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF80BF84),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              elevation: 0,
+                            ),
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('XONG', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
+            );
+          }
         );
       },
     );
@@ -888,41 +944,62 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                   child: Column(
                     children: [
                       // 🚀 NÚT DROPDOWN CHỌN DỊCH VỤ ĐỘNG
-                      GestureDetector(
-                        onTap: () => _isLoadingServices ? null : _showServiceSelectionSheet(),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          color: Colors.transparent, // Bắt sự kiện Tap dễ dàng hơn
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.center, // Neo giữa dòng để không bị lệch nếu tên dịch vụ dài
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
+                      Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              if (_showMultiServiceTooltip) setState(() => _showMultiServiceTooltip = false); // Ẩn bong bóng ngay lập tức khi click
+                              if (!_isLoadingServices) _showServiceSelectionSheet();
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              color: Colors.transparent, // Bắt sự kiện Tap dễ dàng hơn
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.center, // Neo giữa dòng để không bị lệch nếu tên dịch vụ dài
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        const Text('Dịch vụ áp dụng', style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w600)),
-                                        if (_isLoadingServices)
-                                          const Padding(
-                                            padding: EdgeInsets.only(left: 6),
-                                            child: SizedBox(width: 10, height: 10, child: CircularProgressIndicator(color: Color(0xFF64748B), strokeWidth: 1.5)),
-                                          )
-                                        else
-                                          const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF64748B), size: 18),
+                                        Row(
+                                          children: [
+                                            const Text('Dịch vụ áp dụng', style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w600)),
+                                            if (_isLoadingServices)
+                                              const Padding(
+                                                padding: EdgeInsets.only(left: 6),
+                                                child: SizedBox(width: 10, height: 10, child: CircularProgressIndicator(color: Color(0xFF64748B), strokeWidth: 1.5)),
+                                              )
+                                            else
+                                              const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF64748B), size: 18),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(_selectedServiceName, style: const TextStyle(color: Color(0xFF1E293B), fontSize: 14, fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
                                       ],
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(_selectedServiceName, style: const TextStyle(color: Color(0xFF1E293B), fontSize: 14, fontWeight: FontWeight.w800), maxLines: 2, overflow: TextOverflow.ellipsis),
-                                  ],
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Text(_currencyFormat.format(_selectedPrice), style: const TextStyle(color: Color(0xFF1E293B), fontSize: 14, fontWeight: FontWeight.w800)),
+                                ],
+                              ),
+                            ),
+                          ),
+                          // 🚀 BONG BÓNG GỢI Ý CHỌN NHIỀU (TOOLTIP)
+                          if (_showMultiServiceTooltip)
+                            Positioned(
+                              top: -46, // 🚀 Lifted higher for Comic Tail
+                              left: 0,
+                              child: AnimatedOpacity(
+                                duration: const Duration(milliseconds: 300),
+                                opacity: _showMultiServiceTooltip ? 1.0 : 0.0,
+                                child: _BouncingComicBubble(
+                                  onClose: () => setState(() => _showMultiServiceTooltip = false),
                                 ),
                               ),
-                              const SizedBox(width: 16),
-                              Text(_currencyFormat.format(_selectedPrice), style: const TextStyle(color: Color(0xFF1E293B), fontSize: 14, fontWeight: FontWeight.w800)),
-                            ],
-                          ),
-                        ),
+                            ),
+                        ],
                       ),
                       if (_discountAmount > 0) ...[
                         const SizedBox(height: 10),
@@ -1005,4 +1082,98 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
    ),
   );
  }
+}
+
+// 🚀 WIDGET ĐỘC LẬP: BONG BÓNG TRUYỆN TRANH (COMIC BUBBLE)
+class _BouncingComicBubble extends StatefulWidget {
+  final VoidCallback onClose;
+  const _BouncingComicBubble({required this.onClose});
+
+  @override
+  State<_BouncingComicBubble> createState() => _BouncingComicBubbleState();
+}
+
+class _BouncingComicBubbleState extends State<_BouncingComicBubble> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat(reverse: true);
+    _animation = Tween<double>(begin: 0, end: -8).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOutSine));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, _animation.value),
+          child: child,
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B), // Nền đậm thanh lịch
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.25), blurRadius: 12, spreadRadius: 0, offset: const Offset(0, 2)), // 🚀 Ánh sáng Glow nhẹ nhàng, tự nhiên hơn
+                BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 4)),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Trải nghiệm cùng bạn bè? Chọn thêm dịch vụ nhé!', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(width: 10),
+                GestureDetector(
+                  onTap: widget.onClose,
+                  child: const Icon(Icons.close_rounded, color: Colors.white70, size: 16),
+                ),
+              ],
+            ),
+          ),
+          // 🚀 Đuôi bong bóng truyện tranh (Comic Tail)
+          Container(
+            margin: const EdgeInsets.only(left: 32),
+            child: CustomPaint(
+              size: const Size(16, 8),
+              painter: _ComicTailPainter(),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+}
+
+class _ComicTailPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF1E293B)
+      ..style = PaintingStyle.fill;
+    final path = Path();
+    path.moveTo(0, 0);
+    path.lineTo(size.width / 2, size.height);
+    path.lineTo(size.width, 0);
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+  
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -2306,6 +2306,9 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
         
         conn.commit()
         return {"status": "success", "message": "Yêu cầu đã được gửi! Vui lòng theo dõi tại tab 'Lịch hẹn'.", "data": new_appt}
+    except HTTPException:
+        conn.rollback()
+        raise
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
