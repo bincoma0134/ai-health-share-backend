@@ -393,14 +393,20 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         finalAffiliateCode = _videoAuthorUsername ?? _videoAuthorId;
       }
 
+      // 🚀 CHỐT CHẶN BẢO TỒN DỮ LIỆU: Gộp tên Combo vào trường ghi chú (note) nếu chọn > 1 dịch vụ
+      String finalNote = _noteCtrl.text.trim();
+      if (_selectedServiceIds.length > 1) {
+        finalNote = finalNote.isEmpty ? _selectedServiceName : '$_selectedServiceName - $finalNote';
+      }
+
       final payload = {
         'partner_id': _partnerId,
-        'service_id': _selectedServiceId, // 🚀 Sử dụng ID của dịch vụ được chọn tại Dropdown
+        'service_id': _selectedServiceId, // 🚀 Chỉ gửi 1 UUID hợp lệ đầu tiên để Database PostgreSQL không báo lỗi 500
         'video_id': _videoId,
         'customer_name': _nameCtrl.text.trim(),
         'customer_phone': _phoneCtrl.text.trim(),
-        'note': _noteCtrl.text.trim(),
-        'total_amount': _selectedPrice.toInt(), // 🚀 Sử dụng Giá của dịch vụ được chọn tại Dropdown
+        'note': finalNote, // 🚀 Tự động truyền Combo vào dòng note cho Đối tác dễ dàng đọc hiểu
+        'total_amount': _selectedPrice.toInt(), // 🚀 Vẫn giữ nguyên tổng tiền của tất cả dịch vụ
         'voucher_code': _appliedVoucherCode,
         'affiliate_code': finalAffiliateCode,
       };
@@ -540,7 +546,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                           }
                                         }
                                         
-                                        _selectedServiceId = _selectedServiceIds.join(',');
+                                        _selectedServiceId = _selectedServiceIds.isNotEmpty ? _selectedServiceIds.first : null; // 🚀 NÂNG CẤP: Chỉ lấy UUID hợp lệ đầu tiên để tránh lỗi 500 Database
                                         _selectedServiceName = names.length > 1 ? 'Combo: ${names.join(', ')}' : (names.isNotEmpty ? names.first : 'Dịch vụ');
                                       });
 
@@ -994,9 +1000,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                               child: AnimatedOpacity(
                                 duration: const Duration(milliseconds: 300),
                                 opacity: _showMultiServiceTooltip ? 1.0 : 0.0,
-                                child: _BouncingComicBubble(
-                                  onClose: () => setState(() => _showMultiServiceTooltip = false),
-                                ),
+                                child: const _BouncingComicBubble(),
                               ),
                             ),
                         ],
@@ -1086,8 +1090,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
 // 🚀 WIDGET ĐỘC LẬP: BONG BÓNG TRUYỆN TRANH (COMIC BUBBLE)
 class _BouncingComicBubble extends StatefulWidget {
-  final VoidCallback onClose;
-  const _BouncingComicBubble({required this.onClose});
+  const _BouncingComicBubble({super.key});
 
   @override
   State<_BouncingComicBubble> createState() => _BouncingComicBubbleState();
@@ -1134,15 +1137,10 @@ class _BouncingComicBubbleState extends State<_BouncingComicBubble> with SingleT
                 BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 4)),
               ],
             ),
-            child: Row(
+            child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Trải nghiệm cùng bạn bè? Chọn thêm dịch vụ nhé!', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: widget.onClose,
-                  child: const Icon(Icons.close_rounded, color: Colors.white70, size: 16),
-                ),
+                Text('Trải nghiệm cùng bạn bè? Chọn thêm dịch vụ nhé!', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
               ],
             ),
           ),

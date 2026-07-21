@@ -247,7 +247,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
             fundedBy = a.voucherInfo['issuer_type'];
             
             // Tính toán mức giảm trừ tương tự giao diện
-            double basePrice = (a.serviceInfo['price'] ?? a.totalAmount ?? 0).toDouble();
+            double basePrice = a.totalAmount.toDouble(); // Đã fix: Bắt buộc lấy theo giá trị tổng thực tế truyền từ lúc đặt
             if (a.voucherInfo['discount_value'] != null) {
               double discountValue = (a.voucherInfo['discount_value'] ?? 0).toDouble();
               if (a.voucherInfo['discount_type'] == 'PERCENTAGE') {
@@ -1437,11 +1437,30 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Expanded(
-                                    child: Text(
-                                      appt.serviceInfo['service_name'] ?? 'Trị liệu chuyên sâu',
-                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          (appt.note != null && appt.note!.contains('Combo')) 
+                                              ? (appt.note!.contains(' - ') ? appt.note!.split(' - ')[0] : appt.note!) 
+                                              : (appt.serviceInfo['service_name'] ?? 'Trị liệu chuyên sâu'),
+                                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        if (appt.note != null && appt.note!.isNotEmpty && (!appt.note!.contains('Combo') || appt.note!.contains(' - ')))
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 2),
+                                            child: Text(
+                                              appt.note!.contains('Combo') && appt.note!.contains(' - ') 
+                                                  ? appt.note!.split(' - ').sublist(1).join(' - ') 
+                                                  : appt.note!,
+                                              style: const TextStyle(fontSize: 12, color: Colors.black54, fontStyle: FontStyle.italic),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                   ),
                                   const SizedBox(width: 8),
@@ -1480,7 +1499,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                               Builder(
                                 builder: (context) {
                                   final double totalAmount = appt.totalAmount;
-                                  final double originalPrice = (appt.serviceInfo['price'] ?? appt.totalAmount ?? 0).toDouble();
+                                  final double originalPrice = totalAmount.toDouble();
                                   final Map<String, dynamic> v = appt.voucherInfo;
                                   
                                   double calculatedDiscount = 0.0;

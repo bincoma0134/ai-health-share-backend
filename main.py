@@ -2364,18 +2364,16 @@ def preview_appointment_payment(appointment_id: str, current_user = Depends(veri
         if not appt: raise HTTPException(status_code=404, detail="Không tìm thấy lịch hẹn")
         if appt["status"] != "PENDING_PAYMENT": raise HTTPException(status_code=400, detail="Không ở trạng thái chờ thanh toán!")
         
-        original_amount = 0.0
-        if appt.get("service_id"):
-            cur.execute("SELECT price FROM services WHERE id = %s", (appt["service_id"],))
-            s = cur.fetchone()
-            if s: original_amount = float(s["price"])
-        elif appt.get("video_id"):
-            cur.execute("SELECT price FROM tiktok_feeds WHERE id = %s", (appt["video_id"],))
-            v = cur.fetchone()
-            if v: original_amount = float(v["price"])
-            
+        original_amount = float(appt.get("total_amount", 0))
         if original_amount == 0.0:
-            original_amount = float(appt.get("total_amount", 0))
+            if appt.get("service_id"):
+                cur.execute("SELECT price FROM services WHERE id = %s", (appt["service_id"],))
+                s = cur.fetchone()
+                if s: original_amount = float(s["price"])
+            elif appt.get("video_id"):
+                cur.execute("SELECT price FROM tiktok_feeds WHERE id = %s", (appt["video_id"],))
+                v = cur.fetchone()
+                if v: original_amount = float(v["price"])
             
         partner_id = appt.get("partner_id")
         
@@ -2438,18 +2436,16 @@ def create_appointment_payment(appointment_id: str, request: Request, current_us
         appt = cur.fetchone()
         if appt["status"] != "PENDING_PAYMENT": raise HTTPException(status_code=400, detail="Không ở trạng thái chờ thanh toán!")
         
-        original_amount = 0.0
-        if appt.get("service_id"):
-            cur.execute("SELECT price FROM services WHERE id = %s", (appt["service_id"],))
-            s = cur.fetchone()
-            if s: original_amount = float(s["price"])
-        elif appt.get("video_id"):
-            cur.execute("SELECT price FROM tiktok_feeds WHERE id = %s", (appt["video_id"],))
-            v = cur.fetchone()
-            if v: original_amount = float(v["price"])
-            
+        original_amount = float(appt.get("total_amount", 0))
         if original_amount == 0.0:
-            original_amount = float(appt.get("total_amount", 0))
+            if appt.get("service_id"):
+                cur.execute("SELECT price FROM services WHERE id = %s", (appt["service_id"],))
+                s = cur.fetchone()
+                if s: original_amount = float(s["price"])
+            elif appt.get("video_id"):
+                cur.execute("SELECT price FROM tiktok_feeds WHERE id = %s", (appt["video_id"],))
+                v = cur.fetchone()
+                if v: original_amount = float(v["price"])
             
         partner_id = appt.get("partner_id")
         
