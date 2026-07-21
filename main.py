@@ -123,6 +123,9 @@ async def startup_event():
                     -- 🚀 AUTO-MIGRATION: Bọc thép hệ thống lưu trữ Affiliate Commission
                     ALTER TABLE appointments ADD COLUMN IF NOT EXISTS affiliate_code TEXT;
                     ALTER TABLE bookings_transactions ADD COLUMN IF NOT EXISTS affiliate_id UUID;
+
+                    -- 🚀 AUTO-MIGRATION: Phase 3 - Người tiêu dùng thông minh
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS has_claimed_wellness_reward BOOLEAN DEFAULT FALSE;
                 """)
             conn.commit()
         except Exception as e:
@@ -3520,4 +3523,195 @@ def get_wellness_logs(current_user = Depends(verify_user_token)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
+        db_pool.putconn(conn)
+
+# =====================================================================
+# 🚀 [PHASE 3.1] SMART CONSUMER (NGƯỜI TIÊU DÙNG THÔNG MINH)
+# Áp dụng cho Role: USER & CREATOR. Rút tiền mốc chi tiêu Wellness
+# =====================================================================
+
+@app.get("/user/wellness/reward-status", tags=["Wellness Consumer"])
+def get_wellness_reward_status(current_user = Depends(verify_user_token)):
+    """Tính toán Real-time tổng tiền chi tiêu qua Lịch hẹn và kiểm tra điều kiện nhận 500k"""
+    if current_user.role not in ["USER", "CREATOR"]:
+        raise HTTPException(status_code=403, detail="Chỉ áp dụng cho Khách hàng tiêu dùng.")
+        
+    if not db_pool: raise HTTPException(status_code=500, detail="Database pool error")
+    conn = db_pool.getconn()
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Bọc thép Migration: Nếu bảng users bị lỗi chưa gắn cột này, sửa tức thời
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_claimed_wellness_reward BOOLEAN DEFAULT FALSE;")
+        conn.commit()
+
+        # 1. Trích xuất cờ trạng thái nhận thưởng
+        cur.execute("SELECT has_claimed_wellness_reward FROM users WHERE id = %s", (current_user.id,))
+        user_info = cur.fetchone()
+        has_claimed = user_info.get("has_claimed_wellness_reward", False) if user_info else False
+
+        # 2. Tính tổng chi tiêu (Sum total_amount) của những đơn Đã Phục Vụ Xong (COMPLETED & user_confirmed = True)
+        cur.execute("""
+            SELECT COALESCE(SUM(total_amount), 0) as total_spent 
+            FROM appointments 
+            WHERE user_id = %s AND status = 'COMPLETED' AND user_confirmed = TRUE
+        """, (current_user.id,))
+        sum_result = cur.fetchone()
+        total_spent = float(sum_result["total_spent"]) if sum_result else 0.0
+
+        is_eligible = total_spent >= 5000000
+
+        return {
+            "status": "success",
+            "data": {
+                "total_spent": total_spent,
+                "is_eligible": is_eligible,
+                "has_claimed": has_claimed,
+                "target_amount": 5000000.0,
+                "reward_amount": 500000.0
+            }
+        }
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        db_pool.putconn(conn)
+
+@app.post("/user/wellness/claim-reward", tags=["Wellness Consumer"])
+def claim_wellness_reward(current_user = Depends(verify_user_token)):
+    """Kích hoạt nhận thưởng 500k: Kiểm tra 1 lần, Cộng tiền bằng UPSERT"""
+    if current_user.role not in ["USER", "CREATOR"]:
+        raise HTTPException(status_code=403, detail="Chỉ áp dụng cho Khách hàng tiêu dùng.")
+
+    if not db_pool: raise HTTPException(status_code=500, detail="Database pool error")
+    conn = db_pool.getconn()
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # 1. Row-level Locking bảng Users để chống Race Condition (Bấm đúp)
+        cur.execute("SELECT has_claimed_wellness_reward FROM users WHERE id = %s FOR UPDATE", (current_user.id,))
+        user_info = cur.fetchone()
+        
+        if not user_info:
+            raise HTTPException(status_code=404, detail="Không tìm thấy người dùng.")
+            
+        if user_info.get("has_claimed_wellness_reward", False):
+            raise HTTPException(status_code=400, detail="Bạn đã nhận phần thưởng này rồi!")
+
+        # 2. Xác minh lại Total Spent (Double-check bảo mật)
+        cur.execute("""
+            SELECT COALESCE(SUM(total_amount), 0) as total_spent 
+            FROM appointments 
+            WHERE user_id = %s AND status = 'COMPLETED' AND user_confirmed = TRUE
+        """, (current_user.id,))
+        sum_result = cur.fetchone()
+        total_spent = float(sum_result["total_spent"]) if sum_result else 0.0
+
+        if total_spent < 5000000:
+            raise HTTPException(status_code=400, detail="Bạn chưa đạt đủ mốc chi tiêu 5 triệu VNĐ!")
+
+        # 3. Kích hoạt cờ đã nhận thưởng
+        cur.execute("UPDATE users SET has_claimed_wellness_reward = TRUE WHERE id = %s", (current_user.id,))
+
+        # 4. Cộng tiền vào ví bằng UPSERT (Role USER có thể chưa từng có ví)
+        reward_amount = 500000.0
+        cur.execute("""
+            INSERT INTO wallets (user_id, balance, total_earned)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE 
+            SET balance = wallets.balance + %s, total_earned = wallets.total_earned + %s
+            RETURNING balance
+        """, (current_user.id, reward_amount, reward_amount, reward_amount, reward_amount))
+        
+        new_balance = cur.fetchone()["balance"]
+
+        # 5. Gửi thông báo chúc mừng
+        from notification_service import NotificationService
+        NotificationService.dispatch_event(
+            conn, 
+            user_id=current_user.id, 
+            event_type="LEGACY", 
+            reference_id="WELLNESS_REWARD", 
+            metadata={
+                "category": "SYSTEM", 
+                "title": "🎉 Chúc mừng Người Tiêu Dùng Thông Minh", 
+                "message": "Tuyệt vời! Bạn đã tích lũy đủ 5.000.000đ chi tiêu dịch vụ sức khỏe và nhận được phần thưởng 500.000đ vào ví."
+            }, 
+            sender_id=None
+        )
+
+        conn.commit()
+        return {"status": "success", "message": "Nhận thưởng thành công!", "new_balance": float(new_balance)}
+
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        db_pool.putconn(conn)
+
+@app.post("/user/withdraw", tags=["Wellness Consumer"])
+def create_user_withdrawal_request(payload: schemas.WithdrawalRequest, current_user = Depends(verify_user_token)):
+    """API rút tiền chuyên biệt cho Role USER & CREATOR (Re-use logic)"""
+    if current_user.role not in ["USER", "CREATOR"]:
+        raise HTTPException(status_code=403, detail="Endpoint rút thưởng chỉ dành riêng cho Khách hàng và Creator.")
+        
+    if not db_pool: raise HTTPException(status_code=500, detail="Database pool error")
+    conn = db_pool.getconn()
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # 🚀 BỌC THÉP SỐ DƯ (Lỗ hổng 1): Row-level locking gác cổng chống rút âm tiền
+        cur.execute("SELECT balance FROM wallets WHERE user_id = %s FOR UPDATE", (current_user.id,))
+        wlt = cur.fetchone()
+        
+        if not wlt or float(wlt["balance"]) < payload.amount: 
+            raise HTTPException(status_code=400, detail="Số dư tài khoản không đủ để thực hiện rút tiền!")
+        if payload.amount < 50000: 
+            raise HTTPException(status_code=400, detail="Số tiền rút tối thiểu phải từ 50,000 VND trở lên.")
+
+        # Xử lý luồng trừ ví và tạo Request PENDING
+        payout_info = json.dumps({
+            "bank_name": payload.bank_name, 
+            "account_number": payload.account_number, 
+            "account_name": payload.account_name
+        })
+        
+        cur.execute("""
+            INSERT INTO withdrawal_requests (user_id, amount, status, payout_info) 
+            VALUES (%s, %s, 'PENDING', %s)
+        """, (current_user.id, payload.amount, payout_info))
+        
+        cur.execute("UPDATE wallets SET balance = balance - %s WHERE user_id = %s", (payload.amount, current_user.id))
+        
+        from notification_service import NotificationService
+        NotificationService.dispatch_event(
+            conn, 
+            user_id=current_user.id, 
+            event_type="LEGACY", 
+            reference_id="", 
+            metadata={
+                "category": "FINANCIAL", 
+                "title": "Yêu cầu rút tiền thưởng", 
+                "message": f"Yêu cầu rút số tiền {payload.amount:,.0f}đ đang chờ Ban quản trị phê duyệt."
+            }
+        )
+        
+        conn.commit()
+        return {"status": "success", "message": "Yêu cầu rút tiền đã được gửi thành công!"}
+
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
         db_pool.putconn(conn)

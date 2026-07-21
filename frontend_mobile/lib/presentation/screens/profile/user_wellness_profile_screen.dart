@@ -4,6 +4,10 @@ import 'dart:ui' show ImageFilter; // Import bắt buộc cho Glassmorphism
 import '../../../core/network/api_client.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/shimmer_wrapper.dart';
+import 'package:intl/intl.dart'; // Đảm bảo format số tiền
+import '../wallet_screen.dart'; // Dynamic import cục bộ
+
+
 
 class UserWellnessProfileScreen extends StatefulWidget {
   const UserWellnessProfileScreen({super.key});
@@ -425,6 +429,10 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                                     Expanded(child: _buildInfoGridCard(Icons.workspace_premium_rounded, "Huy hiệu", shortBadge)),
                                   ],
                                 ),
+                                const SizedBox(height: 32),
+                                
+                                // 🚀 4. SMART CONSUMER REWARD CARD (THẺ NHẬN THƯỞNG 5 TRIỆU)
+                                _buildSmartConsumerCard(),
                               ],
                             ),
                           ),
@@ -438,6 +446,242 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
           },
         ),
       ),
+    );
+  }
+
+  // 🚀 BIẾN STATE QUẢN LÝ SMART CONSUMER (Khai báo ngầm cục bộ trong build process)
+  Map<String, dynamic>? _rewardStatus;
+  bool _isFetchingReward = false;
+  bool _isClaimingReward = false;
+
+  Future<void> _fetchRewardStatus() async {
+    if (_isFetchingReward) return;
+    _isFetchingReward = true;
+    try {
+      final res = await ApiClient.instance.get('/user/wellness/reward-status');
+      if (res.statusCode == 200 && mounted) {
+        setState(() => _rewardStatus = res.data['data']);
+      }
+    } catch (_) {}
+    _isFetchingReward = false;
+  }
+
+  Future<void> _handleClaimReward() async {
+    if (_isClaimingReward) return;
+    setState(() => _isClaimingReward = true);
+    try {
+      final res = await ApiClient.instance.post('/user/wellness/claim-reward');
+      if (res.statusCode == 200 && mounted) {
+        AppToast.show(context: context, message: '🎉 Đã nhận thưởng 500.000đ vào Ví!', isSuccess: true);
+        await _fetchRewardStatus(); // Tải lại để chuyển nút sang Rút tiền
+      } else {
+        AppToast.show(context: context, message: 'Thất bại hoặc bạn đã nhận thưởng rồi.', isSuccess: false);
+      }
+    } catch (_) {
+      AppToast.show(context: context, message: 'Lỗi đường truyền', isSuccess: false);
+    }
+    if (mounted) setState(() => _isClaimingReward = false);
+  }
+
+  // 🚀 KHỐI HIỂN THỊ SMART CONSUMER CARD (Gamification & Premium Visual)
+  Widget _buildSmartConsumerCard() {
+    if (_rewardStatus == null) {
+      _fetchRewardStatus();
+      return const ShimmerWrapper(child: SizedBox(height: 160, width: double.infinity));
+    }
+
+    final double totalSpent = (_rewardStatus!['total_spent'] ?? 0).toDouble();
+    final bool hasClaimed = _rewardStatus!['has_claimed'] ?? false;
+    final bool isEligible = _rewardStatus!['is_eligible'] ?? false;
+    final double target = (_rewardStatus!['target_amount'] ?? 5000000).toDouble();
+    
+    // Tính toán giới hạn thanh Progress không vượt quá 1.0 (100%)
+    double progressPercent = (totalSpent / target).clamp(0.0, 1.0);
+    
+    final formatCurrency = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ', decimalDigits: 0);
+
+    return AnimatedBuilder(
+      animation: _pulseController,
+      builder: (context, child) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1A3A35), Color(0xFF2A5951)], // Emerald Dark Gamification
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(32),
+            border: Border.all(
+              color: isEligible && !hasClaimed 
+                  ? const Color(0xFF80BF84).withOpacity(0.5 + (_pulseController.value * 0.5)) // Neon glow border
+                  : const Color(0xFF3A6960), 
+              width: isEligible && !hasClaimed ? 2.5 : 1
+            ),
+            boxShadow: [
+              if (isEligible && !hasClaimed)
+                BoxShadow(
+                  color: const Color(0xFF80BF84).withOpacity(0.3 * _pulseController.value), 
+                  blurRadius: 30, spreadRadius: 4, offset: const Offset(0, 10)
+                )
+              else
+                BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 8)),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.diamond_rounded, color: Color(0xFF80BF84), size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      "Đặc Quyền Hội Viên",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.5,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isEligible && !hasClaimed 
+                          ? const Color(0xFF80BF84).withOpacity(0.2 + (_pulseController.value * 0.2)) 
+                          : Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: isEligible && !hasClaimed ? const Color(0xFF80BF84) : Colors.transparent)
+                    ),
+                    child: const Text(
+                      "Thưởng 500k",
+                      style: TextStyle(
+                        color: Color(0xFF80BF84),
+                        fontSize: 11, fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              
+              if (!hasClaimed) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("Tiến độ chi tiêu", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
+                    Text("${formatCurrency.format(totalSpent)} / ${formatCurrency.format(target)}", style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Stack(
+                  children: [
+                    Container(
+                      height: 14, width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.3), 
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white.withOpacity(0.05)),
+                      ),
+                    ),
+                    FractionallySizedBox(
+                      widthFactor: progressPercent,
+                      child: Container(
+                        height: 14,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [Color(0xFF80BF84), Color(0xFF48C9B0)]),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF80BF84).withOpacity(0.5 + (_pulseController.value * 0.3)), 
+                              blurRadius: 12
+                            )
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (!isEligible)
+                  Text(
+                    "💡 Chỉ còn ${formatCurrency.format(target - totalSpent)} nữa để mở khóa đặc quyền hoàn tiền!",
+                    style: const TextStyle(color: Colors.white60, fontSize: 11, fontStyle: FontStyle.italic),
+                  ),
+                const SizedBox(height: 20),
+                
+                SizedBox(
+                  width: double.infinity, height: 52,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isEligible ? const Color(0xFF80BF84) : Colors.white.withOpacity(0.1),
+                      foregroundColor: isEligible ? Colors.white : Colors.white54,
+                      elevation: isEligible ? 12 * _pulseController.value : 0,
+                      shadowColor: const Color(0xFF80BF84).withOpacity(0.6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    onPressed: isEligible ? _handleClaimReward : null,
+                    child: _isClaimingReward 
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : Text(
+                            isEligible ? "✨ NHẬN THƯỞNG 500.000Đ ✨" : "TIẾP TỤC HÀNH TRÌNH",
+                            style: TextStyle(fontSize: 14, fontWeight: isEligible ? FontWeight.w900 : FontWeight.w700, letterSpacing: isEligible ? 0.5 : 0),
+                          ),
+                  ),
+                ),
+              ] else ...[
+                // TRẠNG THÁI ĐÃ NHẬN THƯỞNG (VIP BADGE)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1), 
+                    borderRadius: BorderRadius.circular(16), 
+                    border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.5))
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.workspace_premium_rounded, color: Color(0xFF80BF84), size: 28),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          "Tuyệt vời! Bạn đã mở khóa mốc thưởng và nhận 500.000đ vào Ví.", 
+                          style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)
+                        )
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity, height: 52,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white, 
+                      foregroundColor: const Color(0xFF1A3A35), 
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    onPressed: () {
+                      WalletScreen.showPremiumWithdrawalSheet(context, onSuccess: () {
+                        // Cập nhật lại UI nếu cần thiết sau khi rút
+                        _fetchRewardStatus();
+                      });
+                    },
+                    child: const Text("RÚT TIỀN VỀ NGÂN HÀNG", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      }
     );
   }
 

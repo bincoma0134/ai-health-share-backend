@@ -1939,7 +1939,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Tổng thanh toán ký gửi:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text('Tổng thanh toán:', style: TextStyle(fontWeight: FontWeight.bold)),
                     Text(_formatPrice(finalPrice), style: const TextStyle(color: Color(0xFF4C8D50), fontSize: 18, fontWeight: FontWeight.w900))
                   ],
                 ),
