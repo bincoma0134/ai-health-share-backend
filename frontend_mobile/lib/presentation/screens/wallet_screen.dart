@@ -64,7 +64,9 @@ class WalletScreen extends StatefulWidget {
                           width: double.infinity, height: 52,
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1A3A35), foregroundColor: Colors.white, elevation: 0,
+                              backgroundColor: const Color(0xFF80BF84), 
+                              foregroundColor: Colors.white, 
+                              elevation: 0,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                             ),
                             onPressed: isSubmitting ? null : () async {
@@ -105,7 +107,7 @@ class WalletScreen extends StatefulWidget {
                                 if (context.mounted) setModalState(() => isSubmitting = false);
                               }
                             },
-                            child: isSubmitting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('XÁC NHẬN RÚT TIỀN', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                            child: isSubmitting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('XÁC NHẬN RÚT TIỀN', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
                           ),
                         ),
                       ],
@@ -160,9 +162,13 @@ class _WalletScreenState extends State<WalletScreen> {
       // Auto-Routing: Thử nạp lịch sử rút tiền theo từng phân hệ Role (Dò tìm)
       dynamic historyRes;
       try {
-        historyRes = await ApiClient.instance.get('/partner/withdrawals');
+        historyRes = await ApiClient.instance.get('/user/withdrawals');
       } catch (_) {
-        try { historyRes = await ApiClient.instance.get('/creator/withdrawals'); } catch (_) {}
+        try {
+          historyRes = await ApiClient.instance.get('/partner/withdrawals');
+        } catch (_) {
+          try { historyRes = await ApiClient.instance.get('/creator/withdrawals'); } catch (_) {}
+        }
       }
       
       if (historyRes != null && historyRes.statusCode == 200) {
@@ -206,14 +212,17 @@ class _WalletScreenState extends State<WalletScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // THẺ SỐ DƯ PREMIUM (Glassmorphism Gradient)
+                      // THẺ SỐ DƯ PREMIUM (Pearl White & Soft Emerald - Phong cách Oasis Spa)
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.all(24),
+                        padding: const EdgeInsets.all(28),
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2A5951)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                          borderRadius: BorderRadius.circular(28),
-                          boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 24, offset: const Offset(0, 12))],
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(32),
+                          border: Border.all(color: const Color(0xFFE2ECEB), width: 1.5),
+                          boxShadow: [
+                            BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.15), blurRadius: 30, offset: const Offset(0, 10)),
+                          ],
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,31 +232,40 @@ class _WalletScreenState extends State<WalletScreen> {
                               children: [
                                 Row(
                                   children: [
-                                    Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle), child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 16)),
-                                    const SizedBox(width: 10),
-                                    Text("SỐ DƯ KHẢ DỤNG", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1)),
+                                    Container(
+                                      padding: const EdgeInsets.all(8), 
+                                      decoration: const BoxDecoration(color: Color(0xFFF4F9F6), shape: BoxShape.circle), 
+                                      child: const Icon(Icons.account_balance_wallet_rounded, color: Color(0xFF80BF84), size: 16)
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Text("SỐ DƯ KHẢ DỤNG", style: TextStyle(color: Color(0xFF617D79), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
                                   ],
                                 ),
-                                const Icon(Icons.shield_rounded, color: Color(0xFF80BF84), size: 20),
+                                const Icon(Icons.verified_user_rounded, color: Color(0xFF80BF84), size: 20),
                               ],
                             ),
-                            const SizedBox(height: 24),
-                            Text(_currencyFormat.format(_balance), style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900, letterSpacing: -1)),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 28),
+                            Text(_currencyFormat.format(_balance), style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 38, fontWeight: FontWeight.w900, letterSpacing: -1)),
+                            const SizedBox(height: 32),
                             SizedBox(
-                              width: double.infinity, height: 48,
+                              width: double.infinity, height: 52,
                               child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF80BF84), foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF80BF84), 
+                                  foregroundColor: Colors.white, 
+                                  elevation: 0, 
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                                ),
                                 onPressed: () => WalletScreen.showPremiumWithdrawalSheet(context, onSuccess: _loadWalletData),
-                                child: const Text("YÊU CẦU RÚT TIỀN", style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                                child: const Text("YÊU CẦU RÚT TIỀN", style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5, fontSize: 14)),
                               ),
                             )
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 20),
                       
-                      // WIDGET TIÊU DÙNG THÔNG MINH (SHORTCUT GAMIFICATION)
+                      // WIDGET TIÊU DÙNG THÔNG MINH (SHORTCUT GAMIFICATION - PREMIUM LIGHT)
                       if (_rewardStatus != null && !(_rewardStatus!['has_claimed'] ?? false))
                         GestureDetector(
                           onTap: () {
@@ -255,44 +273,46 @@ class _WalletScreenState extends State<WalletScreen> {
                           },
                           child: Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.8),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.5)),
+                              gradient: const LinearGradient(colors: [Color(0xFFFFFFFF), Color(0xFFF4F9F6)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.4)),
                               boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF1A3A35).withOpacity(0.05),
-                                  blurRadius: 10, offset: const Offset(0, 4),
-                                )
+                                BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 6))
                               ],
                             ),
                             child: Row(
                               children: [
-                                const Text("💎", style: TextStyle(fontSize: 18)),
-                                const SizedBox(width: 12),
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.2), blurRadius: 8)]),
+                                  child: const Icon(Icons.diamond_rounded, color: Color(0xFF80BF84), size: 20),
+                                ),
+                                const SizedBox(width: 16),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       const Text(
-                                        "Tiến độ nhận thưởng 500k",
-                                        style: TextStyle(color: Color(0xFF1A3A35), fontSize: 12, fontWeight: FontWeight.bold),
+                                        "Tiến độ hoàn tiền 500k",
+                                        style: TextStyle(color: Color(0xFF1A3A35), fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: -0.2),
                                       ),
-                                      const SizedBox(height: 4),
+                                      const SizedBox(height: 8),
                                       Stack(
                                         children: [
                                           Container(
-                                            height: 6, width: double.infinity,
+                                            height: 8, width: double.infinity,
                                             decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10)),
                                           ),
                                           FractionallySizedBox(
                                             widthFactor: ((_rewardStatus!['total_spent'] ?? 0) / (_rewardStatus!['target_amount'] ?? 5000000)).clamp(0.0, 1.0),
                                             child: Container(
-                                              height: 6,
+                                              height: 8,
                                               decoration: BoxDecoration(
                                                 gradient: const LinearGradient(colors: [Color(0xFF80BF84), Color(0xFF48C9B0)]),
                                                 borderRadius: BorderRadius.circular(10),
+                                                boxShadow: [BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.4), blurRadius: 6)],
                                               ),
                                             ),
                                           ),
@@ -301,66 +321,92 @@ class _WalletScreenState extends State<WalletScreen> {
                                     ],
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF80BF84), size: 14),
+                                const SizedBox(width: 16),
+                                const Icon(Icons.chevron_right_rounded, color: Color(0xFF80BF84), size: 24),
                               ],
                             ),
                           ),
                         ),
                       
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 36),
                       
-                      const Text("Lịch sử giao dịch", style: TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.w900)),
+                      const Text("Lịch sử giao dịch", style: TextStyle(color: Color(0xFF111827), fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
                       const SizedBox(height: 16),
                       
                       if (_history.isEmpty)
                         Container(
-                          width: double.infinity, padding: const EdgeInsets.all(32),
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFE2ECEB))),
+                          width: double.infinity, padding: const EdgeInsets.all(40),
+                          decoration: BoxDecoration(
+                            color: Colors.white, 
+                            borderRadius: BorderRadius.circular(24), 
+                            boxShadow: [BoxShadow(color: const Color(0xFF111827).withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 8))]
+                          ),
                           child: const Column(
                             children: [
-                              Icon(Icons.history_rounded, size: 48, color: Color(0xFFE2ECEB)),
-                              SizedBox(height: 12),
-                              Text("Chưa có giao dịch rút tiền nào", style: TextStyle(color: Color(0xFF617D79), fontWeight: FontWeight.w600)),
+                              Icon(Icons.receipt_long_rounded, size: 48, color: Color(0xFFE5E7EB)),
+                              SizedBox(height: 16),
+                              Text("Chưa có giao dịch rút tiền nào", style: TextStyle(color: Color(0xFF9CA3AF), fontWeight: FontWeight.w600, fontSize: 14)),
                             ],
                           ),
                         )
                       else
                         ..._history.map((item) {
                           final status = item['status'] ?? 'PENDING';
-                          Color statusColor = Colors.amber.shade700;
-                          IconData statusIcon = Icons.access_time_filled_rounded;
+                          
+                          // Tone màu mềm mại sang trọng (Soft UI)
+                          Color statusColor = const Color(0xFFF59E0B); // Amber/Gold cho Pending
+                          Color bgColor = const Color(0xFFFEF3C7);
+                          IconData statusIcon = Icons.schedule_rounded;
                           String statusText = "Chờ duyệt";
                           
-                          if (status == 'APPROVED') { statusColor = const Color(0xFF80BF84); statusIcon = Icons.check_circle_rounded; statusText = "Thành công"; }
-                          else if (status == 'REJECTED') { statusColor = Colors.redAccent; statusIcon = Icons.cancel_rounded; statusText = "Từ chối"; }
+                          if (status == 'APPROVED') { 
+                            statusColor = const Color(0xFF10B981); // Emerald cho Success
+                            bgColor = const Color(0xFFD1FAE5);
+                            statusIcon = Icons.check_circle_rounded; 
+                            statusText = "Thành công"; 
+                          } else if (status == 'REJECTED') { 
+                            statusColor = const Color(0xFFEF4444); // Red cho Rejected
+                            bgColor = const Color(0xFFFEE2E2);
+                            statusIcon = Icons.cancel_rounded; 
+                            statusText = "Từ chối"; 
+                          }
 
                           return Container(
-                            margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE2ECEB))),
+                            margin: const EdgeInsets.only(bottom: 12), 
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: Colors.white, 
+                              borderRadius: BorderRadius.circular(24), 
+                              boxShadow: [BoxShadow(color: const Color(0xFF111827).withOpacity(0.03), blurRadius: 15, offset: const Offset(0, 5))]
+                            ),
                             child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: const Color(0xFFF4F7F6), shape: BoxShape.circle), child: Icon(Icons.arrow_upward_rounded, color: statusColor, size: 20)),
+                                Container(
+                                  padding: const EdgeInsets.all(12), 
+                                  decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle), 
+                                  child: Icon(Icons.account_balance_rounded, color: statusColor, size: 20)
+                                ),
                                 const SizedBox(width: 16),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text("Rút tiền về ngân hàng", style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 14, fontWeight: FontWeight.w700)),
-                                      const SizedBox(height: 4),
+                                      const Text("Rút tiền về ngân hàng", style: TextStyle(color: Color(0xFF111827), fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: -0.2)),
+                                      const SizedBox(height: 6),
                                       Row(
                                         children: [
-                                          Icon(statusIcon, size: 12, color: statusColor),
+                                          Icon(statusIcon, size: 14, color: statusColor),
                                           const SizedBox(width: 4),
-                                          Text(statusText, style: TextStyle(color: statusColor, fontSize: 11, fontWeight: FontWeight.bold)),
-                                          const Text(" • ", style: TextStyle(color: Color(0xFFB0C4C1), fontSize: 11)),
-                                          Text(item['created_at']?.toString().split('T')[0] ?? '', style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontWeight: FontWeight.w500)),
+                                          Text(statusText, style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w700)),
+                                          const Text(" • ", style: TextStyle(color: Color(0xFFD1D5DB), fontSize: 12)),
+                                          Text(item['created_at']?.toString().split('T')[0] ?? '', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12, fontWeight: FontWeight.w600)),
                                         ],
                                       ),
                                     ],
                                   ),
                                 ),
-                                Text("-${_currencyFormat.format(double.tryParse(item['amount'].toString()) ?? 0)}", style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 15, fontWeight: FontWeight.w900)),
+                                Text("-${_currencyFormat.format(double.tryParse(item['amount'].toString()) ?? 0)}", style: const TextStyle(color: Color(0xFF111827), fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
                               ],
                             ),
                           );

@@ -258,45 +258,12 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 32),
+                            const SizedBox(height: 28),
 
-                            // Thay thế Stack Tabs tĩnh bằng Thẻ Kính mờ (Glassmorphism) chứa Lời chúc động
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(20),
-                              child: BackdropFilter(
-                                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
-                                  ),
-                                  child: Text(
-                                    quote,
-                                    style: const TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500, letterSpacing: 0.5),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 32),
-
-                            // Date Selector (Tiêu đề ngày tháng ở giữa màn)
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.chevron_left_rounded, color: Colors.white70, size: 24),
-                                const SizedBox(width: 16),
-                                Text(
-                                  "Hôm nay, ${DateTime.now().day} Thg ${DateTime.now().month}",
-                                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
-                                ),
-                                const SizedBox(width: 16),
-                                const Icon(Icons.chevron_right_rounded, color: Colors.white70, size: 24),
-                              ],
-                            ),
-                            const SizedBox(height: 40),
+                            // 🚀 DỜI THẺ SMART CONSUMER LÊN ĐẦU, KÍCH THÍCH NGƯỜI DÙNG NGAY KHI VÀO MÀN HÌNH
+                            _buildSmartConsumerCard(),
+                            
+                            const SizedBox(height: 36),
                           ],
                         ),
                       ),
@@ -429,10 +396,8 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                                     Expanded(child: _buildInfoGridCard(Icons.workspace_premium_rounded, "Huy hiệu", shortBadge)),
                                   ],
                                 ),
-                                const SizedBox(height: 32),
+                                const SizedBox(height: 16),
                                 
-                                // 🚀 4. SMART CONSUMER REWARD CARD (THẺ NHẬN THƯỞNG 5 TRIỆU)
-                                _buildSmartConsumerCard(),
                               ],
                             ),
                           ),
@@ -483,7 +448,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
     if (mounted) setState(() => _isClaimingReward = false);
   }
 
-  // 🚀 KHỐI HIỂN THỊ SMART CONSUMER CARD (Gamification & Premium Visual)
+  // 🚀 KHỐI HIỂN THỊ SMART CONSUMER CARD (Phong cách Pearl Oasis - Trắng ngọc trai & Xanh ngọc bích)
   Widget _buildSmartConsumerCard() {
     if (_rewardStatus == null) {
       _fetchRewardStatus();
@@ -507,16 +472,13 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
           width: double.infinity,
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF1A3A35), Color(0xFF2A5951)], // Emerald Dark Gamification
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
-            ),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(32),
             border: Border.all(
               color: isEligible && !hasClaimed 
-                  ? const Color(0xFF80BF84).withOpacity(0.5 + (_pulseController.value * 0.5)) // Neon glow border
-                  : const Color(0xFF3A6960), 
-              width: isEligible && !hasClaimed ? 2.5 : 1
+                  ? const Color(0xFF80BF84) 
+                  : const Color(0xFFE2ECEB), 
+              width: isEligible && !hasClaimed ? 2.0 : 1.5
             ),
             boxShadow: [
               if (isEligible && !hasClaimed)
@@ -525,7 +487,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                   blurRadius: 30, spreadRadius: 4, offset: const Offset(0, 10)
                 )
               else
-                BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 8)),
+                BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 24, offset: const Offset(0, 12)),
             ],
           ),
           child: Column(
@@ -535,8 +497,8 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                 children: [
                   Container(
                     padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF4F9F6),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.diamond_rounded, color: Color(0xFF80BF84), size: 20),
@@ -546,7 +508,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                     child: Text(
                       "Đặc Quyền Hội Viên",
                       style: TextStyle(
-                        color: Colors.white,
+                        color: Color(0xFF1A3A35),
                         fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.5,
                       ),
                     ),
@@ -555,15 +517,15 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: isEligible && !hasClaimed 
-                          ? const Color(0xFF80BF84).withOpacity(0.2 + (_pulseController.value * 0.2)) 
-                          : Colors.white.withOpacity(0.1),
+                          ? const Color(0xFF80BF84).withOpacity(0.15 + (_pulseController.value * 0.1)) 
+                          : const Color(0xFFF4F9F6),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: isEligible && !hasClaimed ? const Color(0xFF80BF84) : Colors.transparent)
+                      border: Border.all(color: isEligible && !hasClaimed ? const Color(0xFF80BF84).withOpacity(0.5) : Colors.transparent)
                     ),
                     child: const Text(
                       "Thưởng 500k",
                       style: TextStyle(
-                        color: Color(0xFF80BF84),
+                        color: Color(0xFF2A5951), 
                         fontSize: 11, fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -576,8 +538,8 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text("Tiến độ chi tiêu", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600)),
-                    Text("${formatCurrency.format(totalSpent)} / ${formatCurrency.format(target)}", style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                    const Text("Tiến độ chi tiêu", style: TextStyle(color: Color(0xFF617D79), fontSize: 12, fontWeight: FontWeight.w600)),
+                    Text("${formatCurrency.format(totalSpent)} / ${formatCurrency.format(target)}", style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 13, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -586,9 +548,8 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                     Container(
                       height: 14, width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.3), 
+                        color: const Color(0xFFE2ECEB), 
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white.withOpacity(0.05)),
                       ),
                     ),
                     FractionallySizedBox(
@@ -596,13 +557,14 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                       child: Container(
                         height: 14,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [Color(0xFF80BF84), Color(0xFF48C9B0)]),
+                          gradient: const LinearGradient(colors: [Color(0xFF80BF84), Color(0xFF48C9B0)]), 
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF80BF84).withOpacity(0.5 + (_pulseController.value * 0.3)), 
-                              blurRadius: 12
-                            )
+                            if (isEligible)
+                              BoxShadow(
+                                color: const Color(0xFF80BF84).withOpacity(0.4 + (_pulseController.value * 0.3)), 
+                                blurRadius: 10
+                              )
                           ],
                         ),
                       ),
@@ -612,8 +574,8 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                 const SizedBox(height: 12),
                 if (!isEligible)
                   Text(
-                    "💡 Chỉ còn ${formatCurrency.format(target - totalSpent)} nữa để mở khóa đặc quyền hoàn tiền!",
-                    style: const TextStyle(color: Colors.white60, fontSize: 11, fontStyle: FontStyle.italic),
+                    "💡 Chỉ còn ${formatCurrency.format(target - totalSpent)} nữa để mở khóa phần thưởng!",
+                    style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, fontStyle: FontStyle.italic),
                   ),
                 const SizedBox(height: 20),
                 
@@ -621,38 +583,48 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                   width: double.infinity, height: 52,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isEligible ? const Color(0xFF80BF84) : Colors.white.withOpacity(0.1),
-                      foregroundColor: isEligible ? Colors.white : Colors.white54,
-                      elevation: isEligible ? 12 * _pulseController.value : 0,
-                      shadowColor: const Color(0xFF80BF84).withOpacity(0.6),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      backgroundColor: isEligible ? const Color(0xFF80BF84) : const Color(0xFFF4F7F6), // Xanh khi đủ, Xám nhạt khi bị khóa
+                      foregroundColor: isEligible ? Colors.white : const Color(0xFF94A3B8), 
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                     ),
                     onPressed: isEligible ? _handleClaimReward : null,
                     child: _isClaimingReward 
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : Text(
-                            isEligible ? "✨ NHẬN THƯỞNG 500.000Đ ✨" : "TIẾP TỤC HÀNH TRÌNH",
-                            style: TextStyle(fontSize: 14, fontWeight: isEligible ? FontWeight.w900 : FontWeight.w700, letterSpacing: isEligible ? 0.5 : 0),
+                        ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: isEligible ? Colors.white : const Color(0xFF94A3B8), strokeWidth: 2))
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (!isEligible) ...[
+                                const Icon(Icons.lock_rounded, size: 16),
+                                const SizedBox(width: 6),
+                              ],
+                              Text(
+                                isEligible ? "✨ NHẬN THƯỞNG 500.000Đ ✨" : "NHẬN THƯỞNG",
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                              ),
+                            ],
                           ),
                   ),
                 ),
               ] else ...[
-                // TRẠNG THÁI ĐÃ NHẬN THƯỞNG (VIP BADGE)
+                // TRẠNG THÁI ĐÃ NHẬN THƯỞNG
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1), 
+                    color: const Color(0xFFF4F9F6), 
                     borderRadius: BorderRadius.circular(16), 
-                    border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.5))
+                    border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.3))
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.workspace_premium_rounded, color: Color(0xFF80BF84), size: 28),
+                      Icon(Icons.check_circle_rounded, color: Color(0xFF80BF84), size: 28),
                       SizedBox(width: 12),
                       Expanded(
                         child: Text(
                           "Tuyệt vời! Bạn đã mở khóa mốc thưởng và nhận 500.000đ vào Ví.", 
-                          style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)
+                          style: TextStyle(color: Color(0xFF1A3A35), fontSize: 13, fontWeight: FontWeight.bold)
                         )
                       ),
                     ],
@@ -663,18 +635,17 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                   width: double.infinity, height: 52,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white, 
-                      foregroundColor: const Color(0xFF1A3A35), 
+                      backgroundColor: const Color(0xFF1A3A35), 
+                      foregroundColor: Colors.white, 
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
                     onPressed: () {
                       WalletScreen.showPremiumWithdrawalSheet(context, onSuccess: () {
-                        // Cập nhật lại UI nếu cần thiết sau khi rút
                         _fetchRewardStatus();
                       });
                     },
-                    child: const Text("RÚT TIỀN VỀ NGÂN HÀNG", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                    child: const Text("RÚT TIỀN VỀ NGÂN HÀNG", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
                   ),
                 ),
               ],

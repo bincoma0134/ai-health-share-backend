@@ -3715,3 +3715,22 @@ def create_user_withdrawal_request(payload: schemas.WithdrawalRequest, current_u
     finally:
         cur.close()
         db_pool.putconn(conn)
+
+@app.get("/user/withdrawals", tags=["Wellness Consumer"])
+def get_user_withdrawals(current_user = Depends(verify_user_token)):
+    """API truy xuất lịch sử rút tiền chuyên biệt cho Role USER & CREATOR"""
+    if current_user.role not in ["USER", "CREATOR"]:
+        raise HTTPException(status_code=403, detail="Chỉ áp dụng cho Khách hàng tiêu dùng.")
+        
+    if not db_pool: raise HTTPException(status_code=500, detail="Database pool error")
+    conn = db_pool.getconn()
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM withdrawal_requests WHERE user_id = %s ORDER BY created_at DESC", (current_user.id,))
+        return {"status": "success", "data": cur.fetchall()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        db_pool.putconn(conn)
