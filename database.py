@@ -17,7 +17,7 @@ try:
 except Exception as e:
     raise RuntimeError(f"❌ Lỗi kết nối Database: {e}")
 
-def get_db_connection():
+def get_db_connection():    
     """Hàm cấp phát kết nối DB cho mỗi lượt Request API"""
     conn = db_pool.getconn()
     try:

@@ -66,14 +66,16 @@ Mọi TASK bắt buộc phải thực thi tuần tự theo quy trình 5 giai đo
 * tiktok_feed_comments
 * tiktok_feed_likes
 * tiktok_feed_saves
+* tiktok_feed_shares
+* tiktok_feeds
 * user_fcm_tokens
 * user_follows
 * user_missions
 * user_svalue_wallet
 * user_vouchers
 * user_wellness_logs
+* user_wellness_profiles
 * users
 * vouchers
 * wallets
 * withdrawal_requests
-*

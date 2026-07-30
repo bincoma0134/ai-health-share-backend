@@ -39,6 +39,7 @@ class ServiceCreate(BaseModel):
     service_type: Optional[str] = "RELAXATION"
     status: Optional[str] = "PENDING"
     affiliate_rate: Optional[float] = 0.0
+    capacity_per_service: Optional[int] = 1
 
 # --- 4. CẤU TRÚC TIKTOK FEED (Thay thế Studio) ---
 class TikTokFeedCreate(BaseModel):
@@ -168,12 +169,12 @@ class AppointmentRequest(BaseModel):
     note: Optional[str] = None
     affiliate_code: Optional[str] = None
     total_amount: float
+    preferred_time: Optional[str] = None
+    guest_count: Optional[int] = 1
 
 class PartnerResponse(BaseModel):
     """Partner trả lời yêu cầu"""
     action: str  # "ACCEPT" hoặc "REJECT"
-    start_time: Optional[datetime] = None  # Cần thiết nếu ACCEPT
-    end_time: Optional[datetime] = None    # Cần thiết nếu ACCEPT
     reason: Optional[str] = None           # Cần thiết nếu REJECT
 
 class AppointmentCheckIn(BaseModel):
@@ -204,6 +205,10 @@ class VoucherCreate(BaseModel):
     valid_from: datetime
     valid_until: datetime
     applicable_services: Optional[List[str]] = None
+    is_vip: Optional[bool] = False
+    point_price: Optional[float] = 0.0
+    fixed_time_slot: Optional[str] = None
+    description: Optional[str] = None
 
 # --- 12. CẤU TRÚC VÍ & QUYẾT TOÁN ---
 class WalletResponse(BaseModel):
@@ -274,3 +279,9 @@ class AffiliateMetricResponse(BaseModel):
 class WellnessLogCreate(BaseModel):
     mood_state: str
     body_focus: Optional[str] = None
+
+class PointTopupRequest(BaseModel):
+    amount_vnd: float
+
+class VIPVoucherBuyRequest(BaseModel):
+    voucher_code: str

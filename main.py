@@ -2232,31 +2232,34 @@ def get_my_appointments(current_user = Depends(verify_user_token), conn=Depends(
 @app.post("/appointments/request", tags=["Scheduling"])
 def request_appointment(payload: dict, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
+    import math
     try:
         service_id = payload.get("service_id")
         partner_id = payload.get("partner_id")
         video_id = payload.get("video_id")
+        guest_count = int(payload.get("guest_count", 1))
+        preferred_time = payload.get("preferred_time")
         
-        # Tiền xử lý chuỗi rỗng để tránh lỗi UUID Format của PostgreSQL
         if not video_id or video_id == "": video_id = None
         if not service_id or service_id == "": service_id = None
 
-        # --- BỌC THÉP TỰ ĐỘNG CHỮA LỖI (SELF-HEALING) ---
-        # 1. Kiểm tra video_id xem có thực sự nằm trong bảng tiktok_feeds không
         if video_id:
             cur.execute("SELECT id FROM tiktok_feeds WHERE id = %s", (video_id,))
             if not cur.fetchone():
-                # Không tìm thấy trong tiktok_feeds -> Quét xuống bảng services
                 cur.execute("SELECT id FROM services WHERE id = %s", (video_id,))
                 if cur.fetchone():
-                    service_id = video_id  # Cứu dữ liệu: Đẩy ID này sang đúng cột service_id
-                video_id = None  # Xóa sạch video_id rác để tránh lỗi Foreign Key
+                    service_id = video_id
+                video_id = None
                 
-        # 2. Quét dọn luôn cột service_id để đảm bảo an toàn tuyệt đối
         if service_id:
-            cur.execute("SELECT id FROM services WHERE id = %s", (service_id,))
-            if not cur.fetchone():
+            cur.execute("SELECT id, price, capacity_per_service FROM services WHERE id = %s", (service_id,))
+            svc = cur.fetchone()
+            if not svc:
                 service_id = None
+            else:
+                capacity = svc.get("capacity_per_service", 1)
+                quantity = math.ceil(guest_count / capacity)
+                payload["total_amount"] = float(svc["price"]) * quantity
 
         total_amount = payload.get("total_amount", 0)
         customer_name = payload.get("customer_name", "")
@@ -2270,43 +2273,51 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
         applied_uv_id = None
         if voucher_code:
             cur.execute("""
-                SELECT uv.id FROM user_vouchers uv 
+                SELECT uv.id, v.is_vip, v.issuer_id, v.fixed_time_slot FROM user_vouchers uv 
                 JOIN vouchers v ON uv.voucher_id = v.id 
-                WHERE uv.user_id = %s AND uv.status = 'UNUSED' AND v.code = %s AND v.valid_until > NOW() AND v.used_quantity < v.total_quantity
+                WHERE uv.user_id = %s AND uv.status IN ('UNUSED', 'UNUSED_VIP') AND v.code = %s AND v.valid_until > NOW() AND v.used_quantity < v.total_quantity
             """, (current_user.id, voucher_code))
             uv = cur.fetchone()
+            
+            # BỌC THÉP VIP VOUCHER
+            if uv and uv.get("is_vip"):
+                if str(uv["issuer_id"]) != str(partner_id):
+                    raise HTTPException(status_code=400, detail="Voucher VIP này không áp dụng cho cơ sở này!")
+                if uv.get("fixed_time_slot") and preferred_time:
+                    if uv["fixed_time_slot"] != preferred_time:
+                        raise HTTPException(status_code=400, detail=f"Voucher VIP chỉ áp dụng cho khung giờ {uv['fixed_time_slot']}")
+
             if uv:
                 applied_uv_id = uv["id"]
                 cur.execute("UPDATE user_vouchers SET status = 'LOCKED', locked_until = NULL WHERE id = %s", (applied_uv_id,))
             else:
-                # BỌC THÉP & TỰ CHỮA LỖI (SELF-HEALING)
-                # Tự động Claim mã vào ví nếu frontend chưa Claim, hoặc chặn lại nếu mã sai/đã dùng
-                cur.execute("SELECT id FROM vouchers WHERE code = %s AND status = 'APPROVED' AND valid_until > NOW() AND used_quantity < total_quantity", (voucher_code,))
+                cur.execute("SELECT id, is_vip, issuer_id, fixed_time_slot FROM vouchers WHERE code = %s AND status = 'APPROVED' AND valid_until > NOW() AND used_quantity < total_quantity", (voucher_code,))
                 public_v = cur.fetchone()
                 if public_v:
+                    if public_v.get("is_vip"):
+                        if str(public_v["issuer_id"]) != str(partner_id):
+                            raise HTTPException(status_code=400, detail="Voucher VIP này không áp dụng cho cơ sở này!")
+                        if public_v.get("fixed_time_slot") and preferred_time:
+                            if public_v["fixed_time_slot"] != preferred_time:
+                                raise HTTPException(status_code=400, detail=f"Voucher VIP chỉ áp dụng cho khung giờ {public_v['fixed_time_slot']}")
                     try:
                         cur.execute("INSERT INTO user_vouchers (user_id, voucher_id, status) VALUES (%s, %s, 'LOCKED') RETURNING id", (current_user.id, public_v["id"]))
                         applied_uv_id = cur.fetchone()["id"]
                     except psycopg2.IntegrityError:
-                        raise HTTPException(status_code=400, detail="Mã giảm giá đã được sử dụng hoặc đang bị khóa cho một lịch hẹn khác!")
+                        raise HTTPException(status_code=400, detail="Mã giảm giá đã được sử dụng hoặc đang bị khóa!")
                 else:
                     raise HTTPException(status_code=400, detail="Mã giảm giá không hợp lệ, đã hết hạn hoặc hết lượt!")
 
         cur.execute("""
             INSERT INTO appointments 
-            (user_id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, status, applied_user_voucher_id, affiliate_code, created_at) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WAITING_PARTNER', %s, %s, NOW()) 
+            (user_id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, status, applied_user_voucher_id, affiliate_code, preferred_time, guest_count, created_at) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'WAITING_PARTNER', %s, %s, %s, %s, NOW()) 
             RETURNING *
-        """, (current_user.id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, applied_uv_id, affiliate_code))
+        """, (current_user.id, partner_id, service_id, video_id, total_amount, customer_name, customer_phone, note, applied_uv_id, affiliate_code, preferred_time, guest_count))
         
         new_appt = cur.fetchone()
-        
-        # 🚀 [NOTIFY DEBUG][EVENT]
-        print(f"[NOTIFY DEBUG][EVENT]\nuser_id={current_user.id}\npartner_id={partner_id}\nevent_type=APPOINTMENT_REQUESTED\nbooking_id={new_appt['id']}")
-        
         from notification_service import NotificationService
         NotificationService.dispatch_event(conn, user_id=partner_id, event_type="APPOINTMENT_REQUESTED", reference_id=str(new_appt['id']), sender_id=current_user.id)
-        
         conn.commit()
         return {"status": "success", "message": "Yêu cầu đã được gửi! Vui lòng theo dõi tại tab 'Lịch hẹn'.", "data": new_appt}
     except HTTPException:
@@ -2329,9 +2340,8 @@ def respond_appointment(appointment_id: str, payload: schemas.PartnerResponse, c
 
         updates, values = [], []
         if payload.action == "ACCEPT":
-            if not payload.start_time or not payload.end_time: raise HTTPException(status_code=400, detail="Thiếu giờ")
-            updates.extend(["status = 'PENDING_PAYMENT'", "start_time = %s", "end_time = %s", "payment_deadline = %s"])
-            values.extend([payload.start_time, payload.end_time, datetime.fromtimestamp(time.time() + 7200)])
+            updates.extend(["status = 'PENDING_PAYMENT'", "payment_deadline = %s"])
+            values.extend([datetime.fromtimestamp(time.time() + 7200)])
         else:
             updates.extend(["status = 'CANCELLED'", "rejection_reason = %s"])
             values.append(payload.reason)
@@ -2715,11 +2725,13 @@ def create_voucher(payload: schemas.VoucherCreate, current_user = Depends(verify
         
         cur.execute("""
             INSERT INTO vouchers (code, issuer_type, issuer_id, discount_type, discount_value, max_discount_amount, 
-                                  min_order_value, applicable_services, total_quantity, valid_from, valid_until, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::uuid[], %s, %s, %s, %s) RETURNING *
+                                  min_order_value, applicable_services, total_quantity, valid_from, valid_until, status,
+                                  is_vip, point_price, fixed_time_slot, description)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::uuid[], %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
         """, (payload.code, issuer_type, current_user.id if issuer_type == "PARTNER" else None, 
               payload.discount_type, payload.discount_value, payload.max_discount_amount, payload.min_order_value, 
-              payload.applicable_services, payload.total_quantity, payload.valid_from, payload.valid_until, status))
+              payload.applicable_services, payload.total_quantity, payload.valid_from, payload.valid_until, status,
+              payload.is_vip, payload.point_price, payload.fixed_time_slot, payload.description))
         new_voucher = cur.fetchone()
         conn.commit()
         return {"status": "success", "data": new_voucher}
@@ -2852,7 +2864,15 @@ async def payos_webhook(request: Request, conn=Depends(get_db_connection)):
             
             cur.execute("SELECT * FROM bookings_transactions WHERE order_code = %s", (orderCode,))
             booking = cur.fetchone()
-            if booking and booking["payment_status"] != "PAID":
+            
+            if booking and booking["payment_status"] not in ["PAID", "TOPUP_PAID"]:
+                if booking["payment_status"] == "TOPUP_UNPAID":
+                    points = int(float(booking["total_amount"]) // 1000)
+                    cur.execute("UPDATE users SET points_balance = points_balance + %s WHERE id = %s", (points, booking["user_id"]))
+                    cur.execute("UPDATE bookings_transactions SET payment_status = 'TOPUP_PAID' WHERE id = %s", (booking["id"],))
+                    conn.commit()
+                    return {"success": True}
+
                 cur.execute("UPDATE bookings_transactions SET payment_status = 'PAID' WHERE id = %s", (booking["id"],))
                 
                 # BỌC THÉP LOGIC VOUCHER CHO WEBHOOK
@@ -3734,3 +3754,89 @@ def get_user_withdrawals(current_user = Depends(verify_user_token)):
     finally:
         cur.close()
         db_pool.putconn(conn)
+
+@app.post("/user/points/topup", tags=["User"])
+def topup_points(payload: schemas.PointTopupRequest, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    cur = conn.cursor()
+    try:
+        if payload.amount_vnd < 10000:
+            raise HTTPException(status_code=400, detail="Tối thiểu 10,000 VNĐ")
+            
+        user_hash = str(abs(hash(current_user.id)))[:4]
+        order_code = int(f"99{user_hash}{random.randint(1000,9999)}")
+        
+        # Lợi dụng bookings_transactions để track luồng Nạp điểm thay vì tạo bảng mới
+        cur.execute("""INSERT INTO bookings_transactions 
+                       (user_id, total_amount, payment_status, service_status, order_code)
+                       VALUES (%s, %s, 'TOPUP_UNPAID', 'PENDING', %s) RETURNING id""",
+                    (current_user.id, payload.amount_vnd, order_code))
+        conn.commit()
+
+        payment_data = PaymentData(
+            orderCode=order_code, 
+            amount=int(payload.amount_vnd), 
+            description=f"Nap {int(payload.amount_vnd//1000)} diem", 
+            returnUrl="https://ai-health-share-frontend.vercel.app", 
+            cancelUrl="https://ai-health-share-frontend.vercel.app"
+        )
+        payment_link = payos_client.createPaymentLink(paymentData=payment_data)
+        
+        return {
+            "status": "success", 
+            "checkout_url": payment_link.checkoutUrl,
+            "in_app_data": {
+                "qr_code": getattr(payment_link, 'qrCode', None),
+                "order_code": order_code
+            }
+        }
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally: cur.close()
+
+@app.get("/vouchers/vip/public", tags=["Vouchers"])
+def get_public_vip_vouchers(conn=Depends(get_db_connection)):
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT v.*, u.full_name as partner_name, u.username as partner_username 
+            FROM vouchers v
+            LEFT JOIN users u ON v.issuer_id = u.id
+            WHERE v.is_vip = TRUE AND v.status = 'APPROVED' 
+              AND v.valid_until > NOW() 
+              AND v.used_quantity < v.total_quantity
+            ORDER BY v.created_at DESC
+        """)
+        return {"status": "success", "data": cur.fetchall()}
+    finally: cur.close()
+
+@app.post("/vouchers/{voucher_code}/buy-with-points", tags=["Vouchers"])
+def buy_vip_voucher_with_points(voucher_code: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Giao dịch Nguyên Tử bọc thép (Atomic Transaction & Row Lock)
+        cur.execute("SELECT points_balance FROM users WHERE id = %s FOR UPDATE", (current_user.id,))
+        user = cur.fetchone()
+        if not user: raise HTTPException(status_code=404)
+        
+        cur.execute("SELECT id, total_quantity, used_quantity, point_price, valid_until, status FROM vouchers WHERE code = %s AND is_vip = TRUE FOR UPDATE", (voucher_code,))
+        voucher = cur.fetchone()
+        
+        if not voucher or voucher['status'] != 'APPROVED': raise HTTPException(status_code=400, detail="Mã VIP không tồn tại hoặc chưa duyệt.")
+        if voucher['used_quantity'] >= voucher['total_quantity']: raise HTTPException(status_code=400, detail="Mã VIP đã hết số lượng.")
+        if voucher['valid_until'] < datetime.now(): raise HTTPException(status_code=400, detail="Mã VIP đã hết hạn.")
+        if float(user['points_balance']) < float(voucher['point_price']): raise HTTPException(status_code=400, detail="Không đủ điểm để mua mã VIP này.")
+        
+        cur.execute("UPDATE users SET points_balance = points_balance - %s WHERE id = %s", (voucher['point_price'], current_user.id))
+        cur.execute("UPDATE vouchers SET used_quantity = used_quantity + 1 WHERE id = %s", (voucher['id'],))
+        cur.execute("INSERT INTO user_vouchers (user_id, voucher_id, status) VALUES (%s, %s, 'UNUSED') RETURNING id", (current_user.id, voucher['id']))
+        
+        conn.commit()
+        return {"status": "success", "message": "Mua Voucher VIP thành công!"}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally: cur.close()

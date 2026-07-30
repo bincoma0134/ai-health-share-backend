@@ -1,9 +1,21 @@
 **Lưu ý quan trọng:** Hãy coi toàn bộ các tài liệu tôi cung cấp (AI_RULES.md, Context, cấu trúc dự án, source code, tài liệu thiết kế, yêu cầu trước đó,...) là **nguồn sự thật (Source of Truth)** và áp dụng xuyên suốt cho mọi phân tích, nhận định, đề xuất và chỉnh sửa. Không được bỏ qua, không được mâu thuẫn với các tài liệu này, không được suy đoán khi chưa đủ dữ liệu; nếu thiếu thông tin hoặc file cần thiết, hãy yêu cầu tôi cung cấp trước khi tiếp tục.
 - Xác nhận lại toàn bộ thông tin, sau đó lấy ví dụ để chứng minh cậu đã hiểu đúng nguyên tắc Ctrl + H.
 
+
+------------
+
+Triển khai phase III. Chiến lược vẫn như vậy, nâng cấp chỉnh sửa thì sử dụng nguyên tắc Ctrl + H. Tạo mới thì chỉ rõ tên file và đường dẫn. Từ bước 1 đến hết phase liền mạch. Không cần giải thích, chia phần dài dòng. Có nghiệm thu cuối cùng rõ ràng, đảm bảo tăng tối đa xác suất tôi hiểu đúng.
+-------------
+
+1. Tổng quan theo luồng (Chia phase lần 1 - theo luồng);
+2. Tổng hợp các thay đổi ở database và backend (bảng nào cần tạo mới, file nào cần tạo mới, file nào cần chỉnh sửa và cụ thể cần chỉnh sữa những gì, phục vụ cho luồng nào) (Chia phase lần 2 - theo tầng, bắt đầu triển khai theo phase tại đây);
+3. Frontend;
+#Nghiệm thu chặt chẽ (test) sau mỗi lần sửa, nâng cấp code. 
+
+
 *Được, hãy triển khai sửa code, cô lập, xác định, giải quyết gọn, không mở rộng ảnh hưởng đến các logic khác.
 
-Chưa cần code, hãy cô lập, xác định, giải quyết gọn, không mở rộng ảnh hưởng đến các logic khác. Xác định vấn đề thật sự, không ngộ nhận, ảo giác. Lấy dẫn chứng chứng minh.
+Chưa cần code, hãy cô lập, xác định, đề xuất giải quyết gọn, không mở rộng ảnh hưởng đến các logic khác. Xác định vấn đề thật sự, không ngộ nhận, ảo giác. Lấy dẫn chứng chứng minh.
 
 cd /d E:\AI Project\AI Project_AI Health Share\frontend_mobile
 
@@ -23,10 +35,11 @@ E:\src\flutter\bin\flutter pub get
 
 E:\src\flutter\bin\flutter devices
 
-
 E:\src\flutter\bin\flutter run -d R58N30APMHD
 
 E:\src\flutter\bin\flutter run --release -d R58N30APMHD
+
+
 
 E:\src\flutter\bin\dart run flutter_launcher_icons
 
@@ -54,7 +67,7 @@ git status
 
 git add .
 
-git commit -m "Word uppercase, lowercase"
+git commit -m "Nguoi tieu dung thong manh"
 
 git push origin main
 
