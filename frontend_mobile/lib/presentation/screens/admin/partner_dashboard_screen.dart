@@ -589,10 +589,23 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
     final qtyCtrl = TextEditingController();
     final minOrderCtrl = TextEditingController();
     final maxDiscountCtrl = TextEditingController();
+    final pointPriceCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
     
     String type = 'PERCENTAGE';
+    bool isVip = false;
+    String selectedSlot = '08:00 - 10:00';
     DateTime validUntil = DateTime.now().add(const Duration(days: 7));
     bool isSubmitting = false;
+
+    final List<String> timeSlots = [
+      '08:00 - 10:00',
+      '10:00 - 12:00',
+      '13:00 - 15:00',
+      '15:00 - 17:00',
+      '18:00 - 20:00',
+      '20:00 - 22:00',
+    ];
 
     showModalBottomSheet(
       context: context,
@@ -601,7 +614,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
           return Container(
-            height: MediaQuery.of(context).size.height * 0.85,
+            height: MediaQuery.of(context).size.height * 0.9,
             padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
             decoration: const BoxDecoration(color: Color(0xFFF7FBF9), borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
             child: Column(
@@ -619,13 +632,54 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                     )
                   ]
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
                 Expanded(
                   child: SingleChildScrollView(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildModalTextField('Mã Voucher (VD: TET2024)', codeCtrl, isUpperCase: true),
+                        // 🚀 CÔNG TẮC CHUYỂN ĐỔI VIP VOUCHER (PHASE 3)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isVip ? const Color(0xFF1A3A35) : Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: isVip ? const Color(0xFF1A3A35) : _borderColor),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.stars_rounded, color: isVip ? const Color(0xFFFCD34D) : _textSub, size: 22),
+                                  const SizedBox(width: 10),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Phát hành Voucher VIP',
+                                        style: TextStyle(color: isVip ? Colors.white : _textMain, fontSize: 13, fontWeight: FontWeight.w800),
+                                      ),
+                                      Text(
+                                        'Bán bằng Điểm nạp & Khung giờ cố định',
+                                        style: TextStyle(color: isVip ? Colors.white70 : _textSub, fontSize: 11),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              Switch(
+                                value: isVip,
+                                activeColor: const Color(0xFF48C9B0),
+                                activeTrackColor: Colors.white24,
+                                onChanged: (val) => setModalState(() => isVip = val),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        _buildModalTextField('Mã Voucher (VD: VIPSPA50)', codeCtrl, isUpperCase: true),
                         const SizedBox(height: 16),
                         Row(
                           children: [
@@ -659,7 +713,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                           children: [
                             Expanded(child: _buildModalTextField(type == 'PERCENTAGE' ? 'Giảm (%)' : 'Giảm (VNĐ)', valueCtrl, isNumber: true)),
                             const SizedBox(width: 12),
-                            Expanded(child: _buildModalTextField('Số lượng', qtyCtrl, isNumber: true)),
+                            Expanded(child: _buildModalTextField('Số lượng phát hành', qtyCtrl, isNumber: true)),
                           ],
                         ),
                         const SizedBox(height: 16),
@@ -670,6 +724,39 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                             Expanded(child: _buildModalTextField('Giảm tối đa (Tùy chọn)', maxDiscountCtrl, isNumber: true, isEnabled: type == 'PERCENTAGE')),
                           ],
                         ),
+                        
+                        // 🚀 CÁC TRƯỜNG CẤU HÌNH BỔ SUNG KHI BẬT VIP VOUCHER
+                        if (isVip) ...[
+                          const SizedBox(height: 16),
+                          _buildModalTextField('Giá mua bằng Điểm (VD: 10000)', pointPriceCtrl, isNumber: true),
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: _borderColor)),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                isExpanded: true,
+                                value: selectedSlot,
+                                items: timeSlots.map((slot) => DropdownMenuItem(
+                                  value: slot,
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.access_time_rounded, size: 16, color: Color(0xFF48C9B0)),
+                                      const SizedBox(width: 8),
+                                      Text('Khung giờ cố định: $slot', style: TextStyle(color: _textMain, fontSize: 13, fontWeight: FontWeight.w700)),
+                                    ],
+                                  ),
+                                )).toList(),
+                                onChanged: (val) {
+                                  if (val != null) setModalState(() => selectedSlot = val);
+                                },
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildModalTextField('Mô tả đặc quyền VIP (Tùy chọn)', descCtrl),
+                        ],
+
                         const SizedBox(height: 16),
                         Container(
                           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: _borderColor)),
@@ -682,12 +769,12 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                             onTap: () async {
                               final date = await showDatePicker(context: context, initialDate: validUntil, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
                               if (date != null) {
-                                // Ép thời gian kết thúc về mốc 23:59:59 của ngày đã chọn
                                 setModalState(() => validUntil = DateTime(date.year, date.month, date.day, 23, 59, 59));
                               }
                             },
                           ),
                         ),
+                        const SizedBox(height: 20),
                       ]
                     )
                   )
@@ -698,12 +785,17 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                     style: ElevatedButton.styleFrom(backgroundColor: _bizSecondary, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                     onPressed: isSubmitting ? null : () async {
                       if (codeCtrl.text.isEmpty || valueCtrl.text.isEmpty || qtyCtrl.text.isEmpty) {
-                        AppToast.show(context: context, message: 'Vui lòng điền đủ thông tin!', isSuccess: false);
+                        AppToast.show(context: context, message: 'Vui lòng điền đủ thông tin cơ bản!', isSuccess: false);
                         return;
                       }
+                      if (isVip && (double.tryParse(pointPriceCtrl.text) ?? 0) <= 0) {
+                        AppToast.show(context: context, message: 'Voucher VIP bắt buộc phải có giá Điểm > 0!', isSuccess: false);
+                        return;
+                      }
+
                       setModalState(() => isSubmitting = true);
                       
-                      // Đồng bộ cấu trúc Payload chuẩn với Website (VoucherManager.tsx)
+                      // 🚀 ĐÓNG GÓI PAYLOAD CHUẨN PHASE 3
                       final payload = {
                         'code': codeCtrl.text.toUpperCase(),
                         'issuer_type': 'PARTNER',
@@ -715,20 +807,24 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                         'total_quantity': int.tryParse(qtyCtrl.text) ?? 0,
                         'valid_from': DateTime.now().toUtc().toIso8601String(),
                         'valid_until': validUntil.toUtc().toIso8601String(),
+                        'is_vip': isVip,
+                        'point_price': isVip ? (double.tryParse(pointPriceCtrl.text) ?? 0.0) : 0.0,
+                        'fixed_time_slot': isVip ? selectedSlot : null,
+                        'description': descCtrl.text.trim().isNotEmpty ? descCtrl.text.trim() : null,
                       };
                       
                       try {
+                        print('[DEBUG-PARTNER-VOUCHER] Gửi payload tạo Voucher: $payload');
                         final success = await PartnerApiService.createVoucher(payload);
                         if (success && mounted) {
                           Navigator.pop(context);
                           _loadAllData();
-                          AppToast.show(context: context, message: 'Đã tạo mã ưu đãi thành công!', isSuccess: true);
+                          AppToast.show(context: context, message: isVip ? 'Đã tạo Voucher VIP! Đang chờ duyệt.' : 'Đã tạo mã ưu đãi thành công!', isSuccess: true);
                         }
                       } catch (e) {
-                        // Khôi phục trạng thái nút bấm nếu có lỗi
+                        print('[ERROR-PARTNER-VOUCHER] Lỗi tạo Voucher: $e');
                         setModalState(() => isSubmitting = false);
                         if (mounted) {
-                          // Bóc tách text Exception và hiển thị lên màn hình qua Toast
                           AppToast.show(
                             context: context, 
                             message: e.toString().replaceAll('Exception: ', ''), 
@@ -738,7 +834,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                         }
                       }
                     },
-                    child: isSubmitting ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('TẠO MÃ ƯU ĐÃI', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+                    child: isSubmitting ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Text(isVip ? 'GỬI DUYỆT VOUCHER VIP' : 'TẠO MÃ ƯU ĐÃI', style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -800,21 +896,30 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
           ..._vouchers.map((v) {
             final isPercentage = v['discount_type'] == 'PERCENTAGE';
             final discountText = isPercentage ? '${v['discount_value']}%' : _formatCurrency(v['discount_value']);
+            final isVip = v['is_vip'] == true;
             
             return Container(
               margin: const EdgeInsets.only(bottom: 16),
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+              decoration: BoxDecoration(
+                color: Colors.white, 
+                borderRadius: BorderRadius.circular(24), 
+                border: Border.all(color: isVip ? const Color(0xFF1A3A35) : _borderColor, width: isVip ? 1.5 : 1.0), 
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]
+              ),
               child: Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: _bgLight, borderRadius: BorderRadius.circular(16)),
+                    decoration: BoxDecoration(
+                      color: isVip ? const Color(0xFF1A3A35) : _bgLight, 
+                      borderRadius: BorderRadius.circular(16)
+                    ),
                     child: Column(
                       children: [
-                        Icon(Icons.local_activity_rounded, color: _bizPrimary, size: 28),
+                        Icon(isVip ? Icons.stars_rounded : Icons.local_activity_rounded, color: isVip ? const Color(0xFFFCD34D) : _bizPrimary, size: 28),
                         const SizedBox(height: 8),
-                        Text(discountText, style: TextStyle(color: _textMain, fontWeight: FontWeight.w900, fontSize: 14)),
+                        Text(discountText, style: TextStyle(color: isVip ? Colors.white : _textMain, fontWeight: FontWeight.w900, fontSize: 14)),
                       ],
                     ),
                   ),
@@ -826,13 +931,27 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(v['code']?.toString().toUpperCase() ?? '', style: TextStyle(color: _textMain, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1)),
-                            Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: v['status'] == 'APPROVED' ? Colors.green.shade50 : v['status'] == 'REJECTED' ? Colors.red.shade50 : Colors.amber.shade50, borderRadius: BorderRadius.circular(8)), child: Text(v['status'], style: TextStyle(color: v['status'] == 'APPROVED' ? Colors.green.shade700 : v['status'] == 'REJECTED' ? Colors.redAccent : Colors.amber.shade700, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5))),
+                            Row(
+                              children: [
+                                Text(v['code']?.toString().toUpperCase() ?? '', style: TextStyle(color: _textMain, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                                if (isVip) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(color: const Color(0xFF1A3A35), borderRadius: BorderRadius.circular(6)),
+                                    child: const Text('VIP', style: TextStyle(color: Color(0xFFFCD34D), fontSize: 9, fontWeight: FontWeight.w900)),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: v['status'] == 'APPROVED' ? Colors.green.shade50 : v['status'] == 'REJECTED' ? Colors.red.shade50 : Colors.amber.shade50, borderRadius: BorderRadius.circular(8)), child: Text(v['status'] ?? 'PENDING', style: TextStyle(color: v['status'] == 'APPROVED' ? Colors.green.shade700 : v['status'] == 'REJECTED' ? Colors.redAccent : Colors.amber.shade700, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5))),
                           ],
                         ),
                         const SizedBox(height: 8),
-                        Text('Đã dùng: ${v['used_quantity'] ?? 0}/${v['total_quantity'] ?? 0}', style: TextStyle(color: _textSub, fontSize: 13, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 4),
+                        if (isVip && v['point_price'] != null)
+                          Text('Giá: ${NumberFormat.decimalPattern('vi_VN').format(v['point_price'])} điểm • Khung: ${v['fixed_time_slot'] ?? 'N/A'}', style: TextStyle(color: _bizPrimary, fontSize: 12, fontWeight: FontWeight.w800)),
+                        Text('Đã dùng: ${v['used_quantity'] ?? 0}/${v['total_quantity'] ?? 0}', style: TextStyle(color: _textSub, fontSize: 12, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 2),
                         Text('HSD: ${_formatDate(v['valid_until'])}', style: TextStyle(color: _borderColor, fontSize: 11, fontWeight: FontWeight.w500)),
                       ],
                     ),

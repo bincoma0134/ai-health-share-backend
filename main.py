@@ -1580,9 +1580,14 @@ def get_moderation_queue(current_user = Depends(verify_user_token), conn=Depends
         """)
         v_data = cur.fetchall()
 
+        # 🚀 BỌC THÉP PHASE 3: Trích xuất rõ ràng thông tin VIP Voucher cho hàng đợi kiểm duyệt
         cur.execute("""
-            SELECT vc.*, 'voucher' as type, vc.code as title, json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url) as author
-            FROM vouchers vc LEFT JOIN users u ON vc.issuer_id = u.id WHERE vc.status::text IN ('PENDING')
+            SELECT vc.*, 'voucher' as type, vc.code as title, 
+                   vc.description,
+                   json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url, 'username', u.username) as author
+            FROM vouchers vc 
+            LEFT JOIN users u ON vc.issuer_id = u.id 
+            WHERE vc.status::text IN ('PENDING')
         """)
         vc_data = cur.fetchall()
         
@@ -1607,12 +1612,12 @@ def moderate_item(item_type: str, item_id: str, payload: dict, current_user = De
         else:
             raise HTTPException(status_code=400, detail="Loại mục kiểm duyệt không hợp lệ")
         
-        cur.execute(f"SELECT status FROM {table} WHERE id = %s", (item_id,))
+        cur.execute(f"SELECT status, issuer_id, code FROM {table} WHERE id = %s" if table == "vouchers" else f"SELECT status FROM {table} WHERE id = %s", (item_id,))
         current_item = cur.fetchone()
         if not current_item:
             raise HTTPException(status_code=404, detail="Không tìm thấy mục cần duyệt")
         
-        old_status = current_item[0] if isinstance(current_item, tuple) else current_item["status"]
+        old_status = current_item[0]
         if old_status == "PENDING_DELETE" and action == "APPROVED":
             status = "DELETED"
         
@@ -1624,9 +1629,28 @@ def moderate_item(item_type: str, item_id: str, payload: dict, current_user = De
             cur.execute("SELECT author_id FROM tiktok_feeds WHERE id = %s", (item_id,))
             vid = cur.fetchone()
             if vid:
-                cur.execute("UPDATE users SET video_count = video_count + 1 WHERE id = %s", (vid[0] if isinstance(vid, tuple) else vid["author_id"],))
+                cur.execute("UPDATE users SET video_count = video_count + 1 WHERE id = %s", (vid[0],))
                 
+        # 🚀 BỌC THÉP PHASE 3: Bắn thông báo kết quả kiểm duyệt về cho Đối tác phát hành Voucher
+        if table == "vouchers" and current_item[1]:
+            partner_target_id = str(current_item[1])
+            voucher_code_str = str(current_item[2])
+            from notification_service import NotificationService
+            NotificationService.dispatch_event(
+                conn,
+                user_id=partner_target_id,
+                event_type="LEGACY",
+                reference_id=item_id,
+                metadata={
+                    "category": "SYSTEM",
+                    "title": f"Voucher {voucher_code_str} đã được {status}",
+                    "message": f"Voucher của bạn đã được kiểm duyệt: {status}. Ghi chú: {payload.get('note', '') or 'Đạt tiêu chuẩn hệ thống'}"
+                },
+                sender_id=current_user.id
+            )
+
         conn.commit()
+        print(f"[DEBUG-MODERATION] Duyệt thành công mục {item_type} #{item_id} -> {status}")
         return {"status": "success", "message": "Xử lý thành công"}
     finally: cur.close()
 
@@ -1653,8 +1677,18 @@ def get_moderation_history(current_user = Depends(verify_user_token), conn=Depen
             WHERE v.status::text IN ('APPROVED', 'REJECTED', 'DELETED') AND (v.moderated_by = %s OR v.moderated_by IS NULL)
         """, (current_user.id,))
         v_data = cur.fetchall()
+
+        # 🚀 BỌC THÉP PHASE 3: Gộp cả lịch sử kiểm duyệt Voucher
+        cur.execute("""
+            SELECT vc.*, 'voucher' as type, vc.code as title,
+                   json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url) as author
+            FROM vouchers vc
+            LEFT JOIN users u ON vc.issuer_id = u.id
+            WHERE vc.status::text IN ('APPROVED', 'REJECTED', 'DELETED') AND (vc.moderated_by = %s OR vc.moderated_by IS NULL)
+        """, (current_user.id,))
+        vc_data = cur.fetchall()
         
-        combined = s_data + v_data
+        combined = s_data + v_data + vc_data
         combined.sort(key=lambda x: str(x.get("updated_at") or x.get("created_at") or ""), reverse=True)
         return {"status": "success", "data": combined[:50]}
     finally: cur.close()
@@ -1667,13 +1701,18 @@ def get_moderation_stats(current_user = Depends(verify_user_token), conn=Depends
         p_svc = cur.fetchone()["count"]
         cur.execute("SELECT count(*) FROM tiktok_feeds WHERE status IN ('PENDING', 'PENDING_DELETE', 'PENDING_UPDATE')")
         p_vid = cur.fetchone()["count"]
+        # 🚀 BỌC THÉP PHASE 3: Đếm số voucher đang chờ duyệt
+        cur.execute("SELECT count(*) FROM vouchers WHERE status = 'PENDING'")
+        p_vch = cur.fetchone()["count"]
         
         cur.execute("SELECT status, updated_at, created_at FROM services WHERE moderated_by = %s OR moderated_by IS NULL", (current_user.id,))
         s_done = cur.fetchall()
         cur.execute("SELECT status, updated_at, created_at FROM tiktok_feeds WHERE moderated_by = %s OR moderated_by IS NULL", (current_user.id,))
         v_done = cur.fetchall()
+        cur.execute("SELECT status, updated_at, created_at FROM vouchers WHERE moderated_by = %s OR moderated_by IS NULL", (current_user.id,))
+        vc_done = cur.fetchall()
         
-        my_done = [i for i in s_done + v_done if i.get("status") in ("APPROVED", "REJECTED", "DELETED")]
+        my_done = [i for i in s_done + v_done + vc_done if i.get("status") in ("APPROVED", "REJECTED", "DELETED")]
         
         approved = sum(1 for i in my_done if i.get("status") == "APPROVED")
         rejected = sum(1 for i in my_done if i.get("status") in ["REJECTED", "DELETED"])
@@ -1687,7 +1726,7 @@ def get_moderation_stats(current_user = Depends(verify_user_token), conn=Depends
                 if item.get("status") == "APPROVED": daily_stats[raw_date]["Duyệt"] += 1
                 else: daily_stats[raw_date]["Từ chối"] += 1
         
-        return {"status": "success", "data": {"pending_total": p_svc + p_vid, "total_processed": len(my_done), "approved_count": approved, "rejected_count": rejected, "chart_data": list(daily_stats.values())}}
+        return {"status": "success", "data": {"pending_total": p_svc + p_vid + p_vch, "total_processed": len(my_done), "approved_count": approved, "rejected_count": rejected, "chart_data": list(daily_stats.values())}}
     finally: cur.close()
 
 # ==========================================
@@ -2748,29 +2787,69 @@ def cancel_appointment(appointment_id: str, current_user = Depends(verify_user_t
 # ==========================================
 @app.post("/vouchers", tags=["Vouchers"])
 def create_voucher(payload: schemas.VoucherCreate, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    if current_user.role not in ["PARTNER_ADMIN", "PARTNER", "SUPER_ADMIN", "ADMIN"]:
+        print(f"[DEBUG-VOUCHER-FORBIDDEN] User {current_user.id} với role {current_user.role} cố tạo Voucher")
+        raise HTTPException(status_code=403, detail="Chỉ Đối tác hoặc Quản trị viên mới có quyền phát hành Voucher!")
+        
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        issuer_type = "ADMIN" if current_user.role == "SUPER_ADMIN" else "PARTNER"
+        # Bọc thép chuẩn hóa mã code viết hoa, không khoảng trắng
+        clean_code = payload.code.strip().upper()
+        issuer_type = "ADMIN" if current_user.role in ["SUPER_ADMIN", "ADMIN"] else "PARTNER"
         status = "APPROVED" if issuer_type == "ADMIN" else "PENDING"
         
+        # 🚀 BỌC THÉP PHASE 3: Kiểm tra tính toàn vẹn cho Voucher VIP
+        if payload.is_vip:
+            if not payload.point_price or payload.point_price <= 0:
+                raise HTTPException(status_code=400, detail="Voucher VIP bắt buộc phải có giá mua bằng điểm (> 0)!")
+            if not payload.fixed_time_slot or not payload.fixed_time_slot.strip():
+                raise HTTPException(status_code=400, detail="Voucher VIP bắt buộc phải cấu hình khung giờ cố định (VD: 08:00 - 10:00)!")
+        
+        print(f"[DEBUG-VOUCHER-CREATE] Khởi tạo Voucher: Code={clean_code} | VIP={payload.is_vip} | Issuer={issuer_type} | Status={status}")
+
         cur.execute("""
             INSERT INTO vouchers (code, issuer_type, issuer_id, discount_type, discount_value, max_discount_amount, 
                                   min_order_value, applicable_services, total_quantity, valid_from, valid_until, status,
                                   is_vip, point_price, fixed_time_slot, description)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s::uuid[], %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
-        """, (payload.code, issuer_type, current_user.id if issuer_type == "PARTNER" else None, 
+        """, (clean_code, issuer_type, current_user.id if issuer_type == "PARTNER" else None, 
               payload.discount_type, payload.discount_value, payload.max_discount_amount, payload.min_order_value, 
               payload.applicable_services, payload.total_quantity, payload.valid_from, payload.valid_until, status,
               payload.is_vip, payload.point_price, payload.fixed_time_slot, payload.description))
         new_voucher = cur.fetchone()
+        
+        # Thông báo đẩy cho Ban quản trị nếu Partner tạo Voucher VIP cần duyệt
+        if status == "PENDING":
+            cur.execute("SELECT id FROM users WHERE role IN ('MODERATOR', 'SUPER_ADMIN')")
+            moderators = cur.fetchall()
+            from notification_service import NotificationService
+            for mod in moderators:
+                NotificationService.dispatch_event(
+                    conn, 
+                    user_id=str(mod["id"]), 
+                    event_type="LEGACY", 
+                    reference_id=str(new_voucher["id"]), 
+                    metadata={
+                        "category": "SYSTEM", 
+                        "title": "Voucher mới chờ duyệt", 
+                        "message": f"Đối tác đã phát hành Voucher {clean_code} ({'VIP' if payload.is_vip else 'Thường'}) đang chờ phê duyệt."
+                    }, 
+                    sender_id=current_user.id
+                )
+
         conn.commit()
         return {"status": "success", "data": new_voucher}
+    except HTTPException:
+        conn.rollback()
+        raise
     except psycopg2.IntegrityError:
         conn.rollback()
+        print(f"[DEBUG-VOUCHER-DUPLICATE] Trùng lặp mã Voucher: {payload.code}")
         raise HTTPException(status_code=400, detail="Mã code này đã tồn tại trên hệ thống!")
     except Exception as e:
         conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[DEBUG-VOUCHER-EXCEPTION] Lỗi phát hành Voucher: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống: {str(e)}")
     finally: cur.close()
 
 @app.post("/vouchers/{voucher_code}/claim", tags=["Vouchers"])

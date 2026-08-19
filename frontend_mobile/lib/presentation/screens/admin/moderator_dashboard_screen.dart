@@ -490,9 +490,15 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
                 children: [
                   Container(
                     width: 60, height: 60,
-                    decoration: BoxDecoration(color: item['type'] == 'voucher' ? Colors.deepPurple.withOpacity(0.1) : Colors.black12, borderRadius: BorderRadius.circular(12), image: item['image_url'] != null ? DecorationImage(image: NetworkImage(item['image_url']), fit: BoxFit.cover) : null),
+                    decoration: BoxDecoration(
+                      color: item['type'] == 'voucher' 
+                          ? (item['is_vip'] == true ? const Color(0xFF1A3A35) : Colors.deepPurple.withOpacity(0.1)) 
+                          : Colors.black12, 
+                      borderRadius: BorderRadius.circular(12), 
+                      image: item['image_url'] != null ? DecorationImage(image: NetworkImage(item['image_url']), fit: BoxFit.cover) : null
+                    ),
                     child: item['type'] == 'voucher' 
-                        ? const Icon(Icons.local_activity, color: Colors.deepPurple) 
+                        ? Icon(item['is_vip'] == true ? Icons.stars_rounded : Icons.local_activity, color: item['is_vip'] == true ? const Color(0xFFFCD34D) : Colors.deepPurple) 
                         : ((item['image_url'] == null && item['video_url'] != null) ? const Icon(Icons.play_circle, color: Colors.white) : null),
                   ),
                   const SizedBox(width: 12),
@@ -500,9 +506,23 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(item['title'] ?? '', style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Row(
+                          children: [
+                            Flexible(child: Text(item['title'] ?? '', style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            if (item['type'] == 'voucher' && item['is_vip'] == true) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(color: const Color(0xFF1A3A35), borderRadius: BorderRadius.circular(6)),
+                                child: const Text('VIP', style: TextStyle(color: Color(0xFFFCD34D), fontSize: 8, fontWeight: FontWeight.w900)),
+                              ),
+                            ],
+                          ],
+                        ),
                         const SizedBox(height: 4),
                         Text('Tác giả: ${item['author']?['full_name'] ?? 'Ẩn danh'}', style: const TextStyle(color: Colors.black54, fontSize: 10)),
+                        if (item['type'] == 'voucher' && item['is_vip'] == true)
+                          Text('Điểm: ${NumberFormat.decimalPattern('vi_VN').format(item['point_price'] ?? 0)} • Khung: ${item['fixed_time_slot'] ?? 'N/A'}', style: const TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.w700)),
                       ],
                     ),
                   ),

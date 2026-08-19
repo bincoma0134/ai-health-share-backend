@@ -210,6 +210,16 @@ class VoucherCreate(BaseModel):
     fixed_time_slot: Optional[str] = None
     description: Optional[str] = None
 
+    from pydantic import model_validator
+    @model_validator(mode='after')
+    def validate_vip_voucher(self):
+        if self.is_vip:
+            if not self.point_price or self.point_price <= 0:
+                raise ValueError("Voucher VIP bắt buộc phải có giá mua bằng điểm lớn hơn 0.")
+            if not self.fixed_time_slot or not self.fixed_time_slot.strip():
+                raise ValueError("Voucher VIP bắt buộc phải đính kèm khung giờ cố định áp dụng.")
+        return self
+
 # --- 12. CẤU TRÚC VÍ & QUYẾT TOÁN ---
 class WalletResponse(BaseModel):
     balance: float

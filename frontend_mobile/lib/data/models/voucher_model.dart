@@ -13,6 +13,7 @@ class VoucherModel {
   final String? partnerName;
   final String? partnerUsername;
   final String? walletStatus;
+  final String status; // 🚀 Bổ sung trường trạng thái kiểm duyệt (PENDING, APPROVED, REJECTED)
   bool isClaimedLocal;
   final bool isVip;
   final double pointPrice;
@@ -34,6 +35,7 @@ class VoucherModel {
     this.partnerName,
     this.partnerUsername,
     this.walletStatus,
+    this.status = 'PENDING',
     this.isClaimedLocal = false,
     this.isVip = false,
     this.pointPrice = 0.0,
@@ -57,6 +59,7 @@ class VoucherModel {
       partnerName: json['partner_name'],
       partnerUsername: json['partner_username'],
       walletStatus: json['wallet_status'],
+      status: json['status'] ?? 'PENDING',
       isClaimedLocal: false,
       isVip: json['is_vip'] ?? false,
       pointPrice: (json['point_price'] ?? 0).toDouble(),
