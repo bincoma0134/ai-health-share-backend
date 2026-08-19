@@ -161,6 +161,8 @@ class PartnerApiService {
 
   static Future<bool> respondAppointment(String appointmentId, Map<String, dynamic> payload) async {
     try {
+      // Đã cập nhật ở Backend: payload giờ chỉ cần { 'action': 'ACCEPT'/'REJECT', 'reason': '...' }
+      // Các trường thời gian không còn bắt buộc.
       final res = await _dio.patch('/appointments/$appointmentId/respond', data: payload);
       return res.statusCode == 200;
     } catch (e) {

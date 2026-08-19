@@ -14,6 +14,10 @@ class VoucherModel {
   final String? partnerUsername;
   final String? walletStatus;
   bool isClaimedLocal;
+  final bool isVip;
+  final double pointPrice;
+  final String? fixedTimeSlot;
+  final String? description;
 
   VoucherModel({
     required this.id,
@@ -31,6 +35,10 @@ class VoucherModel {
     this.partnerUsername,
     this.walletStatus,
     this.isClaimedLocal = false,
+    this.isVip = false,
+    this.pointPrice = 0.0,
+    this.fixedTimeSlot,
+    this.description,
   });
 
   factory VoucherModel.fromJson(Map<String, dynamic> json) {
@@ -50,6 +58,10 @@ class VoucherModel {
       partnerUsername: json['partner_username'],
       walletStatus: json['wallet_status'],
       isClaimedLocal: false,
+      isVip: json['is_vip'] ?? false,
+      pointPrice: (json['point_price'] ?? 0).toDouble(),
+      fixedTimeSlot: json['fixed_time_slot'],
+      description: json['description'],
     );
   }
 }

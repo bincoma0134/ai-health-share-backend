@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class AppointmentModel {
   final String id;
   final String userId;
@@ -14,6 +16,8 @@ class AppointmentModel {
   final String? rejectionReason;
   final String createdAt;
   final String? paymentDeadline;
+  final String? preferredTime;
+  final int guestCount;
   final Map<String, dynamic> serviceInfo;
   final Map<String, dynamic> userInfo;
   final Map<String, dynamic> voucherInfo; 
@@ -35,6 +39,8 @@ class AppointmentModel {
     this.rejectionReason,
     required this.createdAt,
     this.paymentDeadline,
+    this.preferredTime,
+    this.guestCount = 1,
     required this.serviceInfo,
     required this.userInfo,
     required this.voucherInfo,
@@ -42,24 +48,38 @@ class AppointmentModel {
   });
 
   factory AppointmentModel.fromJson(Map<String, dynamic> json) {
+    int parsedGuestCount = 1;
+    try {
+      if (json['guest_count'] is int) {
+        parsedGuestCount = json['guest_count'];
+      } else if (json['guest_count'] != null) {
+        parsedGuestCount = int.tryParse(json['guest_count'].toString()) ?? 1;
+      }
+    } catch (e) {
+      debugPrint('[ERROR-MODEL] Lỗi parse guest_count trong AppointmentModel: $e');
+      parsedGuestCount = 1;
+    }
+
     return AppointmentModel(
-      id: json['id'] ?? '',
-      userId: json['user_id'] ?? '',
-      partnerId: json['partner_id'] ?? '',
-      serviceId: json['service_id'],
-      totalAmount: (json['total_amount'] ?? 0).toDouble(),
-      customerName: json['customer_name'] ?? '',
-      customerPhone: json['customer_phone'] ?? '',
-      note: json['note'] ?? '',
-      status: json['status'] ?? 'WAITING_PARTNER',
-      startTime: json['start_time'],
-      endTime: json['end_time'],
-      checkInCode: json['check_in_code'],
-      rejectionReason: json['rejection_reason'],
-      createdAt: json['created_at'] ?? '',
-      paymentDeadline: json['payment_deadline'],
-      serviceInfo: json['services'] ?? {},
-      userInfo: json['users'] ?? {},
+      id: json['id']?.toString() ?? '',
+      userId: json['user_id']?.toString() ?? '',
+      partnerId: json['partner_id']?.toString() ?? '',
+      serviceId: json['service_id']?.toString(),
+      totalAmount: double.tryParse(json['total_amount']?.toString() ?? '0') ?? 0.0,
+      customerName: json['customer_name']?.toString() ?? '',
+      customerPhone: json['customer_phone']?.toString() ?? '',
+      note: json['note']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'WAITING_PARTNER',
+      startTime: json['start_time']?.toString(),
+      endTime: json['end_time']?.toString(),
+      checkInCode: json['check_in_code']?.toString(),
+      rejectionReason: json['rejection_reason']?.toString(),
+      createdAt: json['created_at']?.toString() ?? '',
+      paymentDeadline: json['payment_deadline']?.toString(),
+      preferredTime: json['preferred_time']?.toString(),
+      guestCount: parsedGuestCount,
+      serviceInfo: json['services'] is Map<String, dynamic> ? json['services'] : {},
+      userInfo: json['users'] is Map<String, dynamic> ? json['users'] : {},
       voucherInfo: json['vouchers'] is Map<String, dynamic> ? json['vouchers'] : {},
       partnerInfo: json['partner'] is Map<String, dynamic> ? json['partner'] : {},
     );
@@ -82,6 +102,8 @@ class AppointmentModel {
       'rejection_reason': rejectionReason,
       'created_at': createdAt,
       'payment_deadline': paymentDeadline,
+      'preferred_time': preferredTime,
+      'guest_count': guestCount,
       'services': serviceInfo,
       'users': userInfo,
       'vouchers': voucherInfo,

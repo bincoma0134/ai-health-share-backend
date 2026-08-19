@@ -34,9 +34,14 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   bool _isLoadingWallet = false;
   bool _showMultiServiceTooltip = false; // 🚀 NÂNG CẤP UX: Quản lý hộp thoại gợi ý đa chọn
 
-  // --- STATE DỊCH VỤ ĐỘNG (THAY THẾ GETTER TĨNH) ---
+  // --- STATE DỊCH VỤ & NÂNG CẤP ĐẶT LỊCH ---
   List<dynamic> _partnerServices = [];
   bool _isLoadingServices = true;
+  int _guestCount = 1; // Số lượng người đi cùng
+  int _serviceCapacity = 1; // Sức chứa 1 gói dịch vụ
+  DateTime _preferredDate = DateTime.now(); // 🚀 MỚI: Quản lý Ngày đặt hẹn mong muốn
+  TimeOfDay? _preferredTime; // Giờ mong muốn
+  bool _isTimeLocked = false; // Khóa giờ nếu dùng Voucher VIP
   String? _selectedServiceId;
   List<String> _selectedServiceIds = []; // 🚀 NÂNG CẤP: Quản lý danh sách ID được chọn
   String _selectedServiceName = 'Dịch vụ đang chọn';
@@ -117,6 +122,33 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     });
   }
 
+  // 🚀 TÍNH TOÁN QUY ĐỔI SỐ LƯỢNG GÓI & TỔNG TIỀN
+  void _calculatePriceAndCapacity() {
+    _selectedPrice = 0.0;
+    List<String> names = [];
+    int maxCapacity = 1;
+
+    for (var s in _partnerServices) {
+      if (_selectedServiceIds.contains(s['id'])) {
+        names.add(s['service_name'] ?? 'Dịch vụ');
+        // Tìm gói có dung tích lớn nhất làm chuẩn nếu chọn nhiều
+        final cap = s['capacity_per_service'] ?? 1;
+        if (cap > maxCapacity) maxCapacity = cap;
+      }
+    }
+    
+    _serviceCapacity = maxCapacity;
+    int requiredPackages = (_guestCount / _serviceCapacity).ceil();
+
+    for (var s in _partnerServices) {
+      if (_selectedServiceIds.contains(s['id'])) {
+        _selectedPrice += (s['price'] ?? 0).toDouble() * requiredPackages;
+      }
+    }
+    
+    _selectedServiceName = names.length > 1 ? 'Combo: ${names.join(', ')}' : (names.isNotEmpty ? names.first : 'Dịch vụ');
+  }
+
   // 🚀 TẢI NGẦM DANH SÁCH DỊCH VỤ TỪ PARTNER ID LIÊN KẾT
   Future<void> _fetchPartnerServices() async {
     try {
@@ -134,6 +166,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             final match = _partnerServices.firstWhere((s) => s['id'] == _selectedServiceIds.first, orElse: () => null);
             if (match != null) _selectedServiceName = match['service_name'] ?? 'Dịch vụ niêm yết';
           }
+          _calculatePriceAndCapacity();
         });
       }
     } catch (_) {
@@ -251,6 +284,9 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
               if (wStatus != 'UNUSED') continue;
 
               // 🚀 CHỐT CHẶN BẢO MẬT 1: Loại bỏ ngay lập tức các mã đã quá hạn sử dụng khỏi thuật toán Auto-Apply
+              // Bỏ qua VIP Voucher trong luồng Auto-Apply vì nó đòi hỏi khách chọn đúng khung giờ
+              if (v['is_vip'] == true) continue;
+              
               bool isExpired = false;
               if (v['valid_until'] != null && v['valid_until'].toString().isNotEmpty) {
                 try {
@@ -309,6 +345,20 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   // 🚀 ĐÃ DỨT ĐIỂM 404: Tự động tính toán trực tiếp bằng Frontend giống hệt Web (Zero-latency)
   void _applyVoucherLocal(Map<String, dynamic> voucher, {bool isAutoInjection = false}) {
     final String code = voucher['code'] ?? '';
+    final bool isVip = voucher['is_vip'] ?? false;
+    final String? fixedSlot = voucher['fixed_time_slot'];
+
+    if (isVip && fixedSlot != null) {
+      try {
+        // Parse "HH:mm - HH:mm" or "HH:mm"
+        final startTimeStr = fixedSlot.split('-').first.trim();
+        final parts = startTimeStr.split(':');
+        _preferredTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+        _isTimeLocked = true;
+      } catch (_) {}
+    } else {
+      _isTimeLocked = false;
+    }
     final String title = voucher['title'] ?? 'Ưu đãi';
     final String type = voucher['discount_type'] ?? 'FIXED';
     final double value = (voucher['discount_value'] ?? 0).toDouble();
@@ -399,6 +449,26 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         finalNote = finalNote.isEmpty ? _selectedServiceName : '$_selectedServiceName - $finalNote';
       }
 
+      String? preferredTimeStr;
+      if (_preferredTime != null) {
+        try {
+          // 🚀 NÂNG CẤP: Ghép chính xác Ngày đã chọn (_preferredDate) và Giờ đã chọn (_preferredTime)
+          final targetDate = _preferredDate;
+          final combinedDateTime = DateTime(
+            targetDate.year,
+            targetDate.month,
+            targetDate.day,
+            _preferredTime!.hour,
+            _preferredTime!.minute,
+          );
+          preferredTimeStr = combinedDateTime.toUtc().toIso8601String();
+          print("[DEBUG-BOOKING] Thời gian đặt hẹn gửi lên Backend (ISO 8601 UTC): $preferredTimeStr");
+        } catch (e) {
+          print("[ERROR-BOOKING] Lỗi ghép chuỗi DateTime đặt hẹn: $e");
+          preferredTimeStr = null;
+        }
+      }
+
       final payload = {
         'partner_id': _partnerId,
         'service_id': _selectedServiceId, // 🚀 Chỉ gửi 1 UUID hợp lệ đầu tiên để Database PostgreSQL không báo lỗi 500
@@ -409,6 +479,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         'total_amount': _selectedPrice.toInt(), // 🚀 Vẫn giữ nguyên tổng tiền của tất cả dịch vụ
         'voucher_code': _appliedVoucherCode,
         'affiliate_code': finalAffiliateCode,
+        'guest_count': _guestCount,
+        'preferred_time': preferredTimeStr,
       };
       
       await ApiClient.instance.post('/appointments/request', data: payload);
@@ -536,18 +608,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                           _selectedServiceIds.add(svcId);
                                         }
                                         
-                                        // 2. Tính toán tổng tiền & Tên Combo
-                                        _selectedPrice = 0.0;
-                                        List<String> names = [];
-                                        for (var s in _partnerServices) {
-                                          if (_selectedServiceIds.contains(s['id'])) {
-                                            _selectedPrice += (s['price'] ?? 0).toDouble();
-                                            names.add(s['service_name'] ?? 'Dịch vụ');
-                                          }
-                                        }
-                                        
                                         _selectedServiceId = _selectedServiceIds.isNotEmpty ? _selectedServiceIds.first : null; // 🚀 NÂNG CẤP: Chỉ lấy UUID hợp lệ đầu tiên để tránh lỗi 500 Database
-                                        _selectedServiceName = names.length > 1 ? 'Combo: ${names.join(', ')}' : (names.isNotEmpty ? names.first : 'Dịch vụ');
+                                        _calculatePriceAndCapacity();
                                       });
 
                                       setState(() {
@@ -689,6 +751,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                               // 🚀 ĐÃ KHẮC PHỤC KHẨN TRƯƠNG: Sử dụng đúng trường issuer_type và issuer_id từ database
                               final String issuerType = (v['issuer_type'] ?? '').toString().toUpperCase();
                               final String? rawIssuerId = v['issuer_id']?.toString();
+                              final bool isVip = v['is_vip'] ?? false;
                               
                               // Điều kiện Admin chuẩn hóa tuyệt đối: Cứ issuer_type là ADMIN thì là mã toàn sàn
                               final bool isAdmin = issuerType == 'ADMIN';
@@ -731,7 +794,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
-                                    Icon(Icons.local_activity_rounded, color: isSelectable ? (isAdmin ? Colors.amber.shade800 : const Color(0xFF5B9E5F)) : Colors.black26, size: 32),
+                                    Icon(Icons.local_activity_rounded, color: isSelectable ? (isVip ? const Color(0xFFFE2C55) : (isAdmin ? Colors.amber.shade800 : const Color(0xFF5B9E5F))) : Colors.black26, size: 32),
                                     const SizedBox(width: 16),
                                     
                                     Expanded(
@@ -744,11 +807,11 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                 margin: const EdgeInsets.only(right: 8),
                                                 decoration: BoxDecoration(
-                                                  color: isAdmin ? Colors.amber.withOpacity(0.15) : const Color(0xFF80BF84).withOpacity(0.15),
+                                                  color: isVip ? const Color(0xFFFE2C55).withOpacity(0.1) : (isAdmin ? Colors.amber.withOpacity(0.15) : const Color(0xFF80BF84).withOpacity(0.15)),
                                                   borderRadius: BorderRadius.circular(6),
-                                                  border: Border.all(color: isAdmin ? Colors.amber : const Color(0xFF80BF84)),
+                                                  border: Border.all(color: isVip ? const Color(0xFFFE2C55) : (isAdmin ? Colors.amber : const Color(0xFF80BF84))),
                                                 ),
-                                                child: Text(isAdmin ? 'TOÀN SÀN' : 'CƠ SỞ', style: TextStyle(color: isAdmin ? Colors.amber.shade900 : const Color(0xFF5B9E5F), fontSize: 9, fontWeight: FontWeight.w900)),
+                                                child: Text(isVip ? 'VIP' : (isAdmin ? 'TOÀN SÀN' : 'CƠ SỞ'), style: TextStyle(color: isVip ? const Color(0xFFFE2C55) : (isAdmin ? Colors.amber.shade900 : const Color(0xFF5B9E5F)), fontSize: 9, fontWeight: FontWeight.w900)),
                                               ),
                                               Expanded(
                                                 child: Text(code, style: TextStyle(color: isSelectable ? Colors.black87 : Colors.black38, fontWeight: FontWeight.w900, fontSize: 16), overflow: TextOverflow.ellipsis),
@@ -779,8 +842,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                     if (isSelectable)
                                       ElevatedButton(
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: isAdmin ? Colors.amber : const Color(0xFF80BF84), 
-                                          foregroundColor: Colors.black87,
+                                          backgroundColor: isVip ? const Color(0xFFFE2C55) : (isAdmin ? Colors.amber : const Color(0xFF80BF84)), 
+                                          foregroundColor: isVip ? Colors.white : Colors.black87,
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                           padding: const EdgeInsets.symmetric(horizontal: 16)
                                         ),
@@ -876,6 +939,185 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                 
                 _buildSoftInput(_nameCtrl, 'Họ và tên của bạn', Icons.person_rounded, isAutoFilledField: true),
                 _buildSoftInput(_phoneCtrl, 'Số điện thoại liên hệ', Icons.phone_rounded, isPhone: true, isAutoFilledField: true),
+                
+                // 🚀 NÂNG CẤP: BLOCK CHỌN CẢ NGÀY + GIỜ VÀ BỘ ĐẾM SỐ KHÁCH MINH BẠCH (CHỐNG TRÀN RIGHT OVERFLOW)
+                Row(
+                  children: [
+                    // 1. Cụm chọn Ngày & Giờ (Date & Time Picker)
+                    Expanded(
+                      flex: 7,
+                      child: GestureDetector(
+                        onTap: _isTimeLocked
+                            ? null
+                            : () async {
+                                try {
+                                  // Bước 1: Chọn ngày (Tối thiểu là ngày hôm nay)
+                                  final pickedDate = await showDatePicker(
+                                    context: context,
+                                    initialDate: _preferredDate,
+                                    firstDate: DateTime.now(),
+                                    lastDate: DateTime.now().add(const Duration(days: 180)),
+                                    builder: (context, child) {
+                                      return Theme(
+                                        data: ThemeData.light().copyWith(
+                                          primaryColor: const Color(0xFF80BF84),
+                                          colorScheme: const ColorScheme.light(primary: Color(0xFF80BF84)),
+                                        ),
+                                        child: child!,
+                                      );
+                                    },
+                                  );
+
+                                  if (pickedDate == null || !mounted) return;
+
+                                  // Bước 2: Chọn giờ (Chuẩn quốc tế 24h)
+                                  final pickedTime = await showTimePicker(
+                                    context: context,
+                                    initialTime: _preferredTime ?? const TimeOfDay(hour: 9, minute: 0),
+                                    builder: (context, child) {
+                                      return MediaQuery(
+                                        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+                                        child: Theme(
+                                          data: ThemeData.light().copyWith(
+                                            primaryColor: const Color(0xFF80BF84),
+                                            colorScheme: const ColorScheme.light(primary: Color(0xFF80BF84)),
+                                          ),
+                                          child: child!,
+                                        ),
+                                      );
+                                    },
+                                  );
+
+                                  if (pickedTime != null) {
+                                    setState(() {
+                                      _preferredDate = pickedDate;
+                                      _preferredTime = pickedTime;
+                                    });
+                                  }
+                                } catch (e) {
+                                  print("[ERROR-PICKER] Lỗi chọn ngày/giờ: $e");
+                                }
+                              },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: _isTimeLocked ? const Color(0xFFF1F5F9) : Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _isTimeLocked ? Icons.lock_clock_rounded : Icons.calendar_today_rounded,
+                                color: const Color(0xFF64748B),
+                                size: 16,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Builder(
+                                  builder: (context) {
+                                    if (_preferredTime == null) {
+                                      return const Text(
+                                        'Chọn Ngày & Giờ',
+                                        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.w600),
+                                        overflow: TextOverflow.ellipsis,
+                                      );
+                                    }
+                                    final dateStr = DateFormat('dd/MM').format(_preferredDate);
+                                    final timeStr = '${_preferredTime!.hour.toString().padLeft(2, '0')}:${_preferredTime!.minute.toString().padLeft(2, '0')}';
+                                    return Text(
+                                      '$timeStr • $dateStr',
+                                      style: const TextStyle(color: Color(0xFF1E293B), fontSize: 12, fontWeight: FontWeight.bold),
+                                      overflow: TextOverflow.ellipsis,
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // 2. Cụm chọn số lượng khách đi cùng (Đã bọc FittedBox chống tràn pixel)
+                    Expanded(
+                      flex: 5,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.remove_circle_outline_rounded, color: Color(0xFF64748B), size: 18),
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(),
+                              onPressed: () {
+                                if (_guestCount > 1) {
+                                  setState(() {
+                                    _guestCount--;
+                                    _calculatePriceAndCapacity();
+                                  });
+                                }
+                              },
+                            ),
+                            Flexible(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 2),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    '$_guestCount khách',
+                                    style: const TextStyle(color: Color(0xFF1E293B), fontSize: 12, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add_circle_outline_rounded, color: Color(0xFF64748B), size: 18),
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(),
+                              onPressed: () {
+                                setState(() {
+                                  _guestCount++;
+                                  _calculatePriceAndCapacity();
+                                });
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                // 3. Chú thích khéo léo thông minh (Smart Dynamic Helper Text)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 16, left: 4, right: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.info_outline_rounded, size: 13, color: Color(0xFF64748B)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _serviceCapacity > 1
+                              ? 'Gói nhóm: tối đa $_serviceCapacity người/gói. Bạn chọn $_guestCount khách = tự động quy đổi ${(_guestCount / _serviceCapacity).ceil()} gói.'
+                              : (_guestCount > 1
+                                  ? 'Suất tiêu chuẩn 1 người/gói. Bạn đi $_guestCount khách = tự động tính $_guestCount gói dịch vụ.'
+                                  : 'Suất tiêu chuẩn: 1 người/gói. Giá tự động nhân theo số lượng khách.'),
+                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w500, height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
                 _buildSoftInput(_noteCtrl, 'Bạn cần lưu ý thêm điều gì không?', Icons.edit_note_rounded),
                 _buildSoftInput(_affiliateCtrl, 'Mã giới thiệu (Affiliate) nếu có', Icons.handshake_rounded),
 
@@ -930,7 +1172,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                   else if (_isVoucherSuccess)
                                     IconButton(
                                       icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 18),
-                                      onPressed: () => setState(() { _isVoucherSuccess = false; _appliedVoucherCode = null; _appliedVoucherTitle = ''; _discountAmount = 0; }),
+                                      onPressed: () => setState(() { _isVoucherSuccess = false; _appliedVoucherCode = null; _appliedVoucherTitle = ''; _discountAmount = 0; _isTimeLocked = false; }),
                                     )
                                   else
                                     const Icon(Icons.chevron_right_rounded, color: Color(0xFF64748B), size: 20),

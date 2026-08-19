@@ -3,6 +3,7 @@ import '../../../core/network/api_client.dart';
 class AppointmentApiService {
   
   // 🚀 ĐỒNG BỘ LUỒNG TẠO LỊCH HẸN KHỚP BACKEND (DỨT ĐIỂM LỖI 404)
+  // Payload giờ đây có thể nhận thêm `preferred_time` và `guest_count`
   static Future<bool> createAppointmentRequest(Map<String, dynamic> payload) async {
     try {
       final res = await ApiClient.instance.post('/appointments/request', data: payload);

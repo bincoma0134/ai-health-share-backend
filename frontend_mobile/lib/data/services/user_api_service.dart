@@ -55,6 +55,19 @@ class UserApiService {
     }
   }
 
+  // Lấy dữ liệu ví điểm từ Backend
+  static Future<Map<String, dynamic>?> topupPoints(double amount) async {
+    try {
+      final res = await _dio.post('/user/points/topup', data: {'amount_vnd': amount});
+      if (res.statusCode == 200 && res.data['status'] == 'success') {
+        return res.data;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   // 2. Cập nhật thông tin (Tên, Bio, Avatar...)
   static Future<bool> updateProfile(Map<String, dynamic> data) async {
     try {

@@ -157,6 +157,34 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
                         )
                       ],
 
+                      // 🚀 NÂNG CẤP: GIAO DIỆN HIỂN THỊ ĐẶC THÙ CHO VIP VOUCHER (ĐỂ MODERATOR DỄ DÀNG DUYỆT)
+                      if (item['type'] == 'voucher' && item['is_vip'] == true) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: const Color(0xFFFE2C55).withOpacity(0.05), border: Border.all(color: const Color(0xFFFE2C55).withOpacity(0.2)), borderRadius: BorderRadius.circular(12)),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.stars_rounded, color: Color(0xFFFE2C55), size: 16),
+                                  const SizedBox(width: 4),
+                                  const Text('VIP VOUCHER - BÁN BẰNG ĐIỂM NẠP', style: TextStyle(color: Color(0xFFFE2C55), fontSize: 10, fontWeight: FontWeight.w900)),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              if (item['point_price'] != null)
+                                Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('Giá niêm yết: ${NumberFormat.decimalPattern('vi_VN').format(item['point_price'])} Điểm', style: const TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.bold))),
+                              if (item['fixed_time_slot'] != null)
+                                Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('Khung giờ bắt buộc: ${item['fixed_time_slot']}', style: const TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.bold))),
+                              if (item['total_quantity'] != null)
+                                Text('Số lượng phát hành: ${item['total_quantity']} lượt', style: const TextStyle(color: Colors.black87, fontSize: 13)),
+                            ],
+                          ),
+                        )
+                      ],
+
                       if (isHistory && item['moderation_note'] != null && item['moderation_note'].toString().isNotEmpty) ...[
                         const SizedBox(height: 16),
                         Container(

@@ -147,32 +147,11 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
   }
 
   // --- LOGIC LỊCH HẸN ---
-  Future<void> _pickDateTime(String id, String field) async {
-    final date = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
-    if (date == null) return;
-    if (!mounted) return;
-    final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-    if (time == null) return;
-    
-    final finalDateTime = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-    setState(() {
-      _respondForms[id] = _respondForms[id] ?? {};
-      _respondForms[id]![field] = finalDateTime.toIso8601String();
-    });
-  }
-
   Future<void> _handleRespondAppt(String id, String action) async {
     final form = _respondForms[id] ?? {};
     Map<String, dynamic> payload = {'action': action};
     
-    if (action == 'ACCEPT') {
-      if (form['start'] == null || form['end'] == null) {
-        AppToast.show(context: context, message: 'Vui lòng chọn thời gian Bắt đầu và Kết thúc!', isSuccess: false);
-        return;
-      }
-      payload['start_time'] = form['start'];
-      payload['end_time'] = form['end'];
-    } else {
+    if (action == 'REJECT') {
       if (form['reason'] == null || form['reason']!.isEmpty) {
         AppToast.show(context: context, message: 'Vui lòng nhập lý do từ chối!', isSuccess: false);
         return;
@@ -438,26 +417,38 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
               if (appt['note'] != null && appt['note'].toString().isNotEmpty)
                 Container(margin: const EdgeInsets.only(top: 12), padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blue.shade100)), child: Text('"${appt['note']}"', style: TextStyle(color: Colors.blue.shade800, fontStyle: FontStyle.italic, fontSize: 13))),
               
+              if (appt['preferred_time'] != null || appt['guest_count'] != null)
+                Container(
+                  margin: const EdgeInsets.only(top: 12), padding: const EdgeInsets.all(12), 
+                  decoration: BoxDecoration(color: _bgLight, borderRadius: BorderRadius.circular(12)), 
+                  child: Row(
+                    children: [
+                      if (appt['preferred_time'] != null) ...[
+                        Icon(Icons.access_time_rounded, size: 16, color: _textSub), const SizedBox(width: 6),
+                        Builder(
+                          builder: (context) {
+                            String displayTime = appt['preferred_time'].toString();
+                            try {
+                              final parsed = DateTime.parse(displayTime).toLocal();
+                              displayTime = DateFormat('HH:mm - dd/MM').format(parsed);
+                            } catch (_) {}
+                            return Text('Mong muốn: $displayTime', style: TextStyle(color: _textMain, fontWeight: FontWeight.w800, fontSize: 13));
+                          }
+                        ),
+                        const SizedBox(width: 16),
+                      ],
+                      if (appt['guest_count'] != null) ...[
+                        Icon(Icons.people_alt_rounded, size: 16, color: _textSub), const SizedBox(width: 6),
+                        Text('${appt['guest_count']} người', style: TextStyle(color: _textMain, fontWeight: FontWeight.w800, fontSize: 13)),
+                      ],
+                    ]
+                  )
+                ),
+
               const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Divider(height: 1, color: Color(0xFFE2ECEB))),
               
-              // Form Chấp nhận
-              const Text('CHỐT LỊCH HẸN', style: TextStyle(color: Color(0xFF48C9B0), fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: GestureDetector(
-                    onTap: () => _pickDateTime(appt['id'], 'start'),
-                    child: Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: _bgLight, borderRadius: BorderRadius.circular(14), border: Border.all(color: _borderColor)), child: Text(form['start'] != null ? _formatDate(form['start']) : 'Chọn Bắt đầu', style: TextStyle(color: form['start'] != null ? _textMain : _textSub, fontSize: 13, fontWeight: FontWeight.w600))),
-                  )),
-                  const SizedBox(width: 12),
-                  Expanded(child: GestureDetector(
-                    onTap: () => _pickDateTime(appt['id'], 'end'),
-                    child: Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: _bgLight, borderRadius: BorderRadius.circular(14), border: Border.all(color: _borderColor)), child: Text(form['end'] != null ? _formatDate(form['end']) : 'Chọn Kết thúc', style: TextStyle(color: form['end'] != null ? _textMain : _textSub, fontSize: 13, fontWeight: FontWeight.w600))),
-                  )),
-                ],
-              ),
-              const SizedBox(height: 12),
-              SizedBox(width: double.infinity, height: 48, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: _bizPrimary, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))), onPressed: () => _handleRespondAppt(appt['id'], 'ACCEPT'), child: const Text('GỬI BÁO GIÁ & CHỐT LỊCH', style: TextStyle(fontWeight: FontWeight.w900)))),
+              // Nút Chấp nhận tĩnh (Không cần chọn giờ)
+              SizedBox(width: double.infinity, height: 48, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: _bizPrimary, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))), onPressed: () => _handleRespondAppt(appt['id'], 'ACCEPT'), child: const Text('DUYỆT YÊU CẦU & CHỐT LỊCH', style: TextStyle(fontWeight: FontWeight.w900)))),
               
               const SizedBox(height: 24),
               

@@ -7,6 +7,9 @@ import '../widgets/guest_profile_view.dart';
 import '../widgets/app_toast.dart';
 import 'package:go_router/go_router.dart';
 import 'profile/user_wellness_profile_screen.dart';
+import 'dart:async'; // Thêm Timer cho Polling QR
+import 'promo/vip_voucher_shop_screen.dart'; // Bổ sung điều hướng VIP Shop
+import 'package:flutter/services.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -142,6 +145,7 @@ class _WalletScreenState extends State<WalletScreen> {
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'vi_VN', symbol: 'đ');
   bool _isLoading = true;
   double _balance = 0.0;
+  double _pointsBalance = 0.0; // Thêm số dư ví điểm
   List<dynamic> _history = [];
   Map<String, dynamic>? _rewardStatus;
 
@@ -157,6 +161,7 @@ class _WalletScreenState extends State<WalletScreen> {
       final walletRes = await WalletApiService.getWallet();
       if (walletRes != null) {
         _balance = walletRes.balance;
+        _pointsBalance = walletRes.pointsBalance; // Đồng bộ điểm nạp
       }
       
       // Auto-Routing: Thử nạp lịch sử rút tiền theo từng phân hệ Role (Dò tìm)
@@ -259,6 +264,95 @@ class _WalletScreenState extends State<WalletScreen> {
                                 onPressed: () => WalletScreen.showPremiumWithdrawalSheet(context, onSuccess: _loadWalletData),
                                 child: const Text("YÊU CẦU RÚT TIỀN", style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5, fontSize: 14)),
                               ),
+                            )
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // THẺ VÍ ĐIỂM NẠP (1 CHIỀU) ĐỂ MUA VOUCHER VIP
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(28),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1A3A35), // Tone màu tối (Dark Mode Card) phân biệt với Ví Bảo Chứng
+                          borderRadius: BorderRadius.circular(32),
+                          boxShadow: [
+                            BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8)),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8), 
+                                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle), 
+                                      child: const Icon(Icons.stars_rounded, color: Color(0xFFE2ECEB), size: 16)
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Text("VÍ ĐIỂM NẠP", style: TextStyle(color: Color(0xFFE2ECEB), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1.0)),
+                                  ],
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                  child: const Text("Chỉ mua Voucher", style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(NumberFormat.decimalPattern('vi_VN').format(_pointsBalance), style: const TextStyle(color: Colors.white, fontSize: 38, fontWeight: FontWeight.w900, letterSpacing: -1)),
+                                const Padding(
+                                  padding: EdgeInsets.only(bottom: 6, left: 4),
+                                  child: Text(" điểm", style: TextStyle(color: Colors.white70, fontSize: 16, fontWeight: FontWeight.bold)),
+                                )
+                              ],
+                            ),
+                            const SizedBox(height: 32),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 52,
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.white.withOpacity(0.1), 
+                                        foregroundColor: Colors.white, 
+                                        elevation: 0, 
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                                      ),
+                                      onPressed: () {
+                                        Navigator.push(context, MaterialPageRoute(builder: (_) => const VipVoucherShopScreen()));
+                                      },
+                                      child: const Text("SĂN MÃ VIP", style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5, fontSize: 14)),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 52,
+                                    child: ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFFE2ECEB), 
+                                        foregroundColor: const Color(0xFF1A3A35), 
+                                        elevation: 0, 
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                                      ),
+                                      onPressed: () => _showTopupBottomSheet(context),
+                                      child: const Text("NẠP ĐIỂM", style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5, fontSize: 14)),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             )
                           ],
                         ),
@@ -417,6 +511,333 @@ class _WalletScreenState extends State<WalletScreen> {
               ),
         );
       },
+    );
+  }
+
+  // --- LOGIC LUỒNG NẠP ĐIỂM ---
+
+  void _showTopupBottomSheet(BuildContext context) {
+    final amountCtrl = TextEditingController();
+    bool isSubmitting = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.5,
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            decoration: const BoxDecoration(color: Color(0xFFF4F7F6), borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(top: 12, bottom: 20), decoration: BoxDecoration(color: const Color(0xFFD1D1D6), borderRadius: BorderRadius.circular(10)))),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Nạp Ví Điểm', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                      Container(decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: const Color(0xFFE2ECEB))), child: IconButton(icon: const Icon(Icons.close_rounded, color: Color(0xFF617D79), size: 20), onPressed: () => Navigator.pop(context))),
+                    ],
+                  ),
+                ),
+                Container(height: 1, width: double.infinity, margin: const EdgeInsets.only(top: 16, bottom: 24), decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, const Color(0xFFE2ECEB).withOpacity(0.5), Colors.transparent]))),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: const Color(0xFF1A3A35).withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.info_outline_rounded, color: Color(0xFF1A3A35), size: 16),
+                              SizedBox(width: 8),
+                              Expanded(child: Text('Tỷ lệ quy đổi: 1,000đ = 1,000 Điểm. Số tiền nạp phải là bội số của 5.000đ.', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 12, fontWeight: FontWeight.w600))),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        WalletScreen._buildSheetField(amountCtrl, 'Số tiền nạp (Ví dụ: 10000, 50000)', Icons.monetization_on_rounded, isNumber: true),
+                        const SizedBox(height: 12),
+                        // 🚀 UX NÂNG CẤP: Gợi ý các mốc nạp nhanh bằng Chip
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [10000, 20000, 50000, 100000, 500000].map((val) => GestureDetector(
+                            onTap: () => amountCtrl.text = val.toString(),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(8)),
+                              child: Text(_currencyFormat.format(val), style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.w800)),
+                            ),
+                          )).toList(),
+                        ),
+                        const SizedBox(height: 32),
+                        SizedBox(
+                          width: double.infinity, height: 52,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1A3A35), 
+                              foregroundColor: Colors.white, 
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                            onPressed: isSubmitting ? null : () async {
+                              final amount = double.tryParse(amountCtrl.text) ?? 0;
+                              if (amount < 10000) { AppToast.show(context: context, message: 'Tối thiểu 10,000đ', isSuccess: false); return; }
+                              // 🚀 BỌC THÉP VALIDATION: Chặn cứng bội số 5000 ngay tại Frontend trước khi gọi API
+                              if (amount % 5000 != 0) { AppToast.show(context: context, message: 'Số tiền phải là bội số của 5,000đ', isSuccess: false); return; }
+
+                              setModalState(() => isSubmitting = true);
+                              try {
+                                // Sử dụng Service đã được đóng gói gọn gàng
+                                final res = await WalletApiService.topupPoints(amount);
+                                if (res != null && res.statusCode == 200 && res.data['status'] == 'success') {
+                                  Navigator.pop(context); // Đóng form nhập tiền
+                                  final inAppData = res.data['in_app_data'];
+                                  if (inAppData != null && inAppData['qr_code'] != null) {
+                                    _showQrTopupDialog(inAppData, amount);
+                                  } else {
+                                    AppToast.show(context: context, message: 'Lỗi khởi tạo QR PayOS.', isSuccess: false);
+                                  }
+                                } else {
+                                  AppToast.show(context: context, message: 'Lỗi tạo giao dịch.', isSuccess: false);
+                                }
+                              } catch (e) {
+                                AppToast.show(context: context, message: 'Lỗi kết nối máy chủ.', isSuccess: false);
+                              } finally {
+                                if (context.mounted) setModalState(() => isSubmitting = false);
+                              }
+                            },
+                            child: isSubmitting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('TẠO MÃ THANH TOÁN', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+      )
+    );
+  }
+
+  void _showQrTopupDialog(Map<String, dynamic> inAppData, double amountVnd) {
+    bool isChecking = false;
+    Timer? pollingTimer;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (qrContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            
+            // Polling ngầm để xác thực giao dịch PayOS
+            pollingTimer ??= Timer.periodic(const Duration(seconds: 3), (timer) async {
+              if (!mounted || isChecking) return;
+              try {
+                // Sử dụng hàm webhook nội bộ hoặc giả lập check order (Giả sử sử dụng logic chung như Lịch hẹn)
+                final res = await ApiClient.instance.get('/appointments/payment/verify?orderCode=${inAppData['order_code']}');
+                if (res.statusCode == 200 && res.data['status'] == 'success') {
+                  timer.cancel();
+                  if (Navigator.canPop(qrContext)) Navigator.pop(qrContext);
+                  if (mounted) AppToast.show(context: context, message: '🎉 Nạp điểm hoàn tất tự động!', isSuccess: true);
+                  _loadWalletData();
+                }
+              } catch (_) {}
+            });
+
+            return WillPopScope(
+              onWillPop: () async {
+                pollingTimer?.cancel();
+                return true;
+              },
+              child: Dialog(
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+              backgroundColor: Colors.white,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(28),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 8, height: 8,
+                                  decoration: const BoxDecoration(color: Color(0xFF1A3A35), shape: BoxShape.circle),
+                                ),
+                                const SizedBox(width: 8),
+                                const Text('NẠP ĐIỂM PAYOS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.black38, letterSpacing: 1.2)),
+                              ],
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 22, color: Colors.black38),
+                              onPressed: () { pollingTimer?.cancel(); Navigator.pop(qrContext); },
+                              padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Center(
+                          child: Column(
+                            children: [
+                              // 🚀 THUẬT TOÁN ĐỔI ĐIỂM: 1000 VND = 1000 Điểm (Khớp Backend 1:1)
+                              Text('${NumberFormat.decimalPattern('vi_VN').format(inAppData['points_to_receive'] ?? amountVnd)} Điểm', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFF1A3A35))),
+                              const SizedBox(height: 2),
+                              Text('Số tiền nạp: ${_currencyFormat.format(amountVnd)}', style: const TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(24),
+                              border: Border.all(color: const Color(0xFFF4F7F6), width: 1.5),
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 16, offset: const Offset(0, 8))],
+                            ),
+                            child: Image.network(
+                              'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${Uri.encodeComponent(inAppData['qr_code'] ?? '')}',
+                              width: 190, height: 190, fit: BoxFit.contain,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // 🚀 UX NÂNG CẤP: Bổ sung khối Copy Banking Details giống Lịch Hẹn
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(color: const Color(0xFFF4F7F6), borderRadius: BorderRadius.circular(20)),
+                          child: Column(
+                            children: [
+                              _buildCopyableRow('Ngân hàng nhận', 'PayOS (Vietinbank)', isMono: false),
+                              const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: Colors.black12)),
+                              _buildCopyableRow('Số tài khoản', inAppData['account_number']?.toString() ?? '', isMono: true),
+                              const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: Colors.black12)),
+                              _buildCopyableRow('Số tiền chuyển', _currencyFormat.format((inAppData['amount'] ?? amountVnd).toDouble()), customValueColor: const Color(0xFF1A3A35)),
+                              const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(height: 1, color: Colors.black12)),
+                              _buildCopyableRow('Nội dung bắt buộc', inAppData['description']?.toString() ?? '', customValueColor: const Color(0xFF80BF84)),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFFF59E0B))),
+                            const SizedBox(width: 8),
+                            Text('Đang chờ thanh toán tự động...', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.amber.shade700)),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity, height: 48,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF10B981),
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            onPressed: isChecking ? null : () async {
+                              setState(() => isChecking = true);
+                              try {
+                                final res = await ApiClient.instance.get('/appointments/payment/verify?orderCode=${inAppData['order_code']}');
+                                if (res.statusCode == 200 && res.data['status'] == 'success') {
+                                  pollingTimer?.cancel();
+                                  Navigator.pop(qrContext);
+                                  if (mounted) AppToast.show(context: context, message: '🎉 Nạp điểm thành công!', isSuccess: true);
+                                  _loadWalletData();
+                                } else {
+                                  if (mounted) AppToast.show(context: context, message: '⏳ Chưa ghi nhận dòng tiền.', isSuccess: false);
+                                  setState(() => isChecking = false);
+                                }
+                              } catch (e) {
+                                if (mounted) AppToast.show(context: context, message: '❌ Lỗi đường truyền.', isSuccess: false);
+                                setState(() => isChecking = false);
+                              }
+                            },
+                            child: isChecking 
+                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : const Text('TÔI ĐÃ CHUYỂN KHOẢN', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.3)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),);
+          },
+        );
+      },
+    );
+  }
+
+  // 🚀 HÀM BỔ TRỢ: Xây dựng dòng Copyable chuẩn UX
+  Widget _buildCopyableRow(String title, String value, {bool isMono = false, Color? customValueColor}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(fontSize: 11, color: Colors.black45, fontWeight: FontWeight.w500)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: GestureDetector(
+            onTap: () {
+              // Sử dụng bộ Clipboard chuẩn của Flutter để tương tác với Native OS
+              Clipboard.setData(ClipboardData(text: value));
+              AppToast.show(context: context, message: '🎉 Đã sao chép: $value', isSuccess: true);
+            },
+            child: Container(
+              color: Colors.transparent,
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Flexible(
+                    child: Text(
+                      value,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: customValueColor ?? Colors.black87,
+                        fontFamily: isMono ? 'monospace' : null,
+                        fontFeatures: isMono ? const [FontFeature.tabularFigures()] : null,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.copy_rounded, size: 12, color: Colors.black26),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -4,7 +4,7 @@
 
 ------------
 
-Triển khai phase III. Chiến lược vẫn như vậy, nâng cấp chỉnh sửa thì sử dụng nguyên tắc Ctrl + H. Tạo mới thì chỉ rõ tên file và đường dẫn. Từ bước 1 đến hết phase liền mạch. Không cần giải thích, chia phần dài dòng. Có nghiệm thu cuối cùng rõ ràng, đảm bảo tăng tối đa xác suất tôi hiểu đúng.
+Triển khai Tầng 1.1 . Chiến lược vẫn như vậy, nâng cấp chỉnh sửa thì sử dụng nguyên tắc, tuân thủ AI_RULES.md, Ctrl + H. Tạo mới thì chỉ rõ tên file và đường dẫn. Từ bước 1 đến hết phase liền mạch. Không cần giải thích, chia phần dài dòng. Có nghiệm thu cuối cùng rõ ràng, đảm bảo tăng tối đa xác suất tôi hiểu đúng, do đã không có giải thích, nên nghiệm thu phải đặc biệt chặt chẽ.
 -------------
 
 1. Tổng quan theo luồng (Chia phase lần 1 - theo luồng);
@@ -13,9 +13,21 @@ Triển khai phase III. Chiến lược vẫn như vậy, nâng cấp chỉnh s�
 #Nghiệm thu chặt chẽ (test) sau mỗi lần sửa, nâng cấp code. 
 
 
-*Được, hãy triển khai sửa code, cô lập, xác định, giải quyết gọn, không mở rộng ảnh hưởng đến các logic khác.
+*Được, hãy triển khai sửa code, cô lập, xác định, giải quyết gọn, không mở rộng ảnh hưởng đến các logic khác. Có **nghiệm thu** đầy đủ. Tuân thủ AI_RULES.md và nguyên tắc Ctrl + H. Khi triển khai code, dự đoán các trường hợp phổ biến lỗi có thể xảy ra, chèn các đoạn - print debug lỗi.
 
-Chưa cần code, hãy cô lập, xác định, đề xuất giải quyết gọn, không mở rộng ảnh hưởng đến các logic khác. Xác định vấn đề thật sự, không ngộ nhận, ảo giác. Lấy dẫn chứng chứng minh.
+Chưa cần code, audit, đề xuất giải quyết gọn, không mở rộng ảnh hưởng đến các logic khác. Xác định vấn đề thật sự, không ngộ nhận, ảo giác. Lấy dẫn chứng chứng minh.
+
+
+npm run build
+npx wrangler pages deploy dist --project-name=miniworld-shop
+
+npm run build
+npx wrangler pages deploy dist --project-name=miniworld-admin
+
+npx wrangler deploy
+
+npx wrangler tail
+----------
 
 cd /d E:\AI Project\AI Project_AI Health Share\frontend_mobile
 
@@ -67,7 +79,7 @@ git status
 
 git add .
 
-git commit -m "Nguoi tieu dung thong manh"
+git commit -m "Big phase update: VIP Voucher, Booking Form & Logic,..."
 
 git push origin main
 

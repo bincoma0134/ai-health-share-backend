@@ -2333,19 +2333,35 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
 def respond_appointment(appointment_id: str, payload: schemas.PartnerResponse, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
+        print(f"[DEBUG-PHASE1] Khởi tạo phản hồi lịch hẹn ID: {appointment_id} | Action: {payload.action}")
         cur.execute("SELECT * FROM appointments WHERE id = %s", (appointment_id,))
         appt = cur.fetchone()
-        if not appt: raise HTTPException(status_code=404, detail="Không tìm thấy")
-        if appt["partner_id"] != current_user.id: raise HTTPException(status_code=403, detail="Cấm!")
+        
+        if not appt:
+            print(f"[ERROR-PHASE1] Không tìm thấy lịch hẹn ID: {appointment_id}")
+            raise HTTPException(status_code=404, detail="Không tìm thấy")
+        if appt["partner_id"] != current_user.id:
+            print(f"[ERROR-PHASE1] Cấm truy cập. Đối tác ID: {current_user.id} cố can thiệp lịch hẹn của Partner ID: {appt['partner_id']}")
+            raise HTTPException(status_code=403, detail="Cấm!")
 
         updates, values = [], []
         if payload.action == "ACCEPT":
             updates.extend(["status = 'PENDING_PAYMENT'", "payment_deadline = %s"])
             values.extend([datetime.fromtimestamp(time.time() + 7200)])
+            
+            # NÂNG CẤP PHASE 1: Tự động gán khung giờ mong muốn vào start_time khi Partner duyệt
+            preferred_time = appt.get("preferred_time")
+            if preferred_time:
+                print(f"[DEBUG-PHASE1] Tìm thấy preferred_time: {preferred_time}. Tiến hành gán vào start_time.")
+                updates.append("start_time = %s")
+                values.append(preferred_time)
+            else:
+                print(f"[WARNING-PHASE1] Lịch hẹn {appointment_id} KHÔNG có preferred_time từ Client gửi lên.")
         else:
             updates.extend(["status = 'CANCELLED'", "rejection_reason = %s"])
             values.append(payload.reason)
             if appt.get("applied_user_voucher_id"):
+                print(f"[DEBUG-PHASE1] Hoàn trả voucher ID: {appt['applied_user_voucher_id']} cho User.")
                 cur.execute("UPDATE user_vouchers SET status = 'UNUSED', locked_until = NULL WHERE id = %s", (appt["applied_user_voucher_id"],))
             
         values.append(appointment_id)
@@ -2361,9 +2377,11 @@ def respond_appointment(appointment_id: str, payload: schemas.PartnerResponse, c
             NotificationService.dispatch_event(conn, user_id=appt["user_id"], event_type="APPOINTMENT_REJECTED", reference_id=appointment_id, metadata={"message": f"Cơ sở đã từ chối. Lý do: {payload.reason}"}, sender_id=current_user.id)
         
         conn.commit()
+        print(f"[DEBUG-PHASE1] Phản hồi lịch hẹn {appointment_id} hoàn tất.")
         return jsonable_encoder({"status": "success", "data": updated})
     except Exception as e:
         conn.rollback()
+        print(f"[EXCEPTION-PHASE1] Lỗi khi phản hồi lịch hẹn: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
     finally: cur.close()
 
@@ -2561,6 +2579,18 @@ def verify_appointment_payment(orderCode: int, current_user = Depends(verify_use
         cur.execute("SELECT * FROM bookings_transactions WHERE order_code = %s", (orderCode,))
         booking = cur.fetchone()
         if not booking: raise HTTPException(status_code=404, detail="Không tìm thấy")
+        
+        # 🚀 BỌC THÉP NÂNG CẤP VERIFY: Xử lý trả về Polling cho Mobile khi quét đơn Nạp điểm (Phase 2)
+        if booking["payment_status"] == "TOPUP_PAID":
+            return {"status": "success", "message": "Đã nạp điểm thành công"}
+        if booking["payment_status"] == "TOPUP_UNPAID":
+            # 🚀 THUẬT TOÁN ĐỔI ĐIỂM: 1,000 VND = 1,000 Điểm (Tỷ lệ 1:1)
+            points = int(float(booking["total_amount"]))
+            cur.execute("UPDATE users SET points_balance = points_balance + %s WHERE id = %s", (points, booking["user_id"]))
+            cur.execute("UPDATE bookings_transactions SET payment_status = 'TOPUP_PAID' WHERE id = %s", (booking["id"],))
+            conn.commit()
+            return {"status": "success", "message": "Đã nạp điểm thành công"}
+            
         if booking["payment_status"] == "PAID": return {"status": "success", "message": "Đã xác nhận"}
 
         cur.execute("UPDATE bookings_transactions SET payment_status = 'PAID' WHERE id = %s", (booking["id"],))
@@ -2867,9 +2897,22 @@ async def payos_webhook(request: Request, conn=Depends(get_db_connection)):
             
             if booking and booking["payment_status"] not in ["PAID", "TOPUP_PAID"]:
                 if booking["payment_status"] == "TOPUP_UNPAID":
-                    points = int(float(booking["total_amount"]) // 1000)
+                    # 🚀 THUẬT TOÁN ĐỔI ĐIỂM: 1,000 VND = 1,000 Điểm (Tỷ lệ 1:1)
+                    points = int(float(booking["total_amount"]))
                     cur.execute("UPDATE users SET points_balance = points_balance + %s WHERE id = %s", (points, booking["user_id"]))
                     cur.execute("UPDATE bookings_transactions SET payment_status = 'TOPUP_PAID' WHERE id = %s", (booking["id"],))
+                    
+                    # Cấp phát thông báo Toast In-App
+                    from notification_service import NotificationService
+                    NotificationService.dispatch_event(
+                        conn, 
+                        user_id=booking["user_id"], 
+                        event_type="LEGACY", 
+                        reference_id=str(booking["id"]), 
+                        metadata={"category": "SYSTEM", "title": "Nạp điểm thành công", "message": f"Bạn vừa nạp thành công {points:,.0f} điểm vào ví."}, 
+                        sender_id=None
+                    )
+                    
                     conn.commit()
                     return {"success": True}
 
@@ -3761,9 +3804,16 @@ def topup_points(payload: schemas.PointTopupRequest, current_user = Depends(veri
     try:
         if payload.amount_vnd < 10000:
             raise HTTPException(status_code=400, detail="Tối thiểu 10,000 VNĐ")
+        
+        # 🚀 BỌC THÉP PHASE 2: Chặn cứng điều kiện bội số của 5000 (Không nạp lẻ tẻ)
+        if payload.amount_vnd % 5000 != 0:
+            raise HTTPException(status_code=400, detail="Số tiền nạp phải là bội số của 5.000đ (VD: 15.000đ, 20.000đ, 50.000đ...)")
             
         user_hash = str(abs(hash(current_user.id)))[:4]
         order_code = int(f"99{user_hash}{random.randint(1000,9999)}")
+        
+        # 🚀 THUẬT TOÁN ĐỔI ĐIỂM: 1,000 VND = 1,000 Điểm (Tỷ lệ 1:1 theo thông báo mới nhất)
+        points_to_receive = int(payload.amount_vnd)
         
         # Lợi dụng bookings_transactions để track luồng Nạp điểm thay vì tạo bảng mới
         cur.execute("""INSERT INTO bookings_transactions 
@@ -3775,23 +3825,33 @@ def topup_points(payload: schemas.PointTopupRequest, current_user = Depends(veri
         payment_data = PaymentData(
             orderCode=order_code, 
             amount=int(payload.amount_vnd), 
-            description=f"Nap {int(payload.amount_vnd//1000)} diem", 
+            description=f"Nap {points_to_receive} diem", 
             returnUrl="https://ai-health-share-frontend.vercel.app", 
             cancelUrl="https://ai-health-share-frontend.vercel.app"
         )
         payment_link = payos_client.createPaymentLink(paymentData=payment_data)
         
+        # 🚀 BỌC THÉP IN-APP: Trả về đầy đủ trường thông tin để vẽ Custom QR Modal
         return {
             "status": "success", 
             "checkout_url": payment_link.checkoutUrl,
             "in_app_data": {
                 "qr_code": getattr(payment_link, 'qrCode', None),
-                "order_code": order_code
+                "account_number": getattr(payment_link, 'accountNumber', None),
+                "account_name": getattr(payment_link, 'accountName', None),
+                "amount": getattr(payment_link, 'amount', None),
+                "description": getattr(payment_link, 'description', None),
+                "order_code": order_code,
+                "points_to_receive": points_to_receive
             }
         }
+    except HTTPException:
+        conn.rollback()
+        raise
     except Exception as e:
         conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[ERROR-TOPUP] {e}")
+        raise HTTPException(status_code=500, detail="Hệ thống khởi tạo PayOS đang bận.")
     finally: cur.close()
 
 @app.get("/vouchers/vip/public", tags=["Vouchers"])

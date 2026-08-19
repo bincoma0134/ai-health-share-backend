@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Đã bổ sung: Phục vụ tương tác hệ thống Clipboard sao chép một chạm
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -1494,6 +1493,42 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                 ],
                               ),
                               
+                              // 🚀 NÂNG CẤP PHASE 1: Hiển thị thêm thông tin Khung giờ mong muốn & Số khách (Dành cho Partner dễ duyệt lịch)
+                              if (appt.status.toUpperCase() == 'WAITING_PARTNER') ...[
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(color: const Color(0xFFF59E0B).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                                      child: Text(
+                                        'Khách đi ${appt.guestCount} người',
+                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber.shade800),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    if (appt.preferredTime != null && appt.preferredTime!.isNotEmpty)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(color: const Color(0xFFF59E0B).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                                        child: Builder(
+                                          builder: (ctx) {
+                                            try {
+                                              final pt = DateTime.parse(appt.preferredTime!).toLocal();
+                                              return Text(
+                                                'Hẹn: ${DateFormat('HH:mm - dd/MM').format(pt)}',
+                                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber.shade800),
+                                              );
+                                            } catch (_) {
+                                              return const SizedBox.shrink();
+                                            }
+                                          }
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                              
                               // Khu vực bóc tách hóa đơn voucher đồng bộ logic Web áp dụng mô hình toán học bọc thép
                               const SizedBox(height: 6),
                               Builder(
@@ -1568,7 +1603,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                   children: [
                                     Expanded(child: _buildActionWidgetButton('Từ chối', Colors.red.shade50, Colors.red, () => _handlePartnerReject(appt.id))),
                                     const SizedBox(width: 8),
-                                    Expanded(child: _buildActionWidgetButton('Duyệt & Chọn giờ', const Color(0xFFEAF8EE), const Color(0xFF22C55E), () => _handlePartnerAccept(appt.id, appt.startTime))),
+                                    Expanded(child: _buildActionWidgetButton('Duyệt ngay', const Color(0xFFEAF8EE), const Color(0xFF22C55E), () => _handlePartnerAccept(appt.id, appt.startTime))),
                                   ],
                                 ),
                               ],
@@ -1795,41 +1830,11 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
       },
     );
   }
-  // ĐỒNG BỘ LOGIC WEB: Đối tác duyệt lịch phải thiết lập khung giờ thực tế
+  // ĐỒNG BỘ LOGIC WEB MỚI: Đối tác duyệt lịch 1 chạm, giờ đã do khách chọn.
   Future<void> _handlePartnerAccept(String id, String? startTimeString) async {
-    final TimeOfDay? startTime = await showTimePicker(
-      context: context, 
-      initialTime: const TimeOfDay(hour: 9, minute: 0),
-      helpText: 'CHỌN GIỜ BẮT ĐẦU PHỤC VỤ',
-    );
-    if (startTime == null || !mounted) return;
-
-    final TimeOfDay? endTime = await showTimePicker(
-      context: context, 
-      initialTime: TimeOfDay(hour: startTime.hour + 1, minute: startTime.minute),
-      helpText: 'CHỌN GIỜ KẾT THÚC DỰ KIẾN',
-    );
-    if (endTime == null || !mounted) return;
-
-    // Chuẩn hóa ISO 8601 bằng cách bóc tách chuỗi ngày thực tế từ startTime
-    String baseDate = DateTime.now().toIso8601String().split('T')[0];
-    if (startTimeString != null && startTimeString.isNotEmpty) {
-      if (startTimeString.contains('T')) {
-        baseDate = startTimeString.split('T')[0];
-      } else {
-        baseDate = startTimeString;
-      }
-    }
-    
-    final DateTime parsed = DateTime.parse(baseDate);
-    final String startIso = DateTime(parsed.year, parsed.month, parsed.day, startTime.hour, startTime.minute).toIso8601String();
-    final String endIso = DateTime(parsed.year, parsed.month, parsed.day, endTime.hour, endTime.minute).toIso8601String();
-
     try {
       await ApiClient.instance.patch('/appointments/$id/respond', data: {
         'action': 'ACCEPT',
-        'start_time': startIso,
-        'end_time': endIso,
       });
       if (mounted) AppToast.show(context: context, message: '🎉 Đã duyệt lịch hẹn và chốt giờ thành công!', isSuccess: true);
       _loadData();

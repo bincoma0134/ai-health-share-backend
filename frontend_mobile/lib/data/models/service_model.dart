@@ -8,6 +8,7 @@ class ServiceModel {
   final String? videoUrl;
   final String serviceTypeEnum;
   final Map<String, dynamic> user;
+  final int capacityPerService;
 
   ServiceModel({
     required this.id,
@@ -19,6 +20,7 @@ class ServiceModel {
     this.videoUrl,
     required this.serviceTypeEnum,
     required this.user,
+    this.capacityPerService = 1,
   });
 
   factory ServiceModel.fromJson(Map<String, dynamic> json) {
@@ -32,6 +34,7 @@ class ServiceModel {
       videoUrl: json['video_url'],
       serviceTypeEnum: json['service_type_enum'] ?? 'RELAXATION',
       user: json['users'] ?? {},
+      capacityPerService: json['capacity_per_service'] ?? 1,
     );
   }
 }

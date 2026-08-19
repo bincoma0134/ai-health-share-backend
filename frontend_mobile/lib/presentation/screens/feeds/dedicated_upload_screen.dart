@@ -72,6 +72,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
   final _commissionController = TextEditingController(); // Bộ điều khiển trường hoa hồng cho Partner làm Affiliate
+  final _capacityController = TextEditingController(text: '1'); // 🚀 MỚI: Quản lý dung tích/sức chứa của gói dịch vụ
 
   String? _selectedPartnerName;
   String? _selectedServiceName;
@@ -597,6 +598,12 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
 
         // 3. Fallback Service Creation for Partner
         if ((currentUserRole == "PARTNER_ADMIN" || currentUserRole == "PARTNER") && partnerMode == "SERVICE_VIDEO" && targetedServiceId == null) {
+          int capacity = 1;
+          try {
+             capacity = int.tryParse(_capacityController.text) ?? 1;
+             if (capacity < 1) capacity = 1;
+          } catch (_) {}
+
           final Map<String, dynamic> servicePayload = {
             'service_name': title,
             'description': content.isEmpty ? null : content,
@@ -607,6 +614,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
             'service_type': 'RELAXATION',
             'status': 'PENDING',
             'affiliate_rate': affiliateRate ?? 0.0,
+            'capacity_per_service': capacity, // 🚀 MỚI: Bọc thép dung tích gói dịch vụ
           };
           try {
             final serviceRes = await ApiClient.instance.post('/services', data: servicePayload);
@@ -1636,6 +1644,10 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                     const Text('% Hoa hồng chi trả cho Creator Affiliate *', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 6),
                     _buildTextField(controller: _commissionController, hint: "Nhập tỷ lệ hoa hồng trích lập từ dịch vụ (Ví dụ: 15)...", keyboardType: TextInputType.number),
+                    const SizedBox(height: 14),
+                    const Text('Dung lượng khách phục vụ (người/suất) *', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    _buildTextField(controller: _capacityController, hint: "Ví dụ: 1 hoặc 2...", keyboardType: TextInputType.number),
                     const SizedBox(height: 20),
                   ],
                   
