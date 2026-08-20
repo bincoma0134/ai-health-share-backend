@@ -79,7 +79,7 @@ git status
 
 git add .
 
-git commit -m "Big phase update: VIP Voucher, Booking Form & Logic,..."
+git commit -m "BIG UPDATE BETA 02_PHASE 03_Mod Database Table Fixing"
 
 git push origin main
 

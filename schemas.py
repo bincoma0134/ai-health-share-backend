@@ -295,3 +295,27 @@ class PointTopupRequest(BaseModel):
 
 class VIPVoucherBuyRequest(BaseModel):
     voucher_code: str
+
+# 🚀 DTO PHASE 4: Phục vụ Lọc, Tìm kiếm & Kho lưu trữ Voucher VIP
+class VIPVoucherFilterParams(BaseModel):
+    search: Optional[str] = None
+    partner_id: Optional[str] = None
+    min_discount: Optional[float] = None
+
+class UserVoucherDetailResponse(BaseModel):
+    user_voucher_id: str
+    wallet_status: str
+    voucher_id: str
+    code: str
+    discount_type: str
+    discount_value: float
+    max_discount_amount: Optional[float] = None
+    min_order_value: float
+    valid_from: datetime
+    valid_until: datetime
+    is_vip: bool
+    point_price: float
+    fixed_time_slot: Optional[str] = None
+    description: Optional[str] = None
+    partner_name: Optional[str] = None
+    partner_username: Optional[str] = None

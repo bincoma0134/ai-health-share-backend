@@ -198,18 +198,34 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
     }
   }
 
+  String _myVoucherSubFilter = 'ALL'; // 'ALL' | 'VIP' | 'STANDARD'
+
   Future<void> _loadMyVouchers() async {
     try {
+      print('[DEBUG-PROMO] Đang tải danh sách kho Voucher cá nhân từ API /vouchers/me...');
       final response = await ApiClient.instance.get('/vouchers/me');
-      if (response.statusCode == 200) {
+      List<VoucherModel> loaded = [];
+      
+      if (response.statusCode == 200 && response.data != null) {
         final List<dynamic> data = response.data['data'] ?? [];
+        loaded = data.map((json) => VoucherModel.fromJson(json)).toList();
+        print('[DEBUG-PROMO] Tải thành công ${loaded.length} voucher trong kho ví cá nhân.');
+      } else {
+        print('[DEBUG-PROMO-WARN] API /vouchers/me trả về status khác 200: ${response.statusCode}');
+      }
+
+      if (mounted) {
         setState(() {
-          _myVouchers = data.map((json) => VoucherModel.fromJson(json)).toList();
+          _myVouchers = loaded;
           _isLoadingMine = false;
         });
       }
     } catch (e) {
-      setState(() => _isLoadingMine = false);
+      print('[DEBUG-PROMO-EXCEPTION] Lỗi khi nạp dữ liệu kho Voucher cá nhân: $e');
+      if (mounted) {
+        setState(() => _isLoadingMine = false);
+        AppToast.show(context: context, message: 'Lỗi tải danh sách ví ưu đãi.', isSuccess: false);
+      }
     }
   }
 
@@ -237,7 +253,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
           isSuccess: true,
         );
         
-        await _loadMyVouchers(); // Chạy đồng bộ nạp lại Ví ngay lập tức y hệt Website
+        await _loadMyVouchers();
         await _loadPublicVouchers();
       }
     } catch (e) {
@@ -252,33 +268,61 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
     });
   }
 
-  // Hàm hiển thị Pop-up chi tiết Voucher & Xử lý Điều hướng sử dụng mã chuẩn Website
+  // --- MODAL CHI TIẾT VOUCHER NÂNG CẤP (HỖ TRỢ CẢ THƯỜNG & VIP PASS) ---
   void _showVoucherDetailsModal(VoucherModel voucher) {
+    final bool isVip = voucher.isVip;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        backgroundColor: const Color(0xFF18181B),
+        backgroundColor: isVip ? const Color(0xFF111C19) : const Color(0xFF18181B),
         contentPadding: const EdgeInsets.all(24),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Align(
-              alignment: Alignment.topRight,
-              child: GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: const Icon(Icons.close, color: Colors.white60, size: 20),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (isVip)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFCD34D).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFFCD34D).withOpacity(0.4)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.stars_rounded, color: Color(0xFFFCD34D), size: 14),
+                        SizedBox(width: 4),
+                        Text('VIP PRIVILEGE PASS', style: TextStyle(color: Color(0xFFFCD34D), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                      ],
+                    ),
+                  )
+                else
+                  const SizedBox(),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const Icon(Icons.close_rounded, color: Colors.white60, size: 20),
+                ),
+              ],
             ),
+            const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: voucher.issuerType == 'ADMIN' ? Colors.amber.withOpacity(0.1) : const Color(0xFF80BF84).withOpacity(0.1),
+                color: isVip 
+                    ? const Color(0xFF80BF84).withOpacity(0.15) 
+                    : (voucher.issuerType == 'ADMIN' ? Colors.amber.withOpacity(0.1) : const Color(0xFF80BF84).withOpacity(0.1)),
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                voucher.issuerType == 'ADMIN' ? Icons.workspace_premium_rounded : Icons.store_rounded,
-                color: voucher.issuerType == 'ADMIN' ? Colors.amber : const Color(0xFF80BF84),
+                isVip 
+                    ? Icons.diamond_rounded 
+                    : (voucher.issuerType == 'ADMIN' ? Icons.workspace_premium_rounded : Icons.store_rounded),
+                color: isVip ? const Color(0xFFFCD34D) : (voucher.issuerType == 'ADMIN' ? Colors.amber : const Color(0xFF80BF84)),
                 size: 36,
               ),
             ),
@@ -287,27 +331,44 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
               voucher.discountType == 'PERCENTAGE' 
                   ? 'Giảm ${voucher.discountValue.toInt()}%' 
                   : 'Giảm ${_currencyFormat.format(voucher.discountValue)}',
-              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900),
+              style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5),
             ),
             const SizedBox(height: 6),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(8)),
-              child: Text(voucher.code, style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+              child: Text(voucher.code, style: const TextStyle(color: Color(0xFF80BF84), fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13)),
             ),
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: Colors.white.withOpacity(0.03), borderRadius: BorderRadius.circular(16)),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(16)),
               child: Column(
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Phát hành:', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                      Text(voucher.issuerType == 'ADMIN' ? 'Ban quản trị Sàn' : (voucher.partnerName ?? 'Cơ sở'), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      const Text('Cơ sở áp dụng:', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                      Expanded(
+                        child: Text(
+                          voucher.issuerType == 'ADMIN' ? 'Toàn hệ thống AI Health' : (voucher.partnerName ?? 'Cơ sở'),
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ],
                   ),
+                  if (isVip && voucher.fixedTimeSlot != null) ...[
+                    const Divider(color: Colors.white10, height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Khung giờ cố định:', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                        Text(voucher.fixedTimeSlot!, style: const TextStyle(color: Color(0xFF10B981), fontSize: 12, fontWeight: FontWeight.w900)),
+                      ],
+                    ),
+                  ],
                   const Divider(color: Colors.white10, height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -336,11 +397,11 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
-              height: 46,
+              height: 48,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: voucher.issuerType == 'ADMIN' ? Colors.amber : const Color(0xFF80BF84),
-                  foregroundColor: Colors.black,
+                  backgroundColor: isVip ? const Color(0xFF80BF84) : (voucher.issuerType == 'ADMIN' ? Colors.amber : const Color(0xFF80BF84)),
+                  foregroundColor: const Color(0xFF0F2B26),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 0,
                 ),
@@ -350,27 +411,28 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                   try { isExpired = DateTime.now().isAfter(DateTime.parse(voucher.validUntil)); } catch (_) {}
                   
                   if (isExpired) {
-                    AppToast.show(context: context, message: '⚠️ Mã giảm giá này đã hết hạn sử dụng, không thể áp dụng.', isSuccess: false);
+                    AppToast.show(context: context, message: '⚠️ Mã này đã hết hạn sử dụng.', isSuccess: false);
                     return;
                   }
 
-                  if (voucher.issuerType == 'ADMIN') {
-                    // Khớp luồng Web: Mã toàn sàn -> Điều hướng ra không gian khám phá dịch vụ tổng hợp
-                    GoRouter.of(context).go('/explore');
-                    AppToast.show(context: context, message: '🚀 Đang chuyển tới Tab Khám phá dịch vụ toàn hệ thống...', isSuccess: true);
-                  } else {
-                    // Khớp luồng Web: Dẫn link chuẩn cấp 1 theo thuộc tính định danh username của đối tác phát hành
+                  if (isVip || voucher.issuerType == 'PARTNER') {
                     final String targetUsername = voucher.partnerUsername ?? voucher.id;
                     GoRouter.of(context).push('/public-profile/$targetUsername');
-                    AppToast.show(context: context, message: '🚀 Đang truy cập hồ sơ chuyên gia phát hành mã...', isSuccess: true);
+                    AppToast.show(context: context, message: '🚀 Đang chuyển tới cơ sở để đặt lịch...', isSuccess: true);
+                  } else {
+                    GoRouter.of(context).go('/explore');
+                    AppToast.show(context: context, message: '🚀 Đang chuyển ra Tab Khám phá toàn sàn...', isSuccess: true);
                   }
                 },
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(voucher.issuerType == 'ADMIN' ? 'SĂN DỊCH VỤ NGAY' : 'XEM DỊCH VỤ ĐỐI TÁC', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+                    Text(
+                      isVip ? 'ĐẶT LỊCH THEO KHUNG GIỜ' : (voucher.issuerType == 'ADMIN' ? 'SĂN DỊCH VỤ NGAY' : 'XEM DỊCH VỤ CƠ SỞ'),
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.3),
+                    ),
                     const SizedBox(width: 6),
-                    const Icon(Icons.open_in_new_rounded, size: 16),
+                    const Icon(Icons.arrow_forward_rounded, size: 16),
                   ],
                 ),
               ),
@@ -931,14 +993,229 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
     if (_isLoadingMine) return const Center(child: CircularProgressIndicator(color: Color(0xFF80BF84)));
     if (_myVouchers.isEmpty) return const Center(child: Text("Ví ưu đãi của bạn đang trống.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)));
 
+    final vipVouchers = _myVouchers.where((v) => v.isVip).toList();
+    final standardVouchers = _myVouchers.where((v) => !v.isVip).toList();
+
+    List<VoucherModel> displayedVouchers = _myVouchers;
+    if (_myVoucherSubFilter == 'VIP') {
+      displayedVouchers = vipVouchers;
+    } else if (_myVoucherSubFilter == 'STANDARD') {
+      displayedVouchers = standardVouchers;
+    }
+
     return RefreshIndicator(
       color: const Color(0xFF80BF84),
       onRefresh: _loadMyVouchers,
-      child: ListView.builder(
+      child: ListView(
         physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        itemCount: _myVouchers.length,
-        itemBuilder: (context, index) => _buildPremiumTicketCard(_myVouchers[index], isClaimable: false),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 32),
+        children: [
+          // 🚀 THANH SUB-CATEGORY FILTER 35PX
+          Row(
+            children: [
+              _buildSubFilterChip('ALL', 'Tất cả (${_myVouchers.length})', Icons.wallet_rounded),
+              const SizedBox(width: 8),
+              _buildSubFilterChip('VIP', '👑 VIP (${vipVouchers.length})', Icons.stars_rounded, activeColor: const Color(0xFF1A3A35), badgeColor: const Color(0xFFFCD34D)),
+              const SizedBox(width: 8),
+              _buildSubFilterChip('STANDARD', '🏷️ Thường (${standardVouchers.length})', Icons.local_offer_rounded),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          if (displayedVouchers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 40),
+              child: Center(
+                child: Text('Không có voucher nào trong mục này.', style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+              ),
+            )
+          else
+            ...displayedVouchers.map((voucher) {
+              if (voucher.isVip) {
+                return _buildVipPassCard(voucher);
+              } else {
+                return _buildPremiumTicketCard(voucher, isClaimable: false);
+              }
+            }).toList(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubFilterChip(String filterKey, String label, IconData icon, {Color? activeColor, Color? badgeColor}) {
+    final bool isSelected = _myVoucherSubFilter == filterKey;
+
+    return GestureDetector(
+      onTap: () => setState(() => _myVoucherSubFilter = filterKey),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? (activeColor ?? const Color(0xFF80BF84)) : Colors.white,
+          borderRadius: BorderRadius.circular(35),
+          border: Border.all(color: isSelected ? Colors.transparent : const Color(0xFFE2ECEB), width: 1.2),
+          boxShadow: isSelected ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 3))] : null,
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 14, color: isSelected ? (badgeColor ?? Colors.white) : Colors.black45),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: isSelected ? (badgeColor ?? Colors.white) : Colors.black87,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- 👑 WIDGET THẺ VIP PASS ĐẶC QUYỀN (OBSIDIAN & GOLD 35PX) ---
+  Widget _buildVipPassCard(VoucherModel voucher) {
+    String expDate = 'Vô thời hạn';
+    bool isExpired = false;
+    try {
+      final d = DateTime.parse(voucher.validUntil);
+      expDate = DateFormat('dd/MM/yyyy').format(d);
+      isExpired = DateTime.now().isAfter(d);
+    } catch (_) {}
+
+    final String discountTitle = voucher.discountType == 'PERCENTAGE' 
+        ? 'Giảm ${voucher.discountValue.toInt()}%' 
+        : 'Giảm ${_currencyFormat.format(voucher.discountValue)}';
+
+    return GestureDetector(
+      onTap: () => _showVoucherDetailsModal(voucher),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 14.0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF0F2B26), Color(0xFF1A3A35)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.35), width: 1.2),
+          boxShadow: [BoxShadow(color: const Color(0xFF0F2B26).withOpacity(0.25), blurRadius: 12, offset: const Offset(0, 6))],
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -10,
+              bottom: -15,
+              child: Icon(Icons.stars_rounded, size: 110, color: Colors.white.withOpacity(0.04)),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFCD34D).withOpacity(0.18),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFFFCD34D).withOpacity(0.3)),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.stars_rounded, color: Color(0xFFFCD34D), size: 12),
+                                  SizedBox(width: 4),
+                                  Text('VIP PASS', style: TextStyle(color: Color(0xFFFCD34D), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            if (voucher.fixedTimeSlot != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.access_time_rounded, color: Color(0xFF10B981), size: 12),
+                                    const SizedBox(width: 4),
+                                    Text(voucher.fixedTimeSlot!, style: const TextStyle(color: Color(0xFF10B981), fontSize: 9, fontWeight: FontWeight.w800)),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          discountTitle,
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          voucher.partnerName ?? 'Cơ sở đối tác VIP',
+                          style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Hạn sử dụng: $expDate',
+                          style: TextStyle(fontSize: 10, color: isExpired ? Colors.redAccent : Colors.white38, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isExpired 
+                          ? Colors.white12 
+                          : (voucher.walletStatus == 'LOCKED' ? const Color(0xFFF59E0B).withOpacity(0.2) : const Color(0xFF80BF84)),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          isExpired 
+                              ? Icons.timer_off_rounded 
+                              : (voucher.walletStatus == 'LOCKED' ? Icons.lock_clock_rounded : Icons.qr_code_rounded),
+                          color: isExpired 
+                              ? Colors.white38 
+                              : (voucher.walletStatus == 'LOCKED' ? const Color(0xFFFCD34D) : const Color(0xFF0F2B26)),
+                          size: 24,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          isExpired 
+                              ? 'HẾT HẠN' 
+                              : (voucher.walletStatus == 'LOCKED' ? 'ĐÃ ĐẶT' : 'DÙNG'),
+                          style: TextStyle(
+                            color: isExpired 
+                                ? Colors.white38 
+                                : (voucher.walletStatus == 'LOCKED' ? const Color(0xFFFCD34D) : const Color(0xFF0F2B26)),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -126,10 +126,16 @@ async def startup_event():
 
                     -- 🚀 AUTO-MIGRATION: Phase 3 - Người tiêu dùng thông minh
                     ALTER TABLE users ADD COLUMN IF NOT EXISTS has_claimed_wellness_reward BOOLEAN DEFAULT FALSE;
+
+                    -- 🚀 AUTO-MIGRATION: Bổ sung các cột kiểm duyệt đồng bộ cho bảng vouchers
+                    ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS moderation_note TEXT;
+                    ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS moderated_by UUID;
+                    ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
                 """)
             conn.commit()
+            print("[AUTO-MIGRATION-SUCCESS] Đồng bộ các cột kiểm duyệt bảng vouchers thành công.")
         except Exception as e:
-            print(f"[Database Hotfix Error] Không thể tạo bảng user_fcm_tokens: {e}")
+            print(f"[Database Hotfix Error] Lỗi Auto-Migration: {e}")
         finally:
             db_pool.putconn(conn)
 
@@ -1602,6 +1608,9 @@ def moderate_item(item_type: str, item_id: str, payload: dict, current_user = De
     try:
         action = payload.get("action")
         status = "DELETED" if action == "DELETED" else action
+        note = payload.get("note", "")
+        
+        print(f"[DEBUG-MODERATION-START] Moderator {current_user.id} duyệt mục {item_type} #{item_id} | Action={action} | Note={note}")
         
         if item_type == "service":
             table = "services"
@@ -1610,19 +1619,29 @@ def moderate_item(item_type: str, item_id: str, payload: dict, current_user = De
         elif item_type == "voucher":
             table = "vouchers"
         else:
+            print(f"[DEBUG-MODERATION-ERROR] item_type không hợp lệ: {item_type}")
             raise HTTPException(status_code=400, detail="Loại mục kiểm duyệt không hợp lệ")
         
         cur.execute(f"SELECT status, issuer_id, code FROM {table} WHERE id = %s" if table == "vouchers" else f"SELECT status FROM {table} WHERE id = %s", (item_id,))
         current_item = cur.fetchone()
         if not current_item:
+            print(f"[DEBUG-MODERATION-ERROR] Không tìm thấy bản ghi ID #{item_id} trong bảng {table}")
             raise HTTPException(status_code=404, detail="Không tìm thấy mục cần duyệt")
         
         old_status = current_item[0]
         if old_status == "PENDING_DELETE" and action == "APPROVED":
             status = "DELETED"
         
+        # 🚀 BỌC THÉP MIGRATION IN-FLIGHT: Tự động đảm bảo 3 cột luôn tồn tại trước khi UPDATE
+        if table == "vouchers":
+            cur.execute("""
+                ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS moderation_note TEXT;
+                ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS moderated_by UUID;
+                ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+            """)
+        
         cur.execute(f"UPDATE {table} SET status = %s, moderation_note = %s, moderated_by = %s, updated_at = now() WHERE id = %s", 
-                    (status, payload.get("note", ""), current_user.id, item_id))
+                    (status, note, current_user.id, item_id))
                     
         # Gamification: Cộng điểm số lượng video đăng tải thành công cho User
         if table == "tiktok_feeds" and status == "APPROVED":
@@ -1644,14 +1663,21 @@ def moderate_item(item_type: str, item_id: str, payload: dict, current_user = De
                 metadata={
                     "category": "SYSTEM",
                     "title": f"Voucher {voucher_code_str} đã được {status}",
-                    "message": f"Voucher của bạn đã được kiểm duyệt: {status}. Ghi chú: {payload.get('note', '') or 'Đạt tiêu chuẩn hệ thống'}"
+                    "message": f"Voucher của bạn đã được kiểm duyệt: {status}. Ghi chú: {note or 'Đạt tiêu chuẩn hệ thống'}"
                 },
                 sender_id=current_user.id
             )
 
         conn.commit()
-        print(f"[DEBUG-MODERATION] Duyệt thành công mục {item_type} #{item_id} -> {status}")
+        print(f"[DEBUG-MODERATION-SUCCESS] Duyệt thành công mục {item_type} #{item_id} -> {status}")
         return {"status": "success", "message": "Xử lý thành công"}
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        print(f"[DEBUG-MODERATION-EXCEPTION] Lỗi khi xử lý duyệt {item_type} #{item_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Lỗi máy chủ khi kiểm duyệt: {str(e)}")
     finally: cur.close()
 
 @app.get("/moderation/history", tags=["Moderation"])
@@ -2878,11 +2904,20 @@ def get_my_vouchers(current_user = Depends(verify_user_token), conn=Depends(get_
         cur.execute("UPDATE user_vouchers SET status = 'UNUSED', locked_until = NULL WHERE status = 'LOCKED' AND locked_until < NOW()")
         conn.commit()
         
+        # 🚀 BỌC THÉP PHASE 4: Nạp kèm thông tin đối tác phát hành để phục vụ cả Voucher Thường và VIP Store
         cur.execute("""
-            SELECT uv.id as user_voucher_id, uv.status as wallet_status, v.* FROM user_vouchers uv JOIN vouchers v ON uv.voucher_id = v.id 
-            WHERE uv.user_id = %s ORDER BY v.valid_until ASC
+            SELECT uv.id as user_voucher_id, uv.status as wallet_status, v.*,
+                   u.full_name as partner_name, u.username as partner_username, u.avatar_url as partner_avatar
+            FROM user_vouchers uv 
+            JOIN vouchers v ON uv.voucher_id = v.id 
+            LEFT JOIN users u ON v.issuer_id = u.id
+            WHERE uv.user_id = %s 
+            ORDER BY v.is_vip DESC, v.valid_until ASC
         """, (current_user.id,))
         return {"status": "success", "data": cur.fetchall()}
+    except Exception as e:
+        print(f"[DEBUG-VOUCHER-ME-ERROR] Lỗi lấy danh sách voucher ví cá nhân: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     finally: cur.close()
 
 @app.get("/vouchers/public", tags=["Vouchers"])
@@ -3934,48 +3969,124 @@ def topup_points(payload: schemas.PointTopupRequest, current_user = Depends(veri
     finally: cur.close()
 
 @app.get("/vouchers/vip/public", tags=["Vouchers"])
-def get_public_vip_vouchers(conn=Depends(get_db_connection)):
+def get_public_vip_vouchers(search: Optional[str] = None, partner_id: Optional[str] = None, conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        cur.execute("""
-            SELECT v.*, u.full_name as partner_name, u.username as partner_username 
+        conditions = ["v.is_vip = TRUE", "v.status = 'APPROVED'", "v.valid_until > NOW()", "v.used_quantity < v.total_quantity"]
+        params = []
+
+        if search and search.strip():
+            clean_search = f"%{search.strip()}%"
+            conditions.append("(v.code ILIKE %s OR v.description ILIKE %s OR u.full_name ILIKE %s)")
+            params.extend([clean_search, clean_search, clean_search])
+
+        if partner_id and partner_id.strip():
+            conditions.append("v.issuer_id::text = %s")
+            params.append(partner_id.strip())
+
+        query = f"""
+            SELECT v.*, u.full_name as partner_name, u.username as partner_username, u.avatar_url as partner_avatar
             FROM vouchers v
             LEFT JOIN users u ON v.issuer_id = u.id
-            WHERE v.is_vip = TRUE AND v.status = 'APPROVED' 
-              AND v.valid_until > NOW() 
-              AND v.used_quantity < v.total_quantity
+            WHERE {' AND '.join(conditions)}
             ORDER BY v.created_at DESC
-        """)
+        """
+        cur.execute(query, tuple(params))
         return {"status": "success", "data": cur.fetchall()}
+    except Exception as e:
+        print(f"[DEBUG-VIP-SHOP-ERROR] Lỗi truy vấn sàn VIP Voucher: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     finally: cur.close()
 
 @app.post("/vouchers/{voucher_code}/buy-with-points", tags=["Vouchers"])
 def buy_vip_voucher_with_points(voucher_code: str, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
+    clean_code = voucher_code.strip().upper()
     try:
-        # Giao dịch Nguyên Tử bọc thép (Atomic Transaction & Row Lock)
+        print(f"[DEBUG-BUY-VIP] User {current_user.id} bắt đầu mua Voucher VIP: {clean_code}")
+        
+        # 1. Khóa tài khoản User & kiểm tra số dư điểm
         cur.execute("SELECT points_balance FROM users WHERE id = %s FOR UPDATE", (current_user.id,))
         user = cur.fetchone()
-        if not user: raise HTTPException(status_code=404)
-        
-        cur.execute("SELECT id, total_quantity, used_quantity, point_price, valid_until, status FROM vouchers WHERE code = %s AND is_vip = TRUE FOR UPDATE", (voucher_code,))
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy thông tin người dùng.")
+
+        # 2. Khóa thông tin Voucher VIP để chống Race Condition vượt số lượng
+        cur.execute("""
+            SELECT id, code, total_quantity, used_quantity, point_price, valid_until, status, issuer_id 
+            FROM vouchers 
+            WHERE code = %s AND is_vip = TRUE 
+            FOR UPDATE
+        """, (clean_code,))
         voucher = cur.fetchone()
         
-        if not voucher or voucher['status'] != 'APPROVED': raise HTTPException(status_code=400, detail="Mã VIP không tồn tại hoặc chưa duyệt.")
-        if voucher['used_quantity'] >= voucher['total_quantity']: raise HTTPException(status_code=400, detail="Mã VIP đã hết số lượng.")
-        if voucher['valid_until'] < datetime.now(): raise HTTPException(status_code=400, detail="Mã VIP đã hết hạn.")
-        if float(user['points_balance']) < float(voucher['point_price']): raise HTTPException(status_code=400, detail="Không đủ điểm để mua mã VIP này.")
+        if not voucher or voucher['status'] != 'APPROVED':
+            raise HTTPException(status_code=400, detail="Mã VIP không tồn tại hoặc chưa được duyệt.")
+        if voucher['used_quantity'] >= voucher['total_quantity']:
+            raise HTTPException(status_code=400, detail="Mã VIP này đã hết số lượng phát hành.")
+        if voucher['valid_until'] < datetime.now():
+            raise HTTPException(status_code=400, detail="Mã VIP này đã hết hạn sử dụng.")
+            
+        point_cost = float(voucher['point_price'])
+        current_points = float(user['points_balance'])
         
-        cur.execute("UPDATE users SET points_balance = points_balance - %s WHERE id = %s", (voucher['point_price'], current_user.id))
+        if current_points < point_cost:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Số dư không đủ! Cần {point_cost:,.0f} điểm (Hiện có: {current_points:,.0f} điểm)."
+            )
+
+        # 3. Kiểm tra xem người dùng đã sở hữu Voucher này trong ví chưa
+        cur.execute("SELECT id FROM user_vouchers WHERE user_id = %s AND voucher_id = %s", (current_user.id, voucher['id']))
+        if cur.fetchone():
+            raise HTTPException(status_code=400, detail="Bạn đã sở hữu Voucher VIP này trong ví rồi!")
+
+        # 4. Giao dịch nguyên tử: Trừ điểm, tăng số lượng đã dùng, cấp voucher vào ví
+        new_balance = current_points - point_cost
+        cur.execute("UPDATE users SET points_balance = %s WHERE id = %s", (new_balance, current_user.id))
         cur.execute("UPDATE vouchers SET used_quantity = used_quantity + 1 WHERE id = %s", (voucher['id'],))
-        cur.execute("INSERT INTO user_vouchers (user_id, voucher_id, status) VALUES (%s, %s, 'UNUSED') RETURNING id", (current_user.id, voucher['id']))
-        
+        cur.execute("""
+            INSERT INTO user_vouchers (user_id, voucher_id, status, created_at) 
+            VALUES (%s, %s, 'UNUSED', NOW()) 
+            RETURNING id
+        """, (current_user.id, voucher['id']))
+        user_voucher_id = cur.fetchone()['id']
+
+        # 5. Gửi thông báo xác nhận giao dịch thành công về máy
+        from notification_service import NotificationService
+        NotificationService.dispatch_event(
+            conn,
+            user_id=current_user.id,
+            event_type="LEGACY",
+            reference_id=str(user_voucher_id),
+            metadata={
+                "category": "SYSTEM",
+                "title": "🎉 Đổi Voucher VIP thành công",
+                "message": f"Bạn đã đổi thành công Voucher VIP [{clean_code}]. Đã lưu vào mục Ưu Đãi."
+            },
+            sender_id=voucher.get('issuer_id')
+        )
+
         conn.commit()
-        return {"status": "success", "message": "Mua Voucher VIP thành công!"}
+        print(f"[DEBUG-BUY-VIP-SUCCESS] Mua thành công Voucher {clean_code} | Điểm còn lại: {new_balance}")
+        return {
+            "status": "success", 
+            "message": "Mua Voucher VIP thành công!", 
+            "data": {
+                "user_voucher_id": str(user_voucher_id),
+                "remaining_points": new_balance,
+                "voucher_code": clean_code
+            }
+        }
     except HTTPException:
         conn.rollback()
         raise
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        print(f"[DEBUG-BUY-VIP-DUPLICATE] Xảy ra xung đột Unique Constraint khi cấp voucher: {clean_code}")
+        raise HTTPException(status_code=400, detail="Bạn đã sở hữu Voucher VIP này trong ví rồi!")
     except Exception as e:
         conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[DEBUG-BUY-VIP-EXCEPTION] Lỗi không xác định khi mua VIP voucher: {e}")
+        raise HTTPException(status_code=500, detail="Lỗi hệ thống trong quá trình mua voucher.")
     finally: cur.close()
