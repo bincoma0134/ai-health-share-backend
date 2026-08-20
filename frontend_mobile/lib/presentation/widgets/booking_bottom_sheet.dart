@@ -342,24 +342,37 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     }
   }
 
+  bool _isAppliedVoucherVip = false;
+  String? _appliedVoucherFixedSlot;
+
   // 🚀 ĐÃ DỨT ĐIỂM 404: Tự động tính toán trực tiếp bằng Frontend giống hệt Web (Zero-latency)
   void _applyVoucherLocal(Map<String, dynamic> voucher, {bool isAutoInjection = false}) {
     final String code = voucher['code'] ?? '';
     final bool isVip = voucher['is_vip'] ?? false;
     final String? fixedSlot = voucher['fixed_time_slot'];
 
-    if (isVip && fixedSlot != null) {
+    if (isVip && fixedSlot != null && fixedSlot.isNotEmpty) {
       try {
         // Parse "HH:mm - HH:mm" or "HH:mm"
         final startTimeStr = fixedSlot.split('-').first.trim();
         final parts = startTimeStr.split(':');
         _preferredTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
         _isTimeLocked = true;
-      } catch (_) {}
+        _isAppliedVoucherVip = true;
+        _appliedVoucherFixedSlot = fixedSlot;
+      } catch (e) {
+        print('[DEBUG-APPLY-VOUCHER] Lỗi parse khung giờ VIP: $e');
+        _isTimeLocked = false;
+        _isAppliedVoucherVip = false;
+        _appliedVoucherFixedSlot = null;
+      }
     } else {
       _isTimeLocked = false;
+      _isAppliedVoucherVip = false;
+      _appliedVoucherFixedSlot = null;
     }
-    final String title = voucher['title'] ?? 'Ưu đãi';
+
+    final String title = voucher['title'] ?? (isVip ? 'Đặc quyền VIP Pass' : 'Ưu đãi');
     final String type = voucher['discount_type'] ?? 'FIXED';
     final double value = (voucher['discount_value'] ?? 0).toDouble();
     final double maxDiscount = (voucher['max_discount_amount'] ?? 0).toDouble();
@@ -397,8 +410,12 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         isSuccess: true
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Áp dụng mã ưu đãi thành công!'), backgroundColor: Color(0xFF80BF84))
+      AppToast.show(
+        context: context,
+        message: isVip 
+            ? '👑 Áp dụng VIP Pass thành công! Khung giờ đã được khóa: $fixedSlot' 
+            : 'Áp dụng mã ưu đãi thành công!',
+        isSuccess: true,
       );
     }
   }
@@ -944,73 +961,84 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                 // 🚀 NÂNG CẤP: BLOCK CHỌN CẢ NGÀY + GIỜ VÀ BỘ ĐẾM SỐ KHÁCH MINH BẠCH (CHỐNG TRÀN RIGHT OVERFLOW)
                 Row(
                   children: [
-                    // 1. Cụm chọn Ngày & Giờ (Date & Time Picker)
+                    // 1. Cụm chọn Ngày & Giờ (Date & Time Picker - Khóa Giờ nhưng Cho phép Chọn Ngày khi dùng VIP)
                     Expanded(
                       flex: 7,
                       child: GestureDetector(
-                        onTap: _isTimeLocked
-                            ? null
-                            : () async {
-                                try {
-                                  // Bước 1: Chọn ngày (Tối thiểu là ngày hôm nay)
-                                  final pickedDate = await showDatePicker(
-                                    context: context,
-                                    initialDate: _preferredDate,
-                                    firstDate: DateTime.now(),
-                                    lastDate: DateTime.now().add(const Duration(days: 180)),
-                                    builder: (context, child) {
-                                      return Theme(
-                                        data: ThemeData.light().copyWith(
-                                          primaryColor: const Color(0xFF80BF84),
-                                          colorScheme: const ColorScheme.light(primary: Color(0xFF80BF84)),
-                                        ),
-                                        child: child!,
-                                      );
-                                    },
-                                  );
-
-                                  if (pickedDate == null || !mounted) return;
-
-                                  // Bước 2: Chọn giờ (Chuẩn quốc tế 24h)
-                                  final pickedTime = await showTimePicker(
-                                    context: context,
-                                    initialTime: _preferredTime ?? const TimeOfDay(hour: 9, minute: 0),
-                                    builder: (context, child) {
-                                      return MediaQuery(
-                                        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-                                        child: Theme(
-                                          data: ThemeData.light().copyWith(
-                                            primaryColor: const Color(0xFF80BF84),
-                                            colorScheme: const ColorScheme.light(primary: Color(0xFF80BF84)),
-                                          ),
-                                          child: child!,
-                                        ),
-                                      );
-                                    },
-                                  );
-
-                                  if (pickedTime != null) {
-                                    setState(() {
-                                      _preferredDate = pickedDate;
-                                      _preferredTime = pickedTime;
-                                    });
-                                  }
-                                } catch (e) {
-                                  print("[ERROR-PICKER] Lỗi chọn ngày/giờ: $e");
-                                }
+                        onTap: () async {
+                          try {
+                            // Bước 1: Luôn cho phép người dùng chọn Ngày đặt hẹn
+                            final pickedDate = await showDatePicker(
+                              context: context,
+                              initialDate: _preferredDate,
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime.now().add(const Duration(days: 180)),
+                              builder: (context, child) {
+                                return Theme(
+                                  data: ThemeData.light().copyWith(
+                                    primaryColor: _isTimeLocked ? const Color(0xFFFE2C55) : const Color(0xFF80BF84),
+                                    colorScheme: ColorScheme.light(primary: _isTimeLocked ? const Color(0xFFFE2C55) : const Color(0xFF80BF84)),
+                                  ),
+                                  child: child!,
+                                );
                               },
+                            );
+
+                            if (pickedDate == null || !mounted) return;
+
+                            // Bước 2: Nếu bị khóa giờ bởi VIP Voucher -> Tự động giữ nguyên giờ VIP, không mở TimePicker
+                            if (_isTimeLocked) {
+                              setState(() {
+                                _preferredDate = pickedDate;
+                              });
+                              AppToast.show(
+                                context: context,
+                                message: 'Đã đổi ngày hẹn! Giờ hẹn được cố định bởi VIP Voucher: ${_appliedVoucherFixedSlot ?? ""}',
+                                isSuccess: true,
+                              );
+                              return;
+                            }
+
+                            // Bước 3: Nếu không dùng VIP -> Mở TimePicker bình thường
+                            final pickedTime = await showTimePicker(
+                              context: context,
+                              initialTime: _preferredTime ?? const TimeOfDay(hour: 9, minute: 0),
+                              builder: (context, child) {
+                                return MediaQuery(
+                                  data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+                                  child: Theme(
+                                    data: ThemeData.light().copyWith(
+                                      primaryColor: const Color(0xFF80BF84),
+                                      colorScheme: const ColorScheme.light(primary: Color(0xFF80BF84)),
+                                    ),
+                                    child: child!,
+                                  ),
+                                );
+                              },
+                            );
+
+                            if (pickedTime != null) {
+                              setState(() {
+                                _preferredDate = pickedDate;
+                                _preferredTime = pickedTime;
+                              });
+                            }
+                          } catch (e) {
+                            print("[ERROR-PICKER] Lỗi chọn ngày/giờ: $e");
+                          }
+                        },
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
                           decoration: BoxDecoration(
-                            color: _isTimeLocked ? const Color(0xFFF1F5F9) : Colors.white,
+                            color: _isTimeLocked ? const Color(0xFFFFF1F2) : Colors.white,
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            border: Border.all(color: _isTimeLocked ? const Color(0xFFFDA4AF) : const Color(0xFFE2E8F0)),
                           ),
                           child: Row(
                             children: [
                               Icon(
                                 _isTimeLocked ? Icons.lock_clock_rounded : Icons.calendar_today_rounded,
-                                color: const Color(0xFF64748B),
+                                color: _isTimeLocked ? const Color(0xFFE11D48) : const Color(0xFF64748B),
                                 size: 16,
                               ),
                               const SizedBox(width: 6),
@@ -1026,10 +1054,24 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                     }
                                     final dateStr = DateFormat('dd/MM').format(_preferredDate);
                                     final timeStr = '${_preferredTime!.hour.toString().padLeft(2, '0')}:${_preferredTime!.minute.toString().padLeft(2, '0')}';
-                                    return Text(
-                                      '$timeStr • $dateStr',
-                                      style: const TextStyle(color: Color(0xFF1E293B), fontSize: 12, fontWeight: FontWeight.bold),
-                                      overflow: TextOverflow.ellipsis,
+                                    return Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            '$timeStr • $dateStr',
+                                            style: TextStyle(color: _isTimeLocked ? const Color(0xFF9F1239) : const Color(0xFF1E293B), fontSize: 12, fontWeight: FontWeight.bold),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (_isTimeLocked)
+                                          Container(
+                                            margin: const EdgeInsets.only(left: 4),
+                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                            decoration: BoxDecoration(color: const Color(0xFFFE2C55), borderRadius: BorderRadius.circular(4)),
+                                            child: const Text('VIP', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900)),
+                                          ),
+                                      ],
                                     );
                                   },
                                 ),
@@ -1122,17 +1164,23 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                 _buildSoftInput(_noteCtrl, 'Bạn cần lưu ý thêm điều gì không?', Icons.edit_note_rounded),
                 _buildSoftInput(_affiliateCtrl, 'Mã giới thiệu (Affiliate) nếu có', Icons.handshake_rounded),
 
-                // BAR CHỌN VOUCHER TỪ VÍ (Premium Ticket-Cut Effect)
+                // BAR CHỌN VOUCHER TỪ VÍ (Premium Ticket-Cut Effect với Style VIP Đỏ Nổi Bật)
                 Container(
                   margin: const EdgeInsets.only(top: 4, bottom: 24),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: _isVoucherSuccess 
-                          ? [const Color(0xFFE8F5E9), const Color(0xFFC8E6C9)] 
+                          ? (_isAppliedVoucherVip 
+                              ? [const Color(0xFFFFF1F2), const Color(0xFFFFE4E6)] 
+                              : [const Color(0xFFE8F5E9), const Color(0xFFC8E6C9)]) 
                           : [const Color(0xFFF8FAFC), const Color(0xFFF1F5F9)],
                     ),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: _isVoucherSuccess ? const Color(0xFF80BF84).withValues(alpha: 0.5) : const Color(0xFFE2E8F0)),
+                    border: Border.all(
+                      color: _isVoucherSuccess 
+                          ? (_isAppliedVoucherVip ? const Color(0xFFFE2C55).withValues(alpha: 0.6) : const Color(0xFF80BF84).withValues(alpha: 0.5)) 
+                          : const Color(0xFFE2E8F0)
+                    ),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
@@ -1156,15 +1204,51 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                               child: Row(
                                 children: [
-                                  Icon(Icons.local_activity_rounded, color: _isVoucherSuccess ? const Color(0xFF388E3C) : const Color(0xFF64748B), size: 22),
+                                  Icon(
+                                    _isAppliedVoucherVip ? Icons.stars_rounded : Icons.local_activity_rounded, 
+                                    color: _isVoucherSuccess 
+                                        ? (_isAppliedVoucherVip ? const Color(0xFFE11D48) : const Color(0xFF388E3C)) 
+                                        : const Color(0xFF64748B), 
+                                    size: 24
+                                  ),
                                   const SizedBox(width: 14),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(_isVoucherSuccess ? 'Mã ưu đãi đã áp dụng' : 'Ưu đãi & Voucher', style: const TextStyle(color: Color(0xFF1E293B), fontSize: 13, fontWeight: FontWeight.w800)),
+                                        Row(
+                                          children: [
+                                            Text(
+                                              _isVoucherSuccess ? (_isAppliedVoucherVip ? '👑 VIP Pass Đã Áp Dụng' : 'Mã ưu đãi đã áp dụng') : 'Ưu đãi & Voucher', 
+                                              style: TextStyle(
+                                                color: _isAppliedVoucherVip ? const Color(0xFF9F1239) : const Color(0xFF1E293B), 
+                                                fontSize: 13, 
+                                                fontWeight: FontWeight.w800
+                                              )
+                                            ),
+                                            if (_isAppliedVoucherVip && _appliedVoucherFixedSlot != null) ...[
+                                              const SizedBox(width: 6),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(color: const Color(0xFFFE2C55), borderRadius: BorderRadius.circular(6)),
+                                                child: Text(_appliedVoucherFixedSlot!, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900)),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
                                         const SizedBox(height: 2),
-                                        Text(_isVoucherSuccess ? _appliedVoucherCode! : 'Bấm để lựa chọn từ ví cá nhân', style: TextStyle(color: _isVoucherSuccess ? const Color(0xFF2E7D32) : const Color(0xFF64748B), fontSize: 12, fontWeight: _isVoucherSuccess ? FontWeight.w900 : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        Text(
+                                          _isVoucherSuccess ? _appliedVoucherCode! : 'Bấm để lựa chọn từ ví cá nhân', 
+                                          style: TextStyle(
+                                            color: _isVoucherSuccess 
+                                                ? (_isAppliedVoucherVip ? const Color(0xFFE11D48) : const Color(0xFF2E7D32)) 
+                                                : const Color(0xFF64748B), 
+                                            fontSize: 12, 
+                                            fontWeight: _isVoucherSuccess ? FontWeight.w900 : FontWeight.normal
+                                          ), 
+                                          maxLines: 1, 
+                                          overflow: TextOverflow.ellipsis
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -1173,7 +1257,15 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                   else if (_isVoucherSuccess)
                                     IconButton(
                                       icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 18),
-                                      onPressed: () => setState(() { _isVoucherSuccess = false; _appliedVoucherCode = null; _appliedVoucherTitle = ''; _discountAmount = 0; _isTimeLocked = false; }),
+                                      onPressed: () => setState(() { 
+                                        _isVoucherSuccess = false; 
+                                        _appliedVoucherCode = null; 
+                                        _appliedVoucherTitle = ''; 
+                                        _discountAmount = 0; 
+                                        _isTimeLocked = false; 
+                                        _isAppliedVoucherVip = false;
+                                        _appliedVoucherFixedSlot = null;
+                                      }),
                                     )
                                   else
                                     const Icon(Icons.chevron_right_rounded, color: Color(0xFF64748B), size: 20),

@@ -2344,13 +2344,30 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
             """, (current_user.id, voucher_code))
             uv = cur.fetchone()
             
-            # BỌC THÉP VIP VOUCHER
-            if uv and uv.get("is_vip"):
-                if str(uv["issuer_id"]) != str(partner_id):
+            # BỌC THÉP VIP VOUCHER: Đối soát múi giờ Việt Nam (UTC+7) chuẩn xác
+            def _validate_vip_slot(v_dict, req_time_str, p_id):
+                if str(v_dict["issuer_id"]) != str(p_id):
+                    print(f"[DEBUG-BOOKING-VIP-ERR] Sai đối tác phát hành: Voucher={v_dict['issuer_id']} vs Request={p_id}")
                     raise HTTPException(status_code=400, detail="Voucher VIP này không áp dụng cho cơ sở này!")
-                if uv.get("fixed_time_slot") and preferred_time:
-                    if uv["fixed_time_slot"] != preferred_time:
-                        raise HTTPException(status_code=400, detail=f"Voucher VIP chỉ áp dụng cho khung giờ {uv['fixed_time_slot']}")
+                
+                slot_rule = v_dict.get("fixed_time_slot")
+                if slot_rule and req_time_str:
+                    try:
+                        # Parse thời gian client gửi lên (UTC) và quy đổi về giờ Việt Nam (UTC+7)
+                        parsed_dt = datetime.fromisoformat(req_time_str.replace("Z", "+00:00"))
+                        vn_dt = parsed_dt.astimezone(timezone(timedelta(hours=7))) if parsed_dt.tzinfo else (parsed_dt + timedelta(hours=7))
+                        client_hour_str = vn_dt.strftime("%H:%M")
+                        
+                        # Trích xuất giờ bắt đầu của khung giờ cố định (VD: "08:00 - 10:00" -> "08:00")
+                        slot_start_str = slot_rule.split("-")[0].strip()
+                        if client_hour_str != slot_start_str and slot_rule != req_time_str:
+                            print(f"[DEBUG-BOOKING-VIP-MISMATCH] Lệch giờ VIP: Client chọn {client_hour_str} vs Khung giờ {slot_rule}")
+                            raise HTTPException(status_code=400, detail=f"Voucher VIP chỉ áp dụng cho khung giờ cố định: {slot_rule}")
+                    except ValueError as ve:
+                        print(f"[DEBUG-BOOKING-VIP-PARSE-ERR] Lỗi định dạng thời gian: {ve}")
+
+            if uv and uv.get("is_vip"):
+                _validate_vip_slot(uv, preferred_time, partner_id)
 
             if uv:
                 applied_uv_id = uv["id"]
@@ -2360,11 +2377,7 @@ def request_appointment(payload: dict, current_user = Depends(verify_user_token)
                 public_v = cur.fetchone()
                 if public_v:
                     if public_v.get("is_vip"):
-                        if str(public_v["issuer_id"]) != str(partner_id):
-                            raise HTTPException(status_code=400, detail="Voucher VIP này không áp dụng cho cơ sở này!")
-                        if public_v.get("fixed_time_slot") and preferred_time:
-                            if public_v["fixed_time_slot"] != preferred_time:
-                                raise HTTPException(status_code=400, detail=f"Voucher VIP chỉ áp dụng cho khung giờ {public_v['fixed_time_slot']}")
+                        _validate_vip_slot(public_v, preferred_time, partner_id)
                     try:
                         cur.execute("INSERT INTO user_vouchers (user_id, voucher_id, status) VALUES (%s, %s, 'LOCKED') RETURNING id", (current_user.id, public_v["id"]))
                         applied_uv_id = cur.fetchone()["id"]
