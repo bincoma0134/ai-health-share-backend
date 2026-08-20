@@ -271,13 +271,12 @@ def login(payload: schemas.UserLogin, conn=Depends(get_db_connection)):
                 raise HTTPException(status_code=401, detail="Mật khẩu không chính xác. Vui lòng thử lại!")
 
         token = create_access_token({"sub": str(user["id"]), "email": user["email"], "role": user["role"]})
-        refresh_token = create_refresh_token({"sub": str(user["id"]), "email": user["email"], "role": user["role"]})
         
-        print(f"[DEBUG-LOGIN-SUCCESS] Đăng nhập thành công User #{user['id']} (Role: {user.get('role')})")
+        print(f"[DEBUG-LOGIN-SUCCESS] Đăng nhập thành công User #{user['id']} (Role: {user.get('role')}) - Tối ưu 1x JWT signature")
         return {
             "status": "success", 
             "access_token": token, 
-            "refresh_token": refresh_token, 
+            "token_type": "bearer",
             "user": {
                 "id": user["id"], 
                 "email": user["email"], 

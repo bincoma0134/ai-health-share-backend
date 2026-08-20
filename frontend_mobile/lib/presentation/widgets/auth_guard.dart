@@ -57,7 +57,40 @@ class AuthNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Làm mới và đồng bộ lại trạng thái từ Storage (được gọi ngay sau khi Đăng nhập/Đăng ký/Logout thành công)
+  /// 🚀 TĂNG TỐC ĐĂNG NHẬP 0MS: Nạp trực tiếp phiên làm việc vào RAM không qua I/O ổ đĩa
+  void setSession({
+    required String token,
+    required String role,
+    required String name,
+    String? userId,
+  }) {
+    print('[DEBUG-AUTH-NOTIFIER] Thiết lập phiên làm việc tức thì vào RAM (0ms latency)');
+    _token = token;
+    _role = role.trim().toUpperCase();
+    _name = name;
+
+    if (userId != null && userId.isNotEmpty) {
+      _userId = userId;
+    } else {
+      // Tự động giải mã ID từ JWT Payload nếu client không truyền
+      final parts = token.split('.');
+      if (parts.length == 3) {
+        try {
+          final String normalizedPayload = base64Url.normalize(parts[1]);
+          final String decodedString = utf8.decode(base64Url.decode(normalizedPayload));
+          final Map<String, dynamic> payload = json.decode(decodedString);
+          _userId = (payload['sub'] ?? payload['user_id'] ?? payload['uid'])?.toString();
+        } catch (e) {
+          print('[DEBUG-AUTH-NOTIFIER-WARN] Không thể giải mã userId từ token: $e');
+        }
+      }
+    }
+
+    _isInitialized = true;
+    notifyListeners(); // Kích hoạt cập nhật UI toàn hệ thống tức thời
+  }
+
+  /// Làm mới và đồng bộ lại trạng thái từ Storage (được gọi khi cần đối soát lại ổ đĩa)
   Future<void> refresh() async {
     await _loadSessionFromStorage();
     notifyListeners();

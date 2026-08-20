@@ -79,21 +79,30 @@ class _LoginScreenState extends State<LoginScreen> {
       if (isLogin) {
         final res = await UserApiService.loginEmail(email, pass);
         if (res != null && res['access_token'] != null) {
+          final token = res['access_token'] as String;
           final fullName = res['user']['full_name'] ?? 'bạn';
           final role = res['user']['role'] ?? 'USER';
+          final userId = res['user']['id']?.toString();
 
-          // 🚀 TĂNG TỐC ĐĂNG NHẬP: Ghi đĩa KeyStore/Keychain song song (Giảm 66% thời gian I/O)
-          await Future.wait([
-            SecureStorageService.saveToken(res['access_token']),
+          // 🚀 TỐC ĐỘ 0MS: Cập nhật RAM State ngay lập tức
+          AuthNotifier.instance.setSession(
+            token: token,
+            role: role,
+            name: fullName,
+            userId: userId,
+          );
+
+          // Ghi đĩa bảo mật chạy nền (Non-blocking I/O, không bắt UI phải chờ)
+          Future.wait([
+            SecureStorageService.saveToken(token),
             SecureStorageService.saveRole(role),
             SecureStorageService.saveName(fullName),
-          ]);
-
-          // ĐỒNG BỘ RAM: Ép nạp lại dữ liệu mới nhất từ Storage
-          await AuthNotifier.instance.refresh();
+          ]).catchError((err) {
+            print('[DEBUG-STORAGE-ASYNC-ERR] Lỗi ghi đĩa ngầm: $err');
+          });
 
           if (mounted) {
-            print('[DEBUG-AUTH-SUCCESS] Đăng nhập thành công -> Điều hướng /');
+            print('[DEBUG-AUTH-SUCCESS] Đăng nhập thành công -> Điều hướng / tức thì');
             AppToast.show(
               context: context, 
               message: 'Chào mừng $fullName trở lại hệ thống!', 
@@ -178,17 +187,30 @@ class _LoginScreenState extends State<LoginScreen> {
         final res = await UserApiService.loginFirebase(idToken);
         
         if (res != null && res['access_token'] != null) {
+          final token = res['access_token'] as String;
           final fullName = res['user']['full_name'] ?? 'bạn';
           final role = res['user']['role'] ?? 'USER';
-          
-          await SecureStorageService.saveToken(res['access_token']);
-          await SecureStorageService.saveRole(role);
-          await SecureStorageService.saveName(fullName);
+          final userId = res['user']['id']?.toString();
 
-          await AuthNotifier.instance.refresh();
+          // 🚀 TỐC ĐỘ 0MS: Cập nhật RAM State ngay lập tức
+          AuthNotifier.instance.setSession(
+            token: token,
+            role: role,
+            name: fullName,
+            userId: userId,
+          );
+
+          // Ghi đĩa bảo mật chạy nền (Non-blocking I/O)
+          Future.wait([
+            SecureStorageService.saveToken(token),
+            SecureStorageService.saveRole(role),
+            SecureStorageService.saveName(fullName),
+          ]).catchError((err) {
+            print('[DEBUG-SOCIAL-STORAGE-ASYNC-ERR] Lỗi ghi đĩa ngầm: $err');
+          });
 
           if (mounted) {
-            print('[DEBUG-SOCIAL-AUTH-SUCCESS] Đăng nhập $provider thành công -> Điều hướng /');
+            print('[DEBUG-SOCIAL-AUTH-SUCCESS] Đăng nhập $provider thành công -> Điều hướng / tức thì');
             AppToast.show(
               context: context, 
               message: 'Chào mừng $fullName trở lại hệ thống!', 
