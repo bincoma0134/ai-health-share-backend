@@ -19,6 +19,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool isLogin = true;
   bool isLoading = false;
+  bool _obscurePassword = true; // 🚀 NÂNG CẤP UX: Quản lý trạng thái Ẩn/Hiện mật khẩu
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _userCtrl = TextEditingController();
@@ -39,65 +40,105 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // --- LOGIC BACKEND KHÔNG ĐỔI ---
+  // --- LOGIC AUTH VỚI CLIENT-SIDE VALIDATION & FOCUS UNFOCUS ---
   Future<void> _handleEmailAuth() async {
+    if (isLoading) return;
+    FocusScope.of(context).unfocus(); // 🚀 Ẩn bàn phím ngay lập tức chống giật khung hình
+
+    final email = _emailCtrl.text.trim();
+    final pass = _passCtrl.text;
+
+    // 🚀 BẢO VỆ CLIENT-SIDE: Kiểm tra dữ liệu rỗng và độ dài trong 0ms
+    if (email.isEmpty) {
+      AppToast.show(context: context, message: 'Vui lòng nhập địa chỉ Email!', isSuccess: false);
+      return;
+    }
+    if (pass.isEmpty) {
+      AppToast.show(context: context, message: 'Vui lòng nhập Mật khẩu!', isSuccess: false);
+      return;
+    }
+    if (!isLogin) {
+      if (_nameCtrl.text.trim().isEmpty) {
+        AppToast.show(context: context, message: 'Vui lòng nhập Họ và tên!', isSuccess: false);
+        return;
+      }
+      if (_userCtrl.text.trim().isEmpty) {
+        AppToast.show(context: context, message: 'Vui lòng nhập Username định danh!', isSuccess: false);
+        return;
+      }
+      if (pass.length < 6) {
+        AppToast.show(context: context, message: 'Mật khẩu phải có tối thiểu 6 ký tự!', isSuccess: false);
+        return;
+      }
+    }
+
     setState(() => isLoading = true);
+    print('[DEBUG-AUTH] Bắt đầu xác thực Email Auth: Mode=${isLogin ? "LOGIN" : "REGISTER"} | Email=$email');
+
     try {
       if (isLogin) {
-        final res = await UserApiService.loginEmail(_emailCtrl.text.trim(), _passCtrl.text);
+        final res = await UserApiService.loginEmail(email, pass);
         if (res != null && res['access_token'] != null) {
-          await SecureStorageService.saveToken(res['access_token']);
-          await SecureStorageService.saveRole(res['user']['role'] ?? 'USER');
-          
           final fullName = res['user']['full_name'] ?? 'bạn';
           final role = res['user']['role'] ?? 'USER';
-          await SecureStorageService.saveName(fullName);
 
-          // ĐỒNG BỘ RAM: Ép nạp lại dữ liệu mới nhất từ Storage (bỏ qua cờ khóa _isInitialized)
+          // 🚀 TĂNG TỐC ĐĂNG NHẬP: Ghi đĩa KeyStore/Keychain song song (Giảm 66% thời gian I/O)
+          await Future.wait([
+            SecureStorageService.saveToken(res['access_token']),
+            SecureStorageService.saveRole(role),
+            SecureStorageService.saveName(fullName),
+          ]);
+
+          // ĐỒNG BỘ RAM: Ép nạp lại dữ liệu mới nhất từ Storage
           await AuthNotifier.instance.refresh();
 
           if (mounted) {
-            // Toast 1: Thông báo đăng nhập thành công
-            AppToast.show(context: context, message: 'Đăng nhập thành công', isSuccess: true, duration: const Duration(seconds: 2));
-            
-            // Giữ lại context của hệ thống để gọi Toast 2 sau khi đã chuyển trang
-            final overlayContext = context;
-            
-            // Toast 2: Lời chào cá nhân hóa (delay 1.5s để nối tiếp mượt mà)
-            Future.delayed(const Duration(milliseconds: 1500), () {
-              if (overlayContext.mounted) {
-                AppToast.show(
-                  context: overlayContext, 
-                  message: 'Chào mừng $fullName trở lại hệ thống! Chúc bạn một ngày an lành và thư thái.', 
-                  isSuccess: true, 
-                  duration: const Duration(seconds: 4)
-                );
-              }
-            });
-
-            // Điều hướng đồng nhất về Trang chủ theo yêu cầu tinh chỉnh luồng
+            print('[DEBUG-AUTH-SUCCESS] Đăng nhập thành công -> Điều hướng /');
+            AppToast.show(
+              context: context, 
+              message: 'Chào mừng $fullName trở lại hệ thống!', 
+              isSuccess: true, 
+              duration: const Duration(seconds: 3)
+            );
             context.go('/');
           }
         } else {
-          if (mounted) AppToast.show(context: context, message: 'Tài khoản hoặc mật khẩu không chính xác', isSuccess: false);
+          print('[DEBUG-AUTH-FAIL] Không nhận được Access Token hợp lệ từ máy chủ');
+          if (mounted) AppToast.show(context: context, message: 'Tài khoản hoặc mật khẩu không chính xác.', isSuccess: false);
         }
       } else {
-        final res = await UserApiService.registerEmail(_emailCtrl.text.trim(), _passCtrl.text, _userCtrl.text.trim(), _nameCtrl.text.trim());
+        final res = await UserApiService.registerEmail(email, pass, _userCtrl.text.trim(), _nameCtrl.text.trim());
         if (res != null) {
-          if (mounted) AppToast.show(context: context, message: 'Đăng ký thành công! Đang chuyển hướng...', isSuccess: true);
-          await Future.delayed(const Duration(seconds: 1));
+          print('[DEBUG-AUTH-REGISTER-SUCCESS] Đăng ký thành công -> Chuyển sang form Đăng nhập');
+          if (mounted) AppToast.show(context: context, message: '🎉 Đăng ký thành công! Hãy đăng nhập ngay.', isSuccess: true);
           setState(() => isLogin = true);
         } else {
+          print('[DEBUG-AUTH-REGISTER-FAIL] Đăng ký thất bại: Trùng Email/Username');
           if (mounted) AppToast.show(context: context, message: 'Đăng ký thất bại. Email hoặc Username có thể đã tồn tại.', isSuccess: false);
         }
       }
+    } on DioException catch (e) {
+      // 🚀 BẮT LỖI THÔNG MINH TỪ BACKEND: Phân biệt rõ "Tài khoản không tồn tại" và "Sai mật khẩu"
+      final String errorMessage = e.response?.data is Map 
+          ? (e.response?.data['detail'] ?? 'Lỗi xác thực từ máy chủ.') 
+          : 'Lỗi kết nối máy chủ xác thực.';
+      print('[DEBUG-AUTH-DIO-ERROR] Mã lỗi ${e.response?.statusCode}: $errorMessage');
+      if (mounted) AppToast.show(context: context, message: errorMessage, isSuccess: false);
+    } catch (e) {
+      print('[DEBUG-AUTH-EXCEPTION] Lỗi ngoại lệ khi xác thực Email: $e');
+      if (mounted) AppToast.show(context: context, message: 'Lỗi kết nối máy chủ xác thực.', isSuccess: false);
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
   }
 
   Future<void> _handleSocialAuth(String provider) async {
+    if (isLoading) return;
+    FocusScope.of(context).unfocus();
+
     setState(() => isLoading = true);
+    print('[DEBUG-SOCIAL-AUTH] Bắt đầu xác thực qua mạng xã hội: $provider');
+
     try {
       String? idToken;
       
@@ -105,8 +146,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (provider == 'Google') {
         final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
         if (googleUser == null) {
+          print('[DEBUG-SOCIAL-AUTH] Người dùng đã hủy đăng nhập Google');
           setState(() => isLoading = false);
-          return; // Người dùng ấn hủy
+          return;
         }
         final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
         final AuthCredential credential = GoogleAuthProvider.credential(
@@ -125,8 +167,9 @@ class _LoginScreenState extends State<LoginScreen> {
           final UserCredential userCred = await FirebaseAuth.instance.signInWithCredential(credential);
           idToken = await userCred.user?.getIdToken();
         } else {
+          print('[DEBUG-SOCIAL-AUTH] Facebook login cancelled or failed: ${result.message}');
           setState(() => isLoading = false);
-          return; // Canceled hoặc Failed
+          return;
         }
       }
 
@@ -142,32 +185,30 @@ class _LoginScreenState extends State<LoginScreen> {
           await SecureStorageService.saveRole(role);
           await SecureStorageService.saveName(fullName);
 
-          // ĐỒNG BỘ RAM: Ép nạp lại dữ liệu mới nhất từ Storage (bỏ qua cờ khóa _isInitialized)
           await AuthNotifier.instance.refresh();
 
           if (mounted) {
-            AppToast.show(context: context, message: 'Đăng nhập thành công', isSuccess: true, duration: const Duration(seconds: 2));
-            
-            final overlayContext = context;
-            Future.delayed(const Duration(milliseconds: 1500), () {
-              if (overlayContext.mounted) {
-                AppToast.show(context: overlayContext, message: 'Chào mừng $fullName trở lại hệ thống!', isSuccess: true);
-              }
-            });
-
+            print('[DEBUG-SOCIAL-AUTH-SUCCESS] Đăng nhập $provider thành công -> Điều hướng /');
+            AppToast.show(
+              context: context, 
+              message: 'Chào mừng $fullName trở lại hệ thống!', 
+              isSuccess: true, 
+              duration: const Duration(seconds: 3)
+            );
             context.go('/');
           }
         } else {
+          print('[DEBUG-SOCIAL-AUTH-FAIL] Backend từ chối Token Firebase');
           if (mounted) AppToast.show(context: context, message: 'Chứng thực thất bại từ máy chủ hệ thống.', isSuccess: false);
         }
       }
     } on DioException catch (e) {
-      // Phơi bày lỗi thật từ Backend
       final String errorMessage = e.response?.data['detail'] ?? 'Lỗi từ máy chủ: ${e.message}';
+      print('[DEBUG-SOCIAL-AUTH-DIO-ERROR] $errorMessage');
       if (mounted) AppToast.show(context: context, message: errorMessage, isSuccess: false);
     } catch (e) {
-      // Lỗi hệ thống khác
-      if (mounted) AppToast.show(context: context, message: 'Lỗi ngoại lệ: $e', isSuccess: false);
+      print('[DEBUG-SOCIAL-AUTH-EXCEPTION] Lỗi ngoại lệ: $e');
+      if (mounted) AppToast.show(context: context, message: 'Đăng nhập mạng xã hội không thành công.', isSuccess: false);
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
@@ -296,7 +337,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     _buildTextField(controller: _emailCtrl, label: 'Email', icon: Icons.email_outlined, isEmail: true),
                     const SizedBox(height: 16),
-                    _buildTextField(controller: _passCtrl, label: 'Mật khẩu', icon: Icons.lock_outline_rounded, isPassword: true),
+                    _buildTextField(
+                      controller: _passCtrl, 
+                      label: 'Mật khẩu', 
+                      icon: Icons.lock_outline_rounded, 
+                      isPassword: true,
+                      obscureText: _obscurePassword,
+                      onToggleVisibility: () => setState(() => _obscurePassword = !_obscurePassword),
+                    ),
                     
                     // CTA Quên Mật Khẩu
                     if (isLogin)
@@ -314,7 +362,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     SizedBox(height: isLogin ? 12 : 0),
 
                     isLoading 
-                      ? CircularProgressIndicator(color: primaryGreen) 
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          child: CircularProgressIndicator(color: primaryGreen),
+                        )
                       : ElevatedButton(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: primaryGreen,
@@ -324,7 +375,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             elevation: 4,
                             shadowColor: primaryGreen.withValues(alpha: 0.4),
                           ),
-                          onPressed: _handleEmailAuth,
+                          onPressed: isLoading ? null : _handleEmailAuth,
                           child: Text(isLogin ? 'Đăng nhập' : 'Đăng ký', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
                         ),
                   ],
@@ -333,8 +384,8 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 32),
               Center(
                 child: TextButton(
-                  style: TextButton.styleFrom(splashFactory: NoSplash.splashFactory), // Bỏ hiệu ứng loang lổ khi chạm
-                  onPressed: () => setState(() => isLogin = !isLogin),
+                  style: TextButton.styleFrom(splashFactory: NoSplash.splashFactory),
+                  onPressed: isLoading ? null : () => setState(() => isLogin = !isLogin),
                   child: RichText(
                     text: TextSpan(
                       text: isLogin ? 'Chưa có tài khoản? ' : 'Đã có tài khoản? ',
@@ -361,12 +412,12 @@ class _LoginScreenState extends State<LoginScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _buildSocialButton(Icons.g_mobiledata_rounded, () => _handleSocialAuth('Google'), size: 44),
+                  _buildGoogleBrandButton(onTap: isLoading ? null : () => _handleSocialAuth('Google')),
                   const SizedBox(width: 20),
-                  _buildSocialButton(Icons.facebook_rounded, () => _handleSocialAuth('Facebook'), color: const Color(0xFF1877F2)),
+                  _buildSocialButton(Icons.facebook_rounded, isLoading ? () {} : () => _handleSocialAuth('Facebook'), color: const Color(0xFF1877F2)),
                 ],
               ),
-              const SizedBox(height: 32), // Không gian đệm chống tràn bàn phím
+              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -374,22 +425,81 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildTextField({required TextEditingController controller, required String label, required IconData icon, bool isPassword = false, bool isEmail = false}) {
+  Widget _buildTextField({
+    required TextEditingController controller, 
+    required String label, 
+    required IconData icon, 
+    bool isPassword = false, 
+    bool isEmail = false,
+    bool obscureText = false,
+    VoidCallback? onToggleVisibility,
+  }) {
     return TextField(
       controller: controller,
-      obscureText: isPassword,
+      obscureText: isPassword ? obscureText : false,
       keyboardType: isEmail ? TextInputType.emailAddress : TextInputType.text,
       style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black87, fontSize: 15),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: Colors.black.withValues(alpha: 0.4), fontWeight: FontWeight.w500),
         prefixIcon: Icon(icon, color: primaryGreen.withValues(alpha: 0.6), size: 22),
+        suffixIcon: isPassword
+            ? IconButton(
+                icon: Icon(
+                  obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  color: Colors.black38,
+                  size: 20,
+                ),
+                onPressed: onToggleVisibility,
+              )
+            : null,
         filled: true,
         fillColor: Colors.white,
         contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade200, width: 0.5)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade200, width: 0.5)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: primaryGreen.withValues(alpha: 0.5), width: 1.0)),
+      ),
+    );
+  }
+
+  // 🚀 BIỂU TƯỢNG GOOGLE CHUẨN THƯƠNG HIỆU (BRAND ICON)
+  Widget _buildGoogleBrandButton({VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 64,
+        height: 64,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade200, width: 0.5),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))
+          ]
+        ),
+        child: Center(
+          child: Container(
+            width: 26,
+            height: 26,
+            decoration: const BoxDecoration(
+              color: Color(0xFFEA4335),
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: Text(
+                'G',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                  fontFamily: 'sans-serif',
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

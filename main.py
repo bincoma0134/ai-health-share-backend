@@ -251,9 +251,14 @@ def refresh_token_api(payload: RefreshTokenRequest):
 def login(payload: schemas.UserLogin, conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        cur.execute("SELECT * FROM users WHERE email = %s OR username = %s LIMIT 1", (payload.email, payload.email))
+        clean_account = payload.email.strip()
+        print(f"[DEBUG-LOGIN-START] Yêu cầu đăng nhập từ tài khoản: {clean_account}")
+        
+        cur.execute("SELECT * FROM users WHERE email = %s OR username = %s LIMIT 1", (clean_account, clean_account))
         user = cur.fetchone()
-        if not user: raise HTTPException(status_code=404, detail="Sai tài khoản hoặc mật khẩu!")
+        if not user:
+            print(f"[DEBUG-LOGIN-ERR-404] Tài khoản không tồn tại: {clean_account}")
+            raise HTTPException(status_code=404, detail="Tài khoản không tồn tại trên hệ thống!")
 
         # Kịch bản VÁ LỖ HỔNG: Tài khoản cũ chưa có password
         if user.get("password_hash") is None:
@@ -262,11 +267,29 @@ def login(payload: schemas.UserLogin, conn=Depends(get_db_connection)):
             conn.commit()
         else:
             if not verify_password(payload.password, user["password_hash"]):
-                raise HTTPException(status_code=401, detail="Sai tài khoản hoặc mật khẩu!")
+                print(f"[DEBUG-LOGIN-ERR-401] Mật khẩu không chính xác cho tài khoản ID: {user['id']}")
+                raise HTTPException(status_code=401, detail="Mật khẩu không chính xác. Vui lòng thử lại!")
 
         token = create_access_token({"sub": str(user["id"]), "email": user["email"], "role": user["role"]})
         refresh_token = create_refresh_token({"sub": str(user["id"]), "email": user["email"], "role": user["role"]})
-        return {"status": "success", "access_token": token, "refresh_token": refresh_token, "user": {"id": user["id"], "email": user["email"], "role": user["role"], "full_name": user.get("full_name")}}
+        
+        print(f"[DEBUG-LOGIN-SUCCESS] Đăng nhập thành công User #{user['id']} (Role: {user.get('role')})")
+        return {
+            "status": "success", 
+            "access_token": token, 
+            "refresh_token": refresh_token, 
+            "user": {
+                "id": user["id"], 
+                "email": user["email"], 
+                "role": user["role"], 
+                "full_name": user.get("full_name")
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[DEBUG-LOGIN-EXCEPTION] Lỗi không xác định khi đăng nhập: {e}")
+        raise HTTPException(status_code=500, detail=f"Lỗi hệ thống máy chủ xác thực: {str(e)}")
     finally: cur.close()
 
 @app.post("/auth/register", tags=["Auth"])

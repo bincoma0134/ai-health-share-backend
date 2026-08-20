@@ -41,46 +41,75 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   }
 
   Future<void> _initializeApp() async {
-    // 1. Giảm thời gian chờ cứng xuống 1.5s để nhường thời gian cho việc gọi API xác thực
-    await Future.delayed(const Duration(milliseconds: 1500));
-    if (!mounted) return;
-    
-    final token = await SecureStorageService.getToken();
-    
-    if (token != null && token.isNotEmpty) {
-      // 2. BẮT BUỘC: Gọi API để xác minh phiên làm việc thực tế trên Server
-      final userProfileResponse = await UserApiService.fetchPrivateProfile();
-      
-      // Chú ý: Backend trả về {"profile": {...}, "stats": {...}} nên phải trích xuất đúng nhánh 'profile'
+    try {
+      print('[DEBUG-SPLASH] Khởi chạy luồng khởi động nhanh ứng dụng...');
+
+      // 1. Chạy song song: Đọc Token cục bộ & Hiển thị tối thiểu 600ms thương hiệu (Không chờ tuần tự)
+      final results = await Future.wait([
+        SecureStorageService.getToken(),
+        Future.delayed(const Duration(milliseconds: 600)),
+      ]);
+
+      if (!mounted) return;
+      final token = results[0] as String?;
+
+      // Nếu không có Token -> Chuyển ngay đến màn hình Đăng nhập
+      if (token == null || token.isEmpty) {
+        print('[DEBUG-SPLASH] Không tìm thấy Token cục bộ -> Điều hướng /login');
+        if (mounted) context.go('/login');
+        return;
+      }
+
+      print('[DEBUG-SPLASH] Tìm thấy Token cục bộ. Bắt đầu đồng bộ hồ sơ...');
+
+      // 2. Gọi xác thực phiên Server nhưng có cơ chế phòng vệ mạng (Timeout 2.5s)
+      Map<String, dynamic>? userProfileResponse;
+      try {
+        userProfileResponse = await UserApiService.fetchPrivateProfile()
+            .timeout(const Duration(milliseconds: 2500));
+      } catch (e) {
+        print('[DEBUG-SPLASH-WARN] API Profile timeout hoặc lỗi mạng: $e');
+        userProfileResponse = null;
+      }
+
+      if (!mounted) return;
+
+      // 3. Xử lý dữ liệu Profile & Điều hướng
       if (userProfileResponse != null && userProfileResponse['profile'] != null) {
         final profileData = userProfileResponse['profile'];
-        
-        // Phiên hợp lệ -> Lấy thông tin cập nhật nhất từ Server
-        final fullName = profileData['full_name'] ?? await SecureStorageService.getName() ?? 'bạn';
-        final role = profileData['role'] ?? await SecureStorageService.getRole() ?? 'USER';
-        
-        // Đồng bộ lại Storage lỡ có thay đổi từ nền tảng Website
-        await SecureStorageService.saveName(fullName);
-        await SecureStorageService.saveRole(role);
-        
-        if (mounted) {
-          AppToast.show(
-            context: context, 
-            message: 'Chào mừng $fullName trở lại hệ thống! Chúc bạn một ngày an lành và thư thái.', 
-            isSuccess: true,
-            duration: const Duration(seconds: 4)
-          );
-          
-          // Điều hướng đồng nhất về Trang chủ theo yêu cầu tinh chỉnh luồng
+        final fullName = profileData['full_name'] ?? 'bạn';
+        final role = profileData['role'] ?? 'USER';
+
+        // Đồng bộ ngầm không chặn luồng điều hướng (Fire-and-forget)
+        SecureStorageService.saveName(fullName);
+        SecureStorageService.saveRole(role);
+
+        AppToast.show(
+          context: context,
+          message: 'Chào mừng $fullName trở lại hệ thống!',
+          isSuccess: true,
+          duration: const Duration(seconds: 3),
+        );
+        print('[DEBUG-SPLASH-SUCCESS] Xác thực Server thành công -> Điều hướng /');
         context.go('/');
-        }
       } else {
-        // Phiên KHÔNG hợp lệ (Hết hạn JWT, tài khoản bị xóa/khóa, hoặc lỗi mạng) -> Xóa rác và đẩy ra cổng
-        await SecureStorageService.clearSession();
-        if (mounted) context.go('/login');
+        // 🚀 BỌC THÉP LOCAL-FIRST: Nếu API trễ do mạng/cold start nhưng Token còn nguyên vẹn,
+        // TUYỆT ĐỐI KHÔNG clearSession mà cho phép User vào thẳng trang chủ
+        print('[DEBUG-SPLASH-LOCAL-FIRST] Cho phép sử dụng phiên đăng nhập cục bộ -> Điều hướng /');
+        final savedName = await SecureStorageService.getName() ?? 'bạn';
+        
+        AppToast.show(
+          context: context,
+          message: 'Chào mừng $savedName trở lại hệ thống!',
+          isSuccess: true,
+          duration: const Duration(seconds: 3),
+        );
+        context.go('/');
       }
-    } else {
-      if (mounted) context.go('/login'); // Chưa đăng nhập -> Ra cổng
+    } catch (e) {
+      print('[DEBUG-SPLASH-EXCEPTION] Lỗi ngoại lệ trong quá trình khởi động: $e');
+      // Khi gặp lỗi nghiêm trọng không thể phục hồi mới điều hướng về login
+      if (mounted) context.go('/login');
     }
   }
 
