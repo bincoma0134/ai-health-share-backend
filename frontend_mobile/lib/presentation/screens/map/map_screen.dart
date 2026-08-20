@@ -251,10 +251,10 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
                                   child: Container(
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      color: const Color(0xFF80BF84).withOpacity(0.2),
+                                      color: const Color(0xFF80BF84).withValues(alpha: 0.2),
                                       border: Border.all(color: Colors.white, width: 2.5),
                                       boxShadow: [
-                                        BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.5), blurRadius: 10, spreadRadius: 3)
+                                        BoxShadow(color: const Color(0xFF80BF84).withValues(alpha: 0.5), blurRadius: 10, spreadRadius: 3)
                                       ],
                                     ),
                                     child: ClipRRect(
@@ -290,7 +290,7 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       border: Border.all(color: isSelected ? const Color(0xFF4C8D50) : Colors.white, width: isSelected ? 3.5 : 2),
-                                      boxShadow: [BoxShadow(color: isSelected ? const Color(0xFF80BF84).withOpacity(0.6) : Colors.black26, blurRadius: isSelected ? 12 : 6)],
+                                      boxShadow: [BoxShadow(color: isSelected ? const Color(0xFF80BF84).withValues(alpha: 0.6) : Colors.black26, blurRadius: isSelected ? 12 : 6)],
                                     ),
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(100),
@@ -361,7 +361,7 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
                             color: const Color(0xFFF4F7F6),
                             borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
                             boxShadow: [
-                              BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 20, offset: const Offset(0, -5))
+                              BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0, -5))
                             ],
                           ),
                           child: Column(
@@ -430,7 +430,7 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
                                                 decoration: BoxDecoration(
                                                   color: Colors.white,
                                                   borderRadius: BorderRadius.circular(16),
-                                                  border: Border.all(color: Colors.black.withOpacity(0.03)),
+                                                  border: Border.all(color: Colors.black.withValues(alpha: 0.03)),
                                                 ),
                                                 child: Row(
                                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -529,9 +529,9 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(30),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4))],
                 ),
                 child: Row(
                   children: [
@@ -579,9 +579,9 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       shape: BoxShape.circle,
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
+                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4))],
                     ),
                     child: Stack(
                       clipBehavior: Clip.none,
@@ -632,7 +632,7 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
               decoration: BoxDecoration(
                 color: isSelected ? const Color(0xFF1E3A1E) : Colors.white,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: isSelected ? Colors.transparent : Colors.black.withOpacity(0.04)),
+                border: Border.all(color: isSelected ? Colors.transparent : Colors.black.withValues(alpha: 0.04)),
               ),
               child: Row(
                 children: [
@@ -703,7 +703,7 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: isHighlighted ? const Color(0xFF4C8D50) : Colors.transparent, width: 2),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 4))],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 8, offset: const Offset(0, 4))],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -748,7 +748,7 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
                       children: [
                         Text('@${partner.username}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
                         const SizedBox(height: 2),
-                        Text(primaryTag, style: TextStyle(color: const Color(0xFF4C8D50), fontSize: 9, fontWeight: FontWeight.w700)),
+                        Text(primaryTag, style: const TextStyle(color: Color(0xFF4C8D50), fontSize: 9, fontWeight: FontWeight.w700)),
                       ],
                     ),
                   )
@@ -813,7 +813,7 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(8),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4)],
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 4)],
                       ),
                       child: Row(
                         children: [
@@ -841,7 +841,7 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
                 height: 20,
                 child: TextButton(
                   style: TextButton.styleFrom(
-                    backgroundColor: const Color(0xFF80BF84).withOpacity(0.15),
+                    backgroundColor: const Color(0xFF80BF84).withValues(alpha: 0.15),
                     padding: EdgeInsets.zero,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6))
                   ),

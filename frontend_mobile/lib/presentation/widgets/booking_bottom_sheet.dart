@@ -572,12 +572,12 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                   height: MediaQuery.of(context).size.height * 0.65, 
                   padding: const EdgeInsets.only(top: 16, left: 24, right: 24),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.95),
+                    color: Colors.white.withValues(alpha: 0.95),
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
                   ),
                   child: Column(
                     children: [
-                      Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black.withOpacity(0.12), borderRadius: BorderRadius.circular(10))),
+                      Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10))),
                       const Text('Chọn Dịch Vụ', style: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.w900)),
                       const SizedBox(height: 16),
                       
@@ -646,7 +646,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                       margin: const EdgeInsets.only(bottom: 12),
                                       padding: const EdgeInsets.all(16),
                                       decoration: BoxDecoration(
-                                        color: isSelected ? const Color(0xFF80BF84).withOpacity(0.1) : Colors.black.withOpacity(0.03),
+                                        color: isSelected ? const Color(0xFF80BF84).withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.03),
                                         borderRadius: BorderRadius.circular(16),
                                         border: Border.all(color: isSelected ? const Color(0xFF80BF84) : Colors.transparent, width: 1.5),
                                       ),
@@ -718,13 +718,13 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
               height: MediaQuery.of(context).size.height * 0.75, 
               padding: const EdgeInsets.only(top: 16, left: 24, right: 24),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.9), // Đồng bộ sang nền sáng kính mờ
+                color: Colors.white.withValues(alpha: 0.9), // Đồng bộ sang nền sáng kính mờ
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-                border: Border(top: BorderSide(color: Colors.black.withOpacity(0.08))),
+                border: Border(top: BorderSide(color: Colors.black.withValues(alpha: 0.08))),
               ),
               child: Column(
                 children: [
-                  Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black.withOpacity(0.12), borderRadius: BorderRadius.circular(10))),
+                  Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10))),
                   const Text('Ví Voucher của bạn', style: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 24),
                   
@@ -734,7 +734,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.wallet_giftcard_rounded, size: 48, color: Colors.black.withOpacity(0.25)), // Đã sửa lỗi: Dùng cấu trúc opacity chuẩn cho màu đen
+                                Icon(Icons.wallet_giftcard_rounded, size: 48, color: Colors.black.withValues(alpha: 0.25)), // Đã sửa lỗi: Dùng cấu trúc opacity chuẩn cho màu đen
                                 const SizedBox(height: 16),
                                 const Text('Ví đang trống hoặc đang tải...', style: TextStyle(color: Colors.black45, fontSize: 14, fontWeight: FontWeight.w500)),
                               ],
@@ -779,17 +779,18 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                               final bool isSelectable = isPriceValid && isPartnerValid && !isExpired;
 
                               String lockReason = '';
-                              if (isExpired) lockReason = 'Mã ưu đãi đã hết hạn sử dụng';
-                              else if (!isPartnerValid) lockReason = 'Chỉ áp dụng cho dịch vụ cơ sở phát hành';
+                              if (isExpired) {
+                                lockReason = 'Mã ưu đãi đã hết hạn sử dụng';
+                              } else if (!isPartnerValid) lockReason = 'Chỉ áp dụng cho dịch vụ cơ sở phát hành';
                               else if (!isPriceValid) lockReason = 'Đơn chưa đủ ${_currencyFormat.format(minOrder)}';
 
                               return Container(
                                 margin: const EdgeInsets.only(bottom: 12),
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
-                                  color: isSelectable ? Colors.black.withOpacity(0.03) : Colors.black.withOpacity(0.08),
+                                  color: isSelectable ? Colors.black.withValues(alpha: 0.03) : Colors.black.withValues(alpha: 0.08),
                                   borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: isSelectable ? (isAdmin ? Colors.amber : const Color(0xFF80BF84).withOpacity(0.4)) : Colors.transparent),
+                                  border: Border.all(color: isSelectable ? (isAdmin ? Colors.amber : const Color(0xFF80BF84).withValues(alpha: 0.4)) : Colors.transparent),
                                 ),
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -807,7 +808,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                 margin: const EdgeInsets.only(right: 8),
                                                 decoration: BoxDecoration(
-                                                  color: isVip ? const Color(0xFFFE2C55).withOpacity(0.1) : (isAdmin ? Colors.amber.withOpacity(0.15) : const Color(0xFF80BF84).withOpacity(0.15)),
+                                                  color: isVip ? const Color(0xFFFE2C55).withValues(alpha: 0.1) : (isAdmin ? Colors.amber.withValues(alpha: 0.15) : const Color(0xFF80BF84).withValues(alpha: 0.15)),
                                                   borderRadius: BorderRadius.circular(6),
                                                   border: Border.all(color: isVip ? const Color(0xFFFE2C55) : (isAdmin ? Colors.amber : const Color(0xFF80BF84))),
                                                 ),
@@ -893,20 +894,20 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
               top: 16
             ),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.88), // Đạt tỷ lệ tương phản chuẩn mực trên nền sáng Glassmorphism
+              color: Colors.white.withValues(alpha: 0.88), // Đạt tỷ lệ tương phản chuẩn mực trên nền sáng Glassmorphism
               borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
               border: Border.all(
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15), 
+                  color: Colors.black.withValues(alpha: 0.15), 
                   blurRadius: 30, 
                   offset: const Offset(0, -10)
                 ),
                 BoxShadow(
-                  color: const Color(0xFF80BF84).withOpacity(0.08), 
+                  color: const Color(0xFF80BF84).withValues(alpha: 0.08), 
                   blurRadius: 15, 
                   offset: const Offset(0, -2)
                 ),
@@ -920,13 +921,13 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black.withOpacity(0.12), borderRadius: BorderRadius.circular(10)))),
+                Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)))),
                 
                 Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(color: const Color(0xFF80BF84).withOpacity(0.2), shape: BoxShape.circle),
+                      decoration: BoxDecoration(color: const Color(0xFF80BF84).withValues(alpha: 0.2), shape: BoxShape.circle),
                       child: const Icon(Icons.eco_rounded, color: Color(0xFF5B9E5F), size: 22),
                     ),
                     const SizedBox(width: 12),
@@ -1131,7 +1132,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                           : [const Color(0xFFF8FAFC), const Color(0xFFF1F5F9)],
                     ),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: _isVoucherSuccess ? const Color(0xFF80BF84).withOpacity(0.5) : const Color(0xFFE2E8F0)),
+                    border: Border.all(color: _isVoucherSuccess ? const Color(0xFF80BF84).withValues(alpha: 0.5) : const Color(0xFFE2E8F0)),
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
@@ -1299,7 +1300,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF80BF84).withOpacity(0.35),
+                        color: const Color(0xFF80BF84).withValues(alpha: 0.35),
                         blurRadius: 16,
                         offset: const Offset(0, 6),
                       )
@@ -1332,7 +1333,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
 // 🚀 WIDGET ĐỘC LẬP: BONG BÓNG TRUYỆN TRANH (COMIC BUBBLE)
 class _BouncingComicBubble extends StatefulWidget {
-  const _BouncingComicBubble({super.key});
+  const _BouncingComicBubble();
 
   @override
   State<_BouncingComicBubble> createState() => _BouncingComicBubbleState();
@@ -1375,8 +1376,8 @@ class _BouncingComicBubbleState extends State<_BouncingComicBubble> with SingleT
               color: const Color(0xFF1E293B), // Nền đậm thanh lịch
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
-                BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.25), blurRadius: 12, spreadRadius: 0, offset: const Offset(0, 2)), // 🚀 Ánh sáng Glow nhẹ nhàng, tự nhiên hơn
-                BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 4)),
+                BoxShadow(color: const Color(0xFF80BF84).withValues(alpha: 0.25), blurRadius: 12, spreadRadius: 0, offset: const Offset(0, 2)), // 🚀 Ánh sáng Glow nhẹ nhàng, tự nhiên hơn
+                BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 8, offset: const Offset(0, 4)),
               ],
             ),
             child: const Row(

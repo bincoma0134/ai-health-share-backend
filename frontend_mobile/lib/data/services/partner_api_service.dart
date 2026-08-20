@@ -24,8 +24,11 @@ class PartnerApiService {
         String? mediaUrl = await UserApiService.uploadMedia(mediaFile, folder);
         if (mediaUrl == null) return false;
         
-        if (mediaType == 'video') payload['video_url'] = mediaUrl;
-        else payload['image_url'] = mediaUrl;
+        if (mediaType == 'video') {
+          payload['video_url'] = mediaUrl;
+        } else {
+          payload['image_url'] = mediaUrl;
+        }
       }
 
       final res = await _dio.post('/services', data: payload);

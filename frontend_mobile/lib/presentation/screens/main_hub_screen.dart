@@ -1,10 +1,7 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/theme/app_theme.dart';
 import '../widgets/liquid_glass/liquid_glass_panel.dart';
 import '../widgets/auth_guard.dart';
-import '../widgets/notification_notifier.dart';
 import '../widgets/professor_x_panel.dart';
 
 class MainHubScreen extends StatefulWidget {
@@ -18,7 +15,7 @@ class MainHubScreen extends StatefulWidget {
 
 class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProviderStateMixin {
   late AnimationController _shimmerController;
-  bool _isPageLoading = false;
+  final bool _isPageLoading = false;
 
   @override
   void initState() {
@@ -90,12 +87,12 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
                   height: 70,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.35), // Nền Frost White bảo vệ độ tương phản Icon
+                    color: Colors.white.withValues(alpha: 0.35), // Nền Frost White bảo vệ độ tương phản Icon
                     borderRadius: BorderRadius.circular(35),
-                    border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.2), // Viền quang học bắt sáng
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.2), // Viền quang học bắt sáng
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.08), // Bóng tản sáng trung tính giúp đẩy khối nổi lên
+                        color: Colors.black.withValues(alpha: 0.08), // Bóng tản sáng trung tính giúp đẩy khối nổi lên
                         blurRadius: 24,
                         offset: const Offset(0, 8),
                       )
@@ -251,12 +248,12 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
                   color: isActive ? const Color(0xFFE6F7F4) : Colors.transparent, // Sáng nền xanh Mint nhẹ nhàng
                   borderRadius: BorderRadius.circular(16), 
                   border: Border.all(
-                    color: isActive ? const Color(0xFF10B981).withOpacity(0.3) : Colors.transparent,
+                    color: isActive ? const Color(0xFF10B981).withValues(alpha: 0.3) : Colors.transparent,
                     width: 0.5,
                   ),
                   boxShadow: isActive ? [
                     BoxShadow(
-                      color: const Color(0xFF10B981).withOpacity(0.2), // Tỏa sáng Glow nhiệt sinh học
+                      color: const Color(0xFF10B981).withValues(alpha: 0.2), // Tỏa sáng Glow nhiệt sinh học
                       blurRadius: 10,
                       offset: const Offset(0, 2),
                     )
@@ -303,12 +300,12 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
         padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: Colors.white.withOpacity(0.5),
-          border: Border.all(color: Colors.white.withOpacity(0.8)),
+          color: Colors.white.withValues(alpha: 0.5),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.8)),
           boxShadow: isActive ? [
-            BoxShadow(color: const Color(0xFF10B981).withOpacity(0.4), blurRadius: 20, spreadRadius: 2)
+            BoxShadow(color: const Color(0xFF10B981).withValues(alpha: 0.4), blurRadius: 20, spreadRadius: 2)
           ] : [
-            BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))
+            BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))
           ],
         ),
         child: Container(
@@ -320,7 +317,7 @@ class _MainHubScreenState extends State<MainHubScreen> with SingleTickerProvider
               end: Alignment.bottomRight,
             ),
             boxShadow: [
-              BoxShadow(color: Color(0xFF10B981).withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))
+              BoxShadow(color: const Color(0xFF10B981).withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))
             ],
           ),
           child: const Icon(

@@ -7,17 +7,8 @@ import '../../../core/network/api_client.dart';
 import '../../../data/services/secure_storage_service.dart';
 import '../../../core/router/app_router.dart'; // import cấu hình router chứa rootnavigatorkey
 import 'app_toast.dart';
-import 'glass_wrapper.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../../data/services/user_api_service.dart';
-import '../../../core/network/api_client.dart';
-import '../../../data/services/secure_storage_service.dart';
-import '../../../core/router/app_router.dart'; // import cấu hình router chứa rootnavigatorkey
-import 'app_toast.dart';
-import 'glass_wrapper.dart';
-import 'package:go_router/go_router.dart';
+// import cấu hình router chứa rootnavigatorkey
 import 'auth_guard.dart'; // Thêm dòng này
 
 class ProfessorXPanel extends StatefulWidget {
@@ -150,7 +141,7 @@ class _ProfessorXPanelState extends State<ProfessorXPanel> with SingleTickerProv
                       width: 130, height: 130,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle, color: Colors.white,
-                        boxShadow: [BoxShadow(color: const Color(0xFF4A8B6F).withOpacity(0.08), blurRadius: 40, spreadRadius: 8)],
+                        boxShadow: [BoxShadow(color: const Color(0xFF4A8B6F).withValues(alpha: 0.08), blurRadius: 40, spreadRadius: 8)],
                       ),
                       child: const Center(child: Icon(Icons.eco_rounded, color: Color(0xFF4A8B6F), size: 64)),
                     ),
@@ -267,11 +258,11 @@ class _ProfessorXPanelState extends State<ProfessorXPanel> with SingleTickerProv
                 width: screenSize.width * 0.85,
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.95), // Thay thế Glassmorphism bằng Solid/Opacity
+                  color: Colors.black.withValues(alpha: 0.95), // Thay thế Glassmorphism bằng Solid/Opacity
                   borderRadius: BorderRadius.circular(32),
-                  border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                  border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 24, offset: const Offset(0, 10))
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 24, offset: const Offset(0, 10))
                   ],
                 ),
                 child: Column(
@@ -281,9 +272,9 @@ class _ProfessorXPanelState extends State<ProfessorXPanel> with SingleTickerProv
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Column(
+                          const Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
+                            children: [
                               Text('GIÁO SƯ X PANEL', style: TextStyle(color: Colors.amber, fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 1)),
                               SizedBox(height: 2),
                               Text('Cố vấn & Kiểm thử hệ thống', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
@@ -291,7 +282,7 @@ class _ProfessorXPanelState extends State<ProfessorXPanel> with SingleTickerProv
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(color: Colors.amber.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                            decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                             child: const Text('NATIVE', style: TextStyle(color: Colors.amber, fontSize: 10, fontWeight: FontWeight.w900)),
                           )
                         ],
@@ -319,7 +310,7 @@ class _ProfessorXPanelState extends State<ProfessorXPanel> with SingleTickerProv
                             margin: const EdgeInsets.only(bottom: 8),
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             decoration: BoxDecoration(
-                              color: isActive ? Colors.amber : Colors.white.withOpacity(0.05),
+                              color: isActive ? Colors.amber : Colors.white.withValues(alpha: 0.05),
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: Row(
@@ -332,7 +323,7 @@ class _ProfessorXPanelState extends State<ProfessorXPanel> with SingleTickerProv
                             ),
                           ),
                         );
-                      }).toList()
+                      })
                     ],
                   ),
                 ),
@@ -360,7 +351,7 @@ class _ProfessorXPanelState extends State<ProfessorXPanel> with SingleTickerProv
                 shape: BoxShape.circle,
                 gradient: const LinearGradient(colors: [Colors.black87, Colors.black]),
                 border: Border.all(color: Colors.amber, width: 2),
-                boxShadow: [BoxShadow(color: Colors.amber.withOpacity(0.4), blurRadius: 16)],
+                boxShadow: [BoxShadow(color: Colors.amber.withValues(alpha: 0.4), blurRadius: 16)],
               ),
               child: _isSwitching 
                 ? const Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: Colors.amber, strokeWidth: 2))

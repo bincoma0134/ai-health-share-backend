@@ -1,23 +1,23 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:io'; // Giải quyết lỗi: 'File' isn't defined
 import 'dart:math' as math;
-import 'package:video_player/video_player.dart'; // Giải quyết lỗi: Undefined name 'VideoPlayerController'
-import '../../widgets/video_uploader.dart';
-import '../../widgets/mini_video_player.dart';
-import '../../widgets/app_toast.dart';
-import '../../widgets/feed_video_player.dart'; // 🚀 HOTFIX: Thêm import để định nghĩa lớp điều khiển tĩnh FeedVideoPool
-import '../../../data/services/user_api_service.dart'; // 🚀 MỚI: Cổng truyền stream nhị phân lên Cloud Storage
-import '../../../core/network/api_client.dart';
+
+import 'package:dio/dio.dart'; // Đảm bảo đính kèm lõi Token hủy mạng
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart'; // Import lõi phần cứng hệ điều hành
+import 'package:intl/intl.dart'; // 🚀 Bổ sung thư viện format số tiền cho Bottom Sheet Affiliate
 import 'package:permission_handler/permission_handler.dart'; // Thư viện xin quyền hệ thống chuẩn
 import 'package:video_compress/video_compress.dart'; // 🚀 HOTFIX: Thêm thư viện nén để nhận diện MediaInfo và VideoCompress
+import 'package:video_player/video_player.dart'; // Giải quyết lỗi: Undefined name 'VideoPlayerController'
+
 import '../../../core/manager/audio_focus_manager.dart';
-import 'package:dio/dio.dart'; // Đảm bảo đính kèm lõi Token hủy mạng
-import 'dart:async';
-import '../../../data/services/secure_storage_service.dart';
+import '../../../core/network/api_client.dart';
 import '../../../data/services/partner_api_service.dart';
-import 'package:intl/intl.dart'; // 🚀 Bổ sung thư viện format số tiền cho Bottom Sheet Affiliate
+import '../../../data/services/user_api_service.dart'; // 🚀 MỚI: Cổng truyền stream nhị phân lên Cloud Storage
+import '../../widgets/app_toast.dart';
+import '../../widgets/feed_video_player.dart'; // 🚀 HOTFIX: Thêm import để định nghĩa lớp điều khiển tĩnh FeedVideoPool
+import '../../widgets/mini_video_player.dart';
 
 
 class DedicatedUploadScreen extends StatefulWidget {
@@ -31,7 +31,6 @@ class DedicatedUploadScreen extends StatefulWidget {
 
 class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with TickerProviderStateMixin {
   final PageController _pageController = PageController();
-  int _currentStep = 0;
 
   // Animation Controller cho Quả cầu năng lượng AI 3D lướt động
   late AnimationController _orbController;
@@ -51,8 +50,8 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
 
   // 🚀 YOUTUBE SHORT ALGORITHM: Các biến quản lý luồng Tiền tải lên ngầm và File gốc đã cắt vật lý
   String _localVideoOriginalPath = ""; // Đường dẫn tệp thô ban đầu từ thư viện máy khách
-  String _finalCloudVideoUrl = "";     // URL mạng trả về từ Server lưu trữ tập trung
-  bool _isUploadingNgam = false;      // Cờ trạng thái hiển thị tiến trình xử lý ngầm
+// URL mạng trả về từ Server lưu trữ tập trung
+// Cờ trạng thái hiển thị tiến trình xử lý ngầm
   double _uploadNgamProgress = 0.0;    // % tiến trình tải lên
   
   // 🚀 ĐỒNG BỘ TRẠNG THÁI BIÊN CẮT: Lưu dấu ranh giới thực tế của tệp đã tải thành công lên máy chủ
@@ -93,7 +92,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
   String _userRole = "USER"; // Sẽ tự động nạp động từ luồng trạng thái tài khoản hệ thống
   String _partnerPublishMode = "TIKTOK_FEED"; // 'TIKTOK_FEED' hoặc 'SERVICE_VIDEO'
   
-  bool _isSubmitting = false;
+  final bool _isSubmitting = false;
   bool _isLoadingRole = true; // 🛡️ GÁC CỔNG TRẠNG THÁI: Ngăn chặn giao diện vẽ vội vã khi chưa nạp xong quyền
 
   @override
@@ -286,7 +285,6 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
     _currentUploadCancelToken = CancelToken();
 
     setState(() {
-      _isUploadingNgam = true;
       _uploadNgamProgress = 0.0;
     });
 
@@ -352,10 +350,8 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
 
       if (mounted && uploadedUrl != null) {
         setState(() {
-          _finalCloudVideoUrl = uploadedUrl;
           _lastUploadedStartPercent = currentStart;
           _lastUploadedEndPercent = currentEnd;
-          _isUploadingNgam = false;
         });
         AppToast.show(context: context, message: "Mã hóa và tải lên ngầm video phân đoạn thành công!", isSuccess: true);
       }
@@ -363,7 +359,6 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
       debugPrint("Lỗi luồng xử lý nền YouTube Short: $e");
       if (mounted) {
         setState(() {
-          _isUploadingNgam = false;
         });
       }
     }
@@ -379,7 +374,6 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
 
     // 🚀 PHƯƠNG ÁN TRẢI NGHIỆM KHÔNG CHẶN: Cho phép sang thẳng bước 2 điền form biểu mẫu
     // Luồng xử lý cắt xén/nén và truyền stream nhị phân vẫn tiếp tục được chạy ngầm tự do
-    setState(() => _currentStep = 1);
     _pageController.animateToPage(
       1,
       duration: const Duration(milliseconds: 400),
@@ -388,7 +382,6 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
   }
 
   void _previousStep() {
-    setState(() => _currentStep = 0);
     _pageController.animateToPage(
       0,
       duration: const Duration(milliseconds: 400),
@@ -620,8 +613,9 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
             final serviceRes = await ApiClient.instance.post('/services', data: servicePayload);
             if (serviceRes.statusCode == 200 && serviceRes.data != null) {
               final dynamic resData = serviceRes.data;
-              if (resData is Map && resData.containsKey('id')) targetedServiceId = resData['id']?.toString();
-              else if (resData is Map && resData.containsKey('data') && resData['data'] is Map) targetedServiceId = resData['data']['id']?.toString();
+              if (resData is Map && resData.containsKey('id')) {
+                targetedServiceId = resData['id']?.toString();
+              } else if (resData is Map && resData.containsKey('data') && resData['data'] is Map) targetedServiceId = resData['data']['id']?.toString();
             }
           } catch (e) {
             debugPrint("Service creation fallback alert: $e");
@@ -794,9 +788,9 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF80BF84).withOpacity(0.12),
+                                  color: const Color(0xFF80BF84).withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.3)),
+                                  border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.3)),
                                 ),
                                 child: const Text(
                                   "Lưu ý: Chỉ chọn video < 3 phút & < 500MB.\n(File quá lớn hệ điều hành sẽ tốn rất nhiều thời gian xử lý)",
@@ -836,16 +830,16 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: const Color(0xFFE2ECEB), width: 1),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))
                   ],
                 ),
-                child: Row(
+                child: const Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
+                  children: [
                     Icon(Icons.verified_rounded, color: Color(0xFF80BF84), size: 16),
                     SizedBox(width: 6),
                     Text(
@@ -907,7 +901,6 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                       _trimEndPercent = 1.0;
                       _lastUploadedStartPercent = -1.0;
                       _lastUploadedEndPercent = -1.0;
-                      _finalCloudVideoUrl = "";
                     });
                     FeedVideoPool.isGlobalMutedForUpload = false;
                   },
@@ -941,9 +934,9 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                 Container(
                   height: 44,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.4),
+                    color: Colors.white.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE2ECEB).withOpacity(0.6), width: 1.5),
+                    border: Border.all(color: const Color(0xFFE2ECEB).withValues(alpha: 0.6), width: 1.5),
                   ),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
@@ -992,7 +985,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                                           color: const Color(0xFF1A3A35),
                                           borderRadius: BorderRadius.circular(2),
                                           boxShadow: [
-                                            BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 2, offset: const Offset(1, 1))
+                                            BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 2, offset: const Offset(1, 1))
                                           ],
                                         ),
                                       ),
@@ -1023,8 +1016,8 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                 begin: Alignment.bottomCenter,
                 end: Alignment.topCenter,
                 colors: [
-                  const Color(0xFF1A3A35).withOpacity(0.06),
-                  const Color(0xFF1A3A35).withOpacity(0.0),
+                  const Color(0xFF1A3A35).withValues(alpha: 0.06),
+                  const Color(0xFF1A3A35).withValues(alpha: 0.0),
                 ],
               ),
             ),
@@ -1047,7 +1040,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                                 color: Colors.white,
                                 shape: BoxShape.circle,
                                 border: Border.all(color: const Color(0xFFE2ECEB), width: 1.5),
-                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6)],
+                                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 6)],
                               ),
                               child: const Icon(Icons.spa_rounded, color: Color(0xFF80BF84), size: 20),
                             ),
@@ -1071,7 +1064,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.4), width: 4),
+                            border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.4), width: 4),
                           ),
                           child: Container(
                             decoration: BoxDecoration(
@@ -1080,7 +1073,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                                   ? const Color(0xFF80BF84)
                                   : const Color(0xFF1A3A35),
                               boxShadow: [
-                                BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 4))
+                                BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.15), blurRadius: 10, offset: const Offset(0, 4))
                               ],
                             ),
                             child: Icon(
@@ -1101,7 +1094,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(color: _uploadedVideoUrl.isNotEmpty ? const Color(0xFF80BF84) : const Color(0xFFE2ECEB), width: 1.5),
-                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6)],
+                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 6)],
                             ),
                             child: Icon(
                               _uploadedVideoUrl.isNotEmpty ? Icons.check_circle_rounded : Icons.cloud_upload_outlined,
@@ -1136,11 +1129,11 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
             Container(
               width: 46, height: 46,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.85),
+                color: Colors.white.withValues(alpha: 0.85),
                 shape: BoxShape.circle,
                 border: Border.all(color: const Color(0xFFE2ECEB), width: 1.2),
                 boxShadow: [
-                  BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 3))
+                  BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 3))
                 ],
               ),
               child: Icon(icon, color: const Color(0xFF1A3A35), size: 20),
@@ -1225,9 +1218,9 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF48C9B0).withOpacity(0.1),
+                                      color: const Color(0xFF48C9B0).withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: const Color(0xFF48C9B0).withOpacity(0.3)),
+                                      border: Border.all(color: const Color(0xFF48C9B0).withValues(alpha: 0.3)),
                                     ),
                                     child: Text('+${s['affiliate_rate'] ?? 0}% Hoa hồng', style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 12, fontWeight: FontWeight.bold)),
                                   ),
@@ -1482,9 +1475,9 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                     margin: const EdgeInsets.only(bottom: 20),
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A3A35).withOpacity(0.06),
+                      color: const Color(0xFF1A3A35).withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0xFF1A3A35).withOpacity(0.1)),
+                      border: Border.all(color: const Color(0xFF1A3A35).withValues(alpha: 0.1)),
                     ),
                     child: Row(
                       children: [
@@ -1607,11 +1600,11 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                               Text(
                                 '${currencyFormatter.format(originalPrice)} VND',
                                 style: TextStyle(
-                                  color: const Color(0xFF1A3A35).withOpacity(0.4),
+                                  color: const Color(0xFF1A3A35).withValues(alpha: 0.4),
                                   fontSize: 14,
                                   fontWeight: FontWeight.w600,
                                   decoration: TextDecoration.lineThrough,
-                                  decorationColor: const Color(0xFF1A3A35).withOpacity(0.4),
+                                  decorationColor: const Color(0xFF1A3A35).withValues(alpha: 0.4),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -1726,13 +1719,13 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                   const SizedBox(height: 14),
                   
                   // TRƯỜNG GIÁ ĐƯỢC CHUYỂN LÊN ĐÂY
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8, bottom: 6),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8, bottom: 6),
                     child: Row(
                       children: [
-                        const Icon(Icons.info_outline_rounded, size: 14, color: Color(0xFF80BF84)),
-                        const SizedBox(width: 6),
-                        const Expanded(child: Text('Giá dịch vụ (Hệ thống tự động đồng bộ từ Đối tác, không thể sửa)', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.bold))),
+                        Icon(Icons.info_outline_rounded, size: 14, color: Color(0xFF80BF84)),
+                        SizedBox(width: 6),
+                        Expanded(child: Text('Giá dịch vụ (Hệ thống tự động đồng bộ từ Đối tác, không thể sửa)', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.bold))),
                       ],
                     ),
                   ),
@@ -1787,11 +1780,11 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                                   Text(
                                     '${formatPrice(originalPrice)} VND',
                                     style: TextStyle(
-                                      color: const Color(0xFF1A3A35).withOpacity(0.4),
+                                      color: const Color(0xFF1A3A35).withValues(alpha: 0.4),
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
                                       decoration: TextDecoration.lineThrough,
-                                      decorationColor: const Color(0xFF1A3A35).withOpacity(0.4),
+                                      decorationColor: const Color(0xFF1A3A35).withValues(alpha: 0.4),
                                     ),
                                   ),
                                   const SizedBox(width: 12),
@@ -1826,16 +1819,16 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                     padding: const EdgeInsets.all(16),
                     margin: const EdgeInsets.only(bottom: 20),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF80BF84).withOpacity(0.08), 
+                      color: const Color(0xFF80BF84).withValues(alpha: 0.08), 
                       borderRadius: BorderRadius.circular(16), 
-                      border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.2))
+                      border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.2))
                     ),
-                    child: Row(
+                    child: const Row(
                       children: [
-                        const Icon(Icons.monetization_on_rounded, color: Color(0xFF80BF84), size: 20),
-                        const SizedBox(width: 12),
+                        Icon(Icons.monetization_on_rounded, color: Color(0xFF80BF84), size: 20),
+                        SizedBox(width: 12),
                         Expanded(
-                          child: const Text(
+                          child: Text(
                             "Hệ thống tự động mở khóa tính năng nhận chiết khấu hoa hồng liên kết (10% - 25%) từ Đối tác y tế sau khi duyệt video.", 
                             style: TextStyle(color: Color(0xFF1A3A35), fontSize: 12, fontWeight: FontWeight.w600),
                           ),
@@ -1937,15 +1930,15 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: const Color(0xFF1A3A35).withOpacity(0.08)),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10)],
+                      border: Border.all(color: const Color(0xFF1A3A35).withValues(alpha: 0.08)),
+                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 10)],
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Container(
                           padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(color: const Color(0xFF1A3A35).withOpacity(0.05), shape: BoxShape.circle),
+                          decoration: BoxDecoration(color: const Color(0xFF1A3A35).withValues(alpha: 0.05), shape: BoxShape.circle),
                           child: const Icon(Icons.lock_clock_rounded, color: Color(0xFF1A3A35), size: 32),
                         ),
                         const SizedBox(height: 16),
@@ -1989,7 +1982,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
           padding: const EdgeInsets.only(left: 24, right: 24, top: 16, bottom: 32),
           decoration: BoxDecoration(
             color: Colors.white,
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, -4))],
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, -4))],
           ),
           child: Row(
             children: [
@@ -2051,7 +2044,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
         border: Border.all(color: const Color(0xFFE2ECEB), width: 1.2),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1A3A35).withOpacity(0.02),
+            color: const Color(0xFF1A3A35).withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           )
@@ -2066,7 +2059,7 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
         decoration: InputDecoration(
           border: InputBorder.none,
           hintText: hint,
-          hintStyle: TextStyle(color: const Color(0xFF1A3A35).withOpacity(0.35), fontSize: 13, fontWeight: FontWeight.w400),
+          hintStyle: TextStyle(color: const Color(0xFF1A3A35).withValues(alpha: 0.35), fontSize: 13, fontWeight: FontWeight.w400),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
       ),
@@ -2124,9 +2117,9 @@ class _StudioOrbPainter extends CustomPainter {
     final paintOrb = Paint()
       ..shader = RadialGradient(
         colors: [
-          const Color(0xFF80BF84).withOpacity(0.35),
-          const Color(0xFFB0C4C1).withOpacity(0.15),
-          const Color(0xFF80BF84).withOpacity(0.0),
+          const Color(0xFF80BF84).withValues(alpha: 0.35),
+          const Color(0xFFB0C4C1).withValues(alpha: 0.15),
+          const Color(0xFF80BF84).withValues(alpha: 0.0),
         ],
       ).createShader(Rect.fromCircle(center: center, radius: baseRadius * 1.6))
       ..style = PaintingStyle.fill;
@@ -2135,11 +2128,11 @@ class _StudioOrbPainter extends CustomPainter {
     canvas.drawCircle(center, baseRadius, paintOrb);
 
     final paintLine = Paint()..style = PaintingStyle.stroke..strokeWidth = 1.2;
-    final int particleCount = 28;
+    const int particleCount = 28;
 
     // Thuật toán lượng giác vẽ các vòng hạt sóng điện từ ép góc Elip tạo không gian 3D
     for (int layer = 0; layer < 3; layer++) {
-      paintLine.color = const Color(0xFF1A3A35).withOpacity(0.35 - (layer * 0.1));
+      paintLine.color = const Color(0xFF1A3A35).withValues(alpha: 0.35 - (layer * 0.1));
       final path = Path();
 
       for (int i = 0; i <= particleCount; i++) {

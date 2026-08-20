@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../data/services/secure_storage_service.dart';
@@ -116,7 +115,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: primaryGreen.withOpacity((1 - progress) * 0.15),
+                          color: primaryGreen.withValues(alpha: (1 - progress) * 0.15),
                           width: 1.2,
                         ),
                       ),
@@ -139,7 +138,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   color: Colors.white,
                   boxShadow: [
                     BoxShadow(
-                      color: primaryGreen.withOpacity(0.08),
+                      color: primaryGreen.withValues(alpha: 0.08),
                       blurRadius: 40,
                       spreadRadius: 8,
                     ),
@@ -177,7 +176,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 Text(
                   'Hành trình Sống Khỏe & Sẻ chia',
                   style: TextStyle(
-                    color: primaryGreen.withOpacity(0.5),
+                    color: primaryGreen.withValues(alpha: 0.5),
                     fontSize: 14,
                     fontWeight: FontWeight.w400,
                     letterSpacing: 1.2,
@@ -189,8 +188,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                   width: 40,
                   height: 1.5,
                   child: LinearProgressIndicator(
-                    backgroundColor: primaryGreen.withOpacity(0.08),
-                    color: primaryGreen.withOpacity(0.35),
+                    backgroundColor: primaryGreen.withValues(alpha: 0.08),
+                    color: primaryGreen.withValues(alpha: 0.35),
                     borderRadius: BorderRadius.circular(1),
                   ),
                 ),

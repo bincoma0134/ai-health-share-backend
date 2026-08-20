@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../data/models/voucher_model.dart';
@@ -46,19 +45,19 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
       "badge": "ĐẶC QUYỀN SỐNG KHỎE",
       "title": "VIP OASIS SPA\nGIẢM ĐẾN 50%",
       "desc": "Dành riêng cho khung giờ vàng thư giãn phục hồi sinh lực.",
-      "colors": [Color(0xFF0F2B26), Color(0xFF1A3A35)]
+      "colors": [const Color(0xFF0F2B26), const Color(0xFF1A3A35)]
     },
     {
       "badge": "FLASH DEAL ĐIỂM",
       "title": "CHĂM SÓC DA\nCHỈ TỪ 10.000 ĐIỂM",
       "desc": "Liệu trình chuyên sâu tái tạo năng lượng mỗi ngày.",
-      "colors": [Color(0xFF1E3A8A), Color(0xFF172554)]
+      "colors": [const Color(0xFF1E3A8A), const Color(0xFF172554)]
     },
     {
       "badge": "QUYỀN NĂNG HỘI VIÊN",
       "title": "SĂN MÃ VIP\nĐẶT LỊCH ƯU TIÊN",
       "desc": "Không cần chờ đợi - Check-in mã QR 1 chạm tại quầy.",
-      "colors": [Color(0xFF701A75), Color(0xFF4A044E)]
+      "colors": [const Color(0xFF701A75), const Color(0xFF4A044E)]
     },
   ];
 
@@ -432,7 +431,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                   decoration: BoxDecoration(
                     color: Colors.white,
                     shape: BoxShape.circle,
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: const Offset(0, 4))],
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4))],
                   ),
                   child: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF1A3A35), size: 18),
                 ),
@@ -449,7 +448,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                     decoration: BoxDecoration(
                       color: const Color(0xFF1A3A35),
                       borderRadius: BorderRadius.circular(35),
-                      boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 4))],
+                      boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4))],
                     ),
                     child: Row(
                       children: [
@@ -540,7 +539,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 15, offset: const Offset(0, 5))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 15, offset: const Offset(0, 5))],
       ),
       child: Row(
         children: [
@@ -590,14 +589,14 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(24),
               gradient: LinearGradient(colors: colors, begin: Alignment.topLeft, end: Alignment.bottomRight),
-              boxShadow: [BoxShadow(color: colors[0].withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6))],
+              boxShadow: [BoxShadow(color: colors[0].withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 6))],
             ),
             child: Stack(
               children: [
                 Positioned(
                   right: -15,
                   bottom: -15,
-                  child: Icon(Icons.stars_rounded, size: 120, color: Colors.white.withOpacity(0.05)),
+                  child: Icon(Icons.stars_rounded, size: 120, color: Colors.white.withValues(alpha: 0.05)),
                 ),
                 Padding(
                   padding: const EdgeInsets.all(20),
@@ -607,7 +606,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
+                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
                         child: Text(item['badge'].toString(), style: const TextStyle(color: Color(0xFFFCD34D), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
                       ),
                       const SizedBox(height: 8),
@@ -700,7 +699,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                     color: isSelected ? const Color(0xFF1A3A35) : Colors.white,
                     borderRadius: BorderRadius.circular(35),
                     border: Border.all(color: isSelected ? Colors.transparent : const Color(0xFFE2ECEB), width: 1.2),
-                    boxShadow: isSelected ? [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.2), blurRadius: 8, offset: const Offset(0, 3))] : null,
+                    boxShadow: isSelected ? [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.2), blurRadius: 8, offset: const Offset(0, 3))] : null,
                   ),
                   child: Row(
                     children: [
@@ -755,7 +754,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(35),
                     border: Border.all(color: const Color(0xFFF4F7F6), width: 1.5),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 3))],
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 8, offset: const Offset(0, 3))],
                   ),
                   child: Row(
                     children: [
@@ -846,7 +845,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(22),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
                   border: Border.all(color: const Color(0xFFE2ECEB), width: 1),
                 ),
                 child: Column(
@@ -861,7 +860,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                       ),
                       child: Stack(
                         children: [
-                          Positioned(right: -10, top: -10, child: Icon(Icons.stars_rounded, size: 70, color: Colors.white.withOpacity(0.04))),
+                          Positioned(right: -10, top: -10, child: Icon(Icons.stars_rounded, size: 70, color: Colors.white.withValues(alpha: 0.04))),
                           Padding(
                             padding: const EdgeInsets.all(12),
                             child: Column(
@@ -870,7 +869,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                               children: [
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
+                                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
                                   child: const Text('VIP PASS', style: TextStyle(color: Color(0xFFFCD34D), fontSize: 8, fontWeight: FontWeight.w900)),
                                 ),
                                 Text(
@@ -961,9 +960,9 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A3A35).withOpacity(0.06),
+        color: const Color(0xFF1A3A35).withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(35),
-        border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.3)),
+        border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -1002,7 +1001,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: const Color(0xFFE2ECEB)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1034,7 +1033,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                   decoration: BoxDecoration(
                     color: const Color(0xFFF7FBF9),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: (hunter['rankColor'] as Color).withOpacity(0.3)),
+                    border: Border.all(color: (hunter['rankColor'] as Color).withValues(alpha: 0.3)),
                   ),
                   child: Column(
                     children: [
@@ -1110,7 +1109,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: const Color(0xFFE2ECEB)),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 6, offset: const Offset(0, 2))],
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 6, offset: const Offset(0, 2))],
                   ),
                   child: Row(
                     children: [
@@ -1160,7 +1159,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
       decoration: BoxDecoration(
         gradient: const LinearGradient(colors: [Color(0xFF0F2B26), Color(0xFF1A3A35)], begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(28),
-        boxShadow: [BoxShadow(color: const Color(0xFF0F2B26).withOpacity(0.3), blurRadius: 16, offset: const Offset(0, 6))],
+        boxShadow: [BoxShadow(color: const Color(0xFF0F2B26).withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 6))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1170,7 +1169,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFFFCD34D).withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
+                decoration: BoxDecoration(color: const Color(0xFFFCD34D).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
                 child: const Row(
                   children: [
                     Icon(Icons.verified_rounded, color: Color(0xFFFCD34D), size: 14),
@@ -1205,7 +1204,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.08), borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16)),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -1287,7 +1286,7 @@ class _AppleTickAnimationDialogState extends State<_AppleTickAnimationDialog> wi
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(28),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 8))],
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 8))],
             ),
             child: const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 70),
           ),

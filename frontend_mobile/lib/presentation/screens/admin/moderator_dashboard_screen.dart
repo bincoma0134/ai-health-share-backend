@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../data/services/admin_api_service.dart';
 import '../../widgets/mini_video_player.dart';
@@ -112,7 +111,7 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
                         if (mediaUrl != null)
                           isVideo ? MiniVideoPlayer(videoUrl: mediaUrl) : Center(child: Image.network(mediaUrl, fit: BoxFit.contain)),
                         if (isPendingDelete)
-                          Container(color: _modDanger.withOpacity(0.3), child: Center(child: Icon(Icons.warning, color: _modDanger, size: 80))),
+                          Container(color: _modDanger.withValues(alpha: 0.3), child: Center(child: Icon(Icons.warning, color: _modDanger, size: 80))),
                       ],
                     ),
                   ),
@@ -138,7 +137,7 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
                         const SizedBox(height: 16),
                         Container(
                           padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: Colors.deepPurple.withOpacity(0.05), border: Border.all(color: Colors.deepPurple.withOpacity(0.1)), borderRadius: BorderRadius.circular(12)),
+                          decoration: BoxDecoration(color: Colors.deepPurple.withValues(alpha: 0.05), border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.1)), borderRadius: BorderRadius.circular(12)),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -162,15 +161,15 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
                         const SizedBox(height: 16),
                         Container(
                           padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: const Color(0xFFFE2C55).withOpacity(0.05), border: Border.all(color: const Color(0xFFFE2C55).withOpacity(0.2)), borderRadius: BorderRadius.circular(12)),
+                          decoration: BoxDecoration(color: const Color(0xFFFE2C55).withValues(alpha: 0.05), border: Border.all(color: const Color(0xFFFE2C55).withValues(alpha: 0.2)), borderRadius: BorderRadius.circular(12)),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
+                              const Row(
                                 children: [
-                                  const Icon(Icons.stars_rounded, color: Color(0xFFFE2C55), size: 16),
-                                  const SizedBox(width: 4),
-                                  const Text('VIP VOUCHER - BÁN BẰNG ĐIỂM NẠP', style: TextStyle(color: Color(0xFFFE2C55), fontSize: 10, fontWeight: FontWeight.w900)),
+                                  Icon(Icons.stars_rounded, color: Color(0xFFFE2C55), size: 16),
+                                  SizedBox(width: 4),
+                                  Text('VIP VOUCHER - BÁN BẰNG ĐIỂM NẠP', style: TextStyle(color: Color(0xFFFE2C55), fontSize: 10, fontWeight: FontWeight.w900)),
                                 ],
                               ),
                               const SizedBox(height: 12),
@@ -189,7 +188,7 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
                         const SizedBox(height: 16),
                         Container(
                           padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: Colors.amber.withOpacity(0.1), border: Border.all(color: Colors.amber.withOpacity(0.3)), borderRadius: BorderRadius.circular(12)),
+                          decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.1), border: Border.all(color: Colors.amber.withValues(alpha: 0.3)), borderRadius: BorderRadius.circular(12)),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -206,7 +205,7 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
                         TextField(
                           controller: noteCtrl,
                           style: const TextStyle(color: Colors.black87),
-                          decoration: InputDecoration(hintText: 'Nhập lý do từ chối (Bắt buộc)...', hintStyle: const TextStyle(color: Colors.black38), filled: true, fillColor: _modDanger.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _modDanger.withOpacity(0.5)))),
+                          decoration: InputDecoration(hintText: 'Nhập lý do từ chối (Bắt buộc)...', hintStyle: const TextStyle(color: Colors.black38), filled: true, fillColor: _modDanger.withValues(alpha: 0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: _modDanger.withValues(alpha: 0.5)))),
                         ),
                       ],
                     ],
@@ -229,7 +228,7 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
                             Expanded(
                               child: showRejectInput 
                                 ? _buildActionButton('XÁC NHẬN TỪ CHỐI', _modDanger, _isProcessing, () => _handleAction(item, 'REJECTED', noteCtrl.text, setModalState))
-                                : _buildActionButton('YÊU CẦU ĐIỀU CHỈNH', _modDanger.withOpacity(0.1), _isProcessing, () => setModalState(() => showRejectInput = true), textColor: _modDanger),
+                                : _buildActionButton('YÊU CẦU ĐIỀU CHỈNH', _modDanger.withValues(alpha: 0.1), _isProcessing, () => setModalState(() => showRejectInput = true), textColor: _modDanger),
                             ),
                             const SizedBox(width: 12),
                             Expanded(child: _buildActionButton(isPendingUpdate ? 'DUYỆT BẢN SỬA' : 'PHÊ DUYỆT', _modPrimary, _isProcessing, () => _handleAction(item, 'APPROVED', '', setModalState), disabled: showRejectInput)),
@@ -280,7 +279,7 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        shadowColor: Colors.black.withOpacity(0.05),
+        shadowColor: Colors.black.withValues(alpha: 0.05),
         title: Row(
           children: [
             Icon(Icons.shield, color: _modPrimary),
@@ -384,9 +383,9 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [_modPrimary, _modPrimary.withOpacity(0.7)]), 
+            gradient: LinearGradient(colors: [_modPrimary, _modPrimary.withValues(alpha: 0.7)]), 
             borderRadius: BorderRadius.circular(24),
-            boxShadow: [BoxShadow(color: _modPrimary.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))]
+            boxShadow: [BoxShadow(color: _modPrimary.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, 4))]
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -407,11 +406,11 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
           decoration: BoxDecoration(
             color: Colors.white, 
             borderRadius: BorderRadius.circular(24),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))]
           ),
           child: chartData.isEmpty ? const Center(child: Text('Chưa có dữ liệu', style: TextStyle(color: Colors.black54))) : LineChart(
             LineChartData(
-              gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (value) => FlLine(color: Colors.black12, strokeWidth: 1, dashArray: [4, 4])),
+              gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (value) => const FlLine(color: Colors.black12, strokeWidth: 1, dashArray: [4, 4])),
               titlesData: FlTitlesData(
                 rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                 topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -422,8 +421,8 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
               ),
               borderData: FlBorderData(show: false),
               lineBarsData: [
-                LineChartBarData(spots: duyetSpots, isCurved: true, color: _modPrimary, barWidth: 3, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: _modPrimary.withOpacity(0.1))),
-                LineChartBarData(spots: tuChoiSpots, isCurved: true, color: _modDanger, barWidth: 3, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: _modDanger.withOpacity(0.1))),
+                LineChartBarData(spots: duyetSpots, isCurved: true, color: _modPrimary, barWidth: 3, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: _modPrimary.withValues(alpha: 0.1))),
+                LineChartBarData(spots: tuChoiSpots, isCurved: true, color: _modDanger, barWidth: 3, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: _modDanger.withValues(alpha: 0.1))),
               ],
             ),
           ),
@@ -484,7 +483,7 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
               decoration: BoxDecoration(
                 color: Colors.white, 
                 borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))]
               ),
               child: Row(
                 children: [
@@ -492,7 +491,7 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
                     width: 60, height: 60,
                     decoration: BoxDecoration(
                       color: item['type'] == 'voucher' 
-                          ? (item['is_vip'] == true ? const Color(0xFF1A3A35) : Colors.deepPurple.withOpacity(0.1)) 
+                          ? (item['is_vip'] == true ? const Color(0xFF1A3A35) : Colors.deepPurple.withValues(alpha: 0.1)) 
                           : Colors.black12, 
                       borderRadius: BorderRadius.circular(12), 
                       image: item['image_url'] != null ? DecorationImage(image: NetworkImage(item['image_url']), fit: BoxFit.cover) : null
@@ -528,7 +527,7 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: item['status'].toString().contains('DELETE') ? _modDanger.withOpacity(0.1) : Colors.amber.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(color: item['status'].toString().contains('DELETE') ? _modDanger.withValues(alpha: 0.1) : Colors.amber.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                     child: Text(item['status'].toString().split('_').last, style: TextStyle(color: item['status'].toString().contains('DELETE') ? _modDanger : Colors.amber.shade700, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
                   )
                 ],
@@ -555,7 +554,7 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
             color: Colors.white, 
             border: Border(left: BorderSide(color: item['status'] == 'APPROVED' ? Colors.green : _modDanger, width: 4)), 
             borderRadius: BorderRadius.circular(12),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))]
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -588,7 +587,7 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
           color: isActive ? _modPrimary : Colors.white, 
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: isActive ? _modPrimary : Colors.black12),
-          boxShadow: isActive ? [BoxShadow(color: _modPrimary.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))] : [],
+          boxShadow: isActive ? [BoxShadow(color: _modPrimary.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))] : [],
         ),
         child: Row(
           children: [
@@ -607,7 +606,7 @@ class _ModeratorDashboardScreenState extends State<ModeratorDashboardScreen> {
       decoration: BoxDecoration(
         color: Colors.white, 
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))]
       ),
       child: Column(
         children: [

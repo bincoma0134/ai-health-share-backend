@@ -5,9 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:frontend_mobile/core/network/api_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../data/models/video_model.dart';
-import '../../../data/services/notification_api_service.dart';
 import 'booking_bottom_sheet.dart';
-import 'auth_guard.dart'; // 🚀 Nhúng hệ thống định danh Auth
+// 🚀 Nhúng hệ thống định danh Auth
 import '../screens/ai/partner_ai_chat_screen.dart'; // 🚀 Động cơ định tuyến sang luồng Chat AI Cơ sở
 import 'package:rive/rive.dart' hide Animation; // 🚀 Rive namespace protection
 
@@ -400,7 +399,7 @@ _isMascotDismissed = false;
     if (_dy > screenHeight - 200) _dy = screenHeight - 200;
 
     // 2. Toán học Hít Biên Trục X (Trái hoặc Phải)
-    final double mascotSize = 52.0;
+    const double mascotSize = 52.0;
     if (_dx + (mascotSize / 2) < screenWidth / 2) {
       _dx = 16.0; // Hít sát biên trái
       _isAnchoredLeft = true;
@@ -474,7 +473,7 @@ _isMascotDismissed = false;
                         decoration: BoxDecoration(
                           color: const Color(0xFF161616), // Nền xám đen bọc khối Rive sáng
                           shape: BoxShape.circle,
-                          boxShadow: [BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))],
+                          boxShadow: [BoxShadow(color: const Color(0xFF80BF84).withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
                           border: Border.all(color: const Color(0xFF80BF84), width: 1.5),
                         ),
                         child: ClipOval( // Bo tròn hoạt họa Rive
@@ -528,7 +527,7 @@ _isMascotDismissed = false;
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           constraints: const BoxConstraints(maxWidth: 180),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF18181B).withOpacity(0.85),
+                            color: const Color(0xFF18181B).withValues(alpha: 0.85),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(color: Colors.white24, width: 0.5),
                           ),
@@ -566,7 +565,7 @@ _isMascotDismissed = false;
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF18181B).withOpacity(0.75),
+                    color: const Color(0xFF18181B).withValues(alpha: 0.75),
                     borderRadius: BorderRadius.circular(24),
                     border: Border.all(color: Colors.white24, width: 0.5),
                   ),
@@ -577,8 +576,8 @@ _isMascotDismissed = false;
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: const [
+                          const Row(
+                            children: [
                               Icon(Icons.auto_awesome, color: Color(0xFF80BF84), size: 16),
                               SizedBox(width: 6),
                               Text('AI TRỢ LÝ SỨC KHỎE', style: TextStyle(color: Color(0xFF80BF84), fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
@@ -647,7 +646,7 @@ _isMascotDismissed = false;
                                   decoration: BoxDecoration(
                                     color: const Color(0xFF80BF84),
                                     borderRadius: BorderRadius.circular(14),
-                                    boxShadow: [BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.25), blurRadius: 8)],
+                                    boxShadow: [BoxShadow(color: const Color(0xFF80BF84).withValues(alpha: 0.25), blurRadius: 8)],
                                   ),
                                   child: const Center(
                                     child: Text(
@@ -704,9 +703,9 @@ _isMascotDismissed = false;
                               child: Container(
                                 padding: const EdgeInsets.symmetric(vertical: 12),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.15),
+                                  color: Colors.white.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.3), width: 1),
+                                  border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.3), width: 1),
                                 ),
                                 child: const Center(
                                   child: Text(

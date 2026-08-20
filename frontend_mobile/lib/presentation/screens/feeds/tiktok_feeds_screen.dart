@@ -1,9 +1,6 @@
 import 'dart:ui'; // Bổ sung thư viện này để dùng ImageFilter
-import 'dart:convert';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart'; // Bổ sung phục vụ format giá tiền tệ VNĐ động
 import 'package:go_router/go_router.dart'; // Bổ sung GoRouter
@@ -53,10 +50,8 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
   bool _isLoading = true;
   
   // Quản lý thời gian xem video thực tế phục vụ nhiệm vụ SValue
-  final math.Random _random = math.Random();
   DateTime? _videoStartTime;
   int _currentIndex = 0;
-  final _storage = const FlutterSecureStorage();
   
   // Lưu trữ danh sách ID các đối tác đã nhấn theo dõi thành công trong phiên làm việc
   final Set<String> _followedCreatorIds = {};
@@ -264,6 +259,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
     super.dispose();
   }
 
+  @override
   Widget build(BuildContext context) {
     super.build(context); // BẮT BUỘC: Khởi động cơ chế KeepAlive Engine
     
@@ -374,7 +370,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                       end: Alignment.bottomCenter, 
                       colors: [
                         Colors.transparent, 
-                        Colors.black.withOpacity(0.55), // Bóng tối chuẩn mịn màng giúp đọc caption chữ trắng dễ chịu, bám khối chắc chắn
+                        Colors.black.withValues(alpha: 0.55), // Bóng tối chuẩn mịn màng giúp đọc caption chữ trắng dễ chịu, bám khối chắc chắn
                       ],
                       stops: const [0.6, 1.0], // Thiết lập điểm dừng thông minh, chỉ tập trung phủ tối ở 40% phần đáy màn hình nhằm giữ độ căng cho video nền
                     )
@@ -402,7 +398,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.6), // Kính mờ trắng sáng mịn màng
+                            color: Colors.white.withValues(alpha: 0.6), // Kính mờ trắng sáng mịn màng
                             shape: BoxShape.circle,
                             border: Border.all(color: Colors.black12, width: 0.5),
                           ),
@@ -419,7 +415,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                             child: Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.6),
+                                color: Colors.white.withValues(alpha: 0.6),
                                 shape: BoxShape.circle,
                                 border: Border.all(color: Colors.black12, width: 0.5),
                               ),
@@ -438,7 +434,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                                 child: Container(
                                   padding: const EdgeInsets.all(8),
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.6),
+                                    color: Colors.white.withValues(alpha: 0.6),
                                     shape: BoxShape.circle,
                                     border: Border.all(color: Colors.black12, width: 0.5),
                                   ),
@@ -538,9 +534,9 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF80BF84).withOpacity(0.15),
+                                      color: const Color(0xFF80BF84).withValues(alpha: 0.15),
                                       borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.4), width: 1),
+                                      border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.4), width: 1),
                                     ),
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -574,13 +570,13 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.15), // Nâng nhẹ opacity để chữ dễ đọc hơn trên nền phức tạp
+                                      color: Colors.white.withValues(alpha: 0.15), // Nâng nhẹ opacity để chữ dễ đọc hơn trên nền phức tạp
                                       borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: Colors.white.withOpacity(0.35), width: 1),
+                                      border: Border.all(color: Colors.white.withValues(alpha: 0.35), width: 1),
                                     ),
-                                    child: Row(
+                                    child: const Row(
                                       mainAxisSize: MainAxisSize.min,
-                                      children: const [
+                                      children: [
                                         Icon(Icons.storefront_rounded, color: Colors.white, size: 14),
                                         SizedBox(width: 6),
                                         Text(
@@ -634,7 +630,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                                 border: Border.all(color: Colors.white, width: 1.5),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.4),
+                                    color: Colors.black.withValues(alpha: 0.4),
                                     blurRadius: 6,
                                     offset: const Offset(0, 2),
                                   ),
@@ -699,7 +695,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                                     border: Border.all(color: Colors.white, width: 1.5),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.25),
+                                        color: Colors.black.withValues(alpha: 0.25),
                                         blurRadius: 3,
                                         offset: const Offset(0, 1),
                                       ),
@@ -764,8 +760,8 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                               color: Colors.white, 
                               size: 36,
                               shadows: [
-                                Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 6, offset: const Offset(0, 2)),
-                                Shadow(color: Colors.black.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4)),
+                                Shadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 6, offset: const Offset(0, 2)),
+                                Shadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4)),
                               ],
                             ),
                             const SizedBox(height: 3),
@@ -777,7 +773,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                                 fontSize: 10, // 🚀 Đã hạ kích thước chữ từ 12 xuống 10 tinh tế theo yêu cầu
                                 letterSpacing: -0.2,
                                 shadows: [
-                                  Shadow(color: Colors.black87, blurRadius: 4, offset: const Offset(0, 1.5))
+                                  Shadow(color: Colors.black87, blurRadius: 4, offset: Offset(0, 1.5))
                                 ]
                               )
                             ),
@@ -805,7 +801,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16), // Sửa lỗi chính tả Lens của bộ lọc mờ
                       child: Container(
-                        color: Colors.black.withOpacity(0.6),
+                        color: Colors.black.withValues(alpha: 0.6),
                         padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 12, left: 16, right: 16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -817,7 +813,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                                   child: Container(
                                     height: 44,
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.12),
+                                      color: Colors.white.withValues(alpha: 0.12),
                                       borderRadius: BorderRadius.circular(22),
                                       border: Border.all(color: Colors.white24, width: 1),
                                     ),
@@ -877,7 +873,7 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                                         return Container(
                                           margin: const EdgeInsets.only(bottom: 10),
                                           decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(0.06),
+                                            color: Colors.white.withValues(alpha: 0.06),
                                             borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: ListTile(
@@ -933,8 +929,8 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
               color: color, 
               size: 36,
               shadows: [
-                Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 6, offset: const Offset(0, 2)),
-                Shadow(color: Colors.black.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4)),
+                Shadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 6, offset: const Offset(0, 2)),
+                Shadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4)),
               ],
             ),
             const SizedBox(height: 3),
@@ -946,8 +942,8 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                 fontWeight: FontWeight.w700, 
                 fontSize: 12, 
                 letterSpacing: -0.2,
-                shadows: [
-                  Shadow(color: Colors.black87, blurRadius: 4, offset: const Offset(0, 1.5))
+                shadows: const [
+                  Shadow(color: Colors.black87, blurRadius: 4, offset: Offset(0, 1.5))
                 ]
               )
             ),
@@ -1047,7 +1043,7 @@ class _MusicDiscAnimatedState extends State<_MusicDiscAnimated> with SingleTicke
           border: Border.all(color: Colors.white30, width: 2),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),

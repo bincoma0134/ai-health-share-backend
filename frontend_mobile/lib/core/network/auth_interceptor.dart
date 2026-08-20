@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:frontend_mobile/core/network/api_client.dart';
 import '../../data/services/secure_storage_service.dart';
 import '../../presentation/widgets/auth_guard.dart';
 

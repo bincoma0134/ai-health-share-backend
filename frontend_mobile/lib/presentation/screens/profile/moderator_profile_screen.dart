@@ -257,7 +257,7 @@ class _ModeratorProfileScreenState extends State<ModeratorProfileScreen> {
                           height: 140,
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            color: _modPrimary.withOpacity(0.1),
+                            color: _modPrimary.withValues(alpha: 0.1),
                             image: hasCover ? DecorationImage(image: GlobalCacheProvider.create(rawCover, maxWidth: 800, maxHeight: 600), fit: BoxFit.cover) : null,
                           ),
                           child: Container(
@@ -267,7 +267,7 @@ class _ModeratorProfileScreenState extends State<ModeratorProfileScreen> {
                                 end: Alignment.bottomCenter,
                                 colors: [
                                   Colors.transparent,
-                                  const Color(0xFFF3E8FF).withOpacity(0.5),
+                                  const Color(0xFFF3E8FF).withValues(alpha: 0.5),
                                   const Color(0xFFF7FBF9),
                                 ],
                                 stops: const [0.3, 0.8, 1.0],
@@ -298,7 +298,7 @@ class _ModeratorProfileScreenState extends State<ModeratorProfileScreen> {
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(color: Colors.white, width: 4),
-                                  boxShadow: [BoxShadow(color: _modPrimary.withOpacity(0.25), blurRadius: 20, offset: const Offset(0, 8))],
+                                  boxShadow: [BoxShadow(color: _modPrimary.withValues(alpha: 0.25), blurRadius: 20, offset: const Offset(0, 8))],
                                   image: DecorationImage(image: GlobalCacheProvider.create(avatarUrl, maxWidth: 300, maxHeight: 300), fit: BoxFit.cover),
                                 ),
                               ),
@@ -310,7 +310,7 @@ class _ModeratorProfileScreenState extends State<ModeratorProfileScreen> {
                                     gradient: LinearGradient(colors: [_modSecondary, _modPrimary]),
                                     borderRadius: BorderRadius.circular(14),
                                     border: Border.all(color: Colors.white, width: 2),
-                                    boxShadow: [BoxShadow(color: _modPrimary.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
+                                    boxShadow: [BoxShadow(color: _modPrimary.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4))],
                                   ),
                                   child: const Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -328,7 +328,7 @@ class _ModeratorProfileScreenState extends State<ModeratorProfileScreen> {
                                   onTap: () => _showImageOptions(hasAvatar ? rawAvatar : null, 'avatar'),
                                   child: Container(
                                     padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)]),
+                                    decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)]),
                                     child: Icon(Icons.camera_alt_rounded, size: 13, color: _modSecondary),
                                   ),
                                 ),
@@ -388,7 +388,7 @@ class _ModeratorProfileScreenState extends State<ModeratorProfileScreen> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(24),
-                            boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 6))],
+                            boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 6))],
                           ),
                           child: Column(
                             children: [
@@ -463,7 +463,7 @@ class _ModeratorProfileScreenState extends State<ModeratorProfileScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: _modPrimary.withOpacity(0.3), width: 1),
+                              border: Border.all(color: _modPrimary.withValues(alpha: 0.3), width: 1),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -554,13 +554,13 @@ class _ModeratorProfileScreenState extends State<ModeratorProfileScreen> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: const Color(0xFFE2ECEB), width: 0.8),
-          boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+          boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
               child: Icon(icon, color: color, size: 24),
             ),
             const SizedBox(width: 16),
@@ -718,7 +718,7 @@ class _ModeratorProfileScreenState extends State<ModeratorProfileScreen> {
                 foregroundColor: _modPrimary,
                 elevation: 0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                side: BorderSide(color: _modPrimary.withOpacity(0.3), width: 1),
+                side: BorderSide(color: _modPrimary.withValues(alpha: 0.3), width: 1),
               ),
               onPressed: _showEditModal,
               icon: const Icon(Icons.edit_rounded, size: 16),
@@ -836,7 +836,7 @@ class _ModeratorProfileScreenState extends State<ModeratorProfileScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.6),
+          color: Colors.white.withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: const Color(0xFFE2ECEB), width: 0.8),
         ),

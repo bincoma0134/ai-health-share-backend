@@ -137,7 +137,7 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        shadowColor: Colors.black.withOpacity(0.05),
+        shadowColor: Colors.black.withValues(alpha: 0.05),
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios_new_rounded, color: _darkBgColor, size: 20),
           onPressed: () => Navigator.pop(context),
@@ -147,7 +147,7 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
             Stack(
               children: [
                 CircleAvatar(
-                  backgroundColor: _partnerColor.withOpacity(0.15),
+                  backgroundColor: _partnerColor.withValues(alpha: 0.15),
                   radius: 20,
                   child: Icon(Icons.support_agent_rounded, color: _partnerColor, size: 22),
                 ),
@@ -215,7 +215,7 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
                                         color: Colors.white,
                                         shape: BoxShape.circle,
                                         boxShadow: [
-                                          BoxShadow(color: _partnerColor.withOpacity(0.15), blurRadius: 30, spreadRadius: 10),
+                                          BoxShadow(color: _partnerColor.withValues(alpha: 0.15), blurRadius: 30, spreadRadius: 10),
                                         ],
                                       ),
                                       child: Icon(Icons.auto_awesome_mosaic_rounded, size: 48, color: _partnerColor),
@@ -231,7 +231,7 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
                                       child: Text(
                                         'Trợ lý AI đã sẵn sàng giải đáp mọi thắc mắc về dịch vụ, bảng giá và ưu đãi của cơ sở.',
                                         textAlign: TextAlign.center,
-                                        style: TextStyle(color: _darkBgColor.withOpacity(0.6), fontSize: 13, height: 1.5),
+                                        style: TextStyle(color: _darkBgColor.withValues(alpha: 0.6), fontSize: 13, height: 1.5),
                                       ),
                                     ),
                                   ],
@@ -264,8 +264,9 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
                       // Tính toán Step dựa trên số lượng tin nhắn USER đã gửi
                       int userMsgCount = _chatHistory.where((m) => m['sender_role'] == 'USER').length;
                       int autoStep = 0;
-                      if (userMsgCount == 1) autoStep = 1; // Sau câu 1 -> Hiện bộ 2
-                      else if (userMsgCount >= 2) autoStep = 2; // Sau câu 2 trở đi -> Hiện bộ 3 (giữ nguyên)
+                      if (userMsgCount == 1) {
+                        autoStep = 1; // Sau câu 1 -> Hiện bộ 2
+                      } else if (userMsgCount >= 2) autoStep = 2; // Sau câu 2 trở đi -> Hiện bộ 3 (giữ nguyên)
                       
                       // Ưu tiên step người dùng tự ấn (nếu có), nếu không dùng autoStep
                       int currentStep = _suggestionStep > autoStep ? _suggestionStep : autoStep;
@@ -288,7 +289,7 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
                                     onTap: () => setState(() => _suggestionStep = (currentStep + 1) % 3),
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.6), borderRadius: BorderRadius.circular(12)),
+                                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(12)),
                                       child: Row(
                                         children: [
                                           Icon(Icons.refresh_rounded, size: 12, color: _darkBgColor),
@@ -303,7 +304,7 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
                                     onTap: () => setState(() => _showSuggestions = false),
                                     child: Container(
                                       padding: const EdgeInsets.all(4),
-                                      decoration: BoxDecoration(color: Colors.black.withOpacity(0.05), shape: BoxShape.circle),
+                                      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.05), shape: BoxShape.circle),
                                       child: const Icon(Icons.close_rounded, size: 12, color: Colors.black54),
                                     ),
                                   ),
@@ -331,11 +332,11 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
                                       margin: const EdgeInsets.only(bottom: 8, right: 16),
                                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                       decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.95), // Giả Glassmorphism
+                                        color: Colors.white.withValues(alpha: 0.95), // Giả Glassmorphism
                                         borderRadius: BorderRadius.circular(20).copyWith(bottomRight: const Radius.circular(4)),
-                                        border: Border.all(color: _partnerColor.withOpacity(0.3)),
+                                        border: Border.all(color: _partnerColor.withValues(alpha: 0.3)),
                                         boxShadow: [
-                                          BoxShadow(color: _partnerColor.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))
+                                          BoxShadow(color: _partnerColor.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4))
                                         ],
                                       ),
                                       child: Text(
@@ -367,10 +368,10 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(32),
-              border: Border.all(color: _partnerColor.withOpacity(0.1)),
+              border: Border.all(color: _partnerColor.withValues(alpha: 0.1)),
               boxShadow: [
                 BoxShadow(
-                  color: _partnerColor.withOpacity(0.25), // Glow xanh nhẹ, mềm mại
+                  color: _partnerColor.withValues(alpha: 0.25), // Glow xanh nhẹ, mềm mại
                   blurRadius: 24,
                   spreadRadius: 2,
                   offset: const Offset(0, 8),
@@ -417,7 +418,7 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: _partnerColor.withOpacity(0.4),
+                          color: _partnerColor.withValues(alpha: 0.4),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         )
@@ -453,7 +454,7 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
           border: isMe ? null : Border.all(color: const Color(0xFFE2ECEB), width: 1),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isMe ? 0.06 : 0.02),
+              color: Colors.black.withValues(alpha: isMe ? 0.06 : 0.02),
               blurRadius: 4,
               offset: const Offset(0, 2),
             )
@@ -465,7 +466,7 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
             isMe
                 ? Text(
                     content,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 14,
                       height: 1.4,
@@ -494,7 +495,7 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
               child: Text(
                 timeStr,
                 style: TextStyle(
-                  color: isMe ? Colors.white.withOpacity(0.6) : Colors.grey,
+                  color: isMe ? Colors.white.withValues(alpha: 0.6) : Colors.grey,
                   fontSize: 9,
                 ),
               ),

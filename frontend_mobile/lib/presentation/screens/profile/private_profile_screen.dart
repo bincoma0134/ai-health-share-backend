@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../data/services/user_api_service.dart';
-import '../../../data/services/secure_storage_service.dart';
 import '../../widgets/guest_profile_view.dart';
 import 'super_admin_profile_screen.dart'; 
 import 'moderator_profile_screen.dart';
@@ -536,8 +535,9 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
     TextInputType keyboardType = TextInputType.text,
   }) {
     IconData prefixIcon = Icons.edit_note_rounded;
-    if (label.contains('Tên hiển thị')) prefixIcon = Icons.badge_rounded;
-    else if (label.contains('Tên đăng nhập')) prefixIcon = Icons.alternate_email_rounded;
+    if (label.contains('Tên hiển thị')) {
+      prefixIcon = Icons.badge_rounded;
+    } else if (label.contains('Tên đăng nhập')) prefixIcon = Icons.alternate_email_rounded;
     else if (label.contains('Số điện thoại')) prefixIcon = Icons.phone_iphone_rounded;
     else if (label.contains('Tiểu sử')) prefixIcon = Icons.auto_stories_rounded;
 
@@ -548,7 +548,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1A3A35).withOpacity(0.04),
+            color: const Color(0xFF1A3A35).withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
             spreadRadius: -2,
@@ -744,12 +744,12 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                 color: const Color(0xFF1A3A35), // Sắc xanh rêu Wellness sâu lắng thương hiệu
                 borderRadius: BorderRadius.circular(26),
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   width: 1.2,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF1A3A35).withOpacity(0.3),
+                    color: const Color(0xFF1A3A35).withValues(alpha: 0.3),
                     blurRadius: 20,
                     offset: const Offset(0, 6),
                   ),
@@ -764,14 +764,14 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                     final currentVerifiedRole = _profileData?['profile']?['role'] ?? 'USER';
                     context.push('/upload-studio', extra: currentVerifiedRole.toString());
                   },
-                  splashColor: const Color(0xFF80BF84).withOpacity(0.2),
+                  splashColor: const Color(0xFF80BF84).withValues(alpha: 0.2),
                     highlightColor: Colors.transparent,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20), // Tạo khoảng đệm lót đối xứng giúp nút tự co giãn hoàn hảo theo chữ
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20), // Tạo khoảng đệm lót đối xứng giúp nút tự co giãn hoàn hảo theo chữ
                       child: Row(
                         mainAxisSize: MainAxisSize.min, // Cưỡng ép Row chỉ chiếm vừa đủ diện tích của các phần tử con
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
+                        children: [
                           Icon(
                             Icons.movie_creation_rounded, // Biểu tượng truyền thông điện ảnh thể hiện luồng Đăng tải video ngắn
                             color: Color(0xFF80BF84), // Màu sắc xanh sương mai hữu cơ mát lành
@@ -879,7 +879,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                                 end: Alignment.bottomCenter,
                                 colors: [
                                   Colors.transparent,
-                                  const Color(0xFFF7FBF9).withOpacity(0.5),
+                                  const Color(0xFFF7FBF9).withValues(alpha: 0.5),
                                   const Color(0xFFF7FBF9),
                                 ],
                                 stops: const [0.3, 0.8, 1.0],
@@ -895,7 +895,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.8),
+                                color: Colors.white.withValues(alpha: 0.8),
                                 shape: BoxShape.circle,
                                 boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 4))],
                               ),
@@ -915,7 +915,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 4),
-                              boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.8), blurRadius: 24, offset: const Offset(0, 8))],
+                              boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.8), blurRadius: 24, offset: const Offset(0, 8))],
                               image: DecorationImage(image: GlobalCacheProvider.create(avatarUrl, maxWidth: 300, maxHeight: 300), fit: BoxFit.cover),
                             ),
                           ),
@@ -954,8 +954,8 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
-                        boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.3), blurRadius: 16, offset: const Offset(0, 4))],
-                        border: Border.all(color: const Color(0xFFE2ECEB).withOpacity(0.5), width: 1),
+                        boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 4))],
+                        border: Border.all(color: const Color(0xFFE2ECEB).withValues(alpha: 0.5), width: 1),
                       ),
                       child: Column(
                         children: [
@@ -999,9 +999,9 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFF1A3A35).withOpacity(0.4), width: 1.2),
+              border: Border.all(color: const Color(0xFF1A3A35).withValues(alpha: 0.4), width: 1.2),
               boxShadow: [
-                BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.12), blurRadius: 24, offset: const Offset(0, 8)),
+                BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.12), blurRadius: 24, offset: const Offset(0, 8)),
               ],
             ),
             child: Row(
@@ -1012,14 +1012,14 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        const Color(0xFF80BF84).withOpacity(0.25), // Đổi ánh sáng lõi sang màu xanh thương hiệu
+                        const Color(0xFF80BF84).withValues(alpha: 0.25), // Đổi ánh sáng lõi sang màu xanh thương hiệu
                         Colors.transparent,
                       ],
                       stops: const [0.3, 1.0],
                     ),
-                    border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.6), width: 1.5), // Viền icon xanh thương hiệu
+                    border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.6), width: 1.5), // Viền icon xanh thương hiệu
                     boxShadow: [
-                      BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.4), blurRadius: 12), // Đổi màu bóng đổ tỏa sáng sang xanh thương hiệu
+                      BoxShadow(color: const Color(0xFF80BF84).withValues(alpha: 0.4), blurRadius: 12), // Đổi màu bóng đổ tỏa sáng sang xanh thương hiệu
                     ],
                   ),
                   child: const Icon(Icons.all_inclusive_rounded, color: Color(0xFF80BF84), size: 22),
@@ -1052,7 +1052,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(24),
-            boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 6))],
+            boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 6))],
           ),
           child: Column(
             children: [
@@ -1092,13 +1092,13 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(20),
-                          boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4))],
+                          boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.2), blurRadius: 12, offset: const Offset(0, 4))],
                         ),
                         child: Row(
                           children: [
                             Container(
                               padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle),
+                              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
                               child: const Icon(Icons.calendar_today_rounded, color: Colors.white, size: 18),
                             ),
                             const SizedBox(width: 14),
@@ -1112,7 +1112,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                                     stats['bookings_count'] != null && stats['bookings_count'] > 0
                                         ? 'Bạn có tổng cộng ${stats['bookings_count']} hồ sơ theo dõi lịch trình'
                                         : 'Chưa có cuộc hẹn nào được thiết lập tại quầy',
-                                    style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w500),
+                                    style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 11, fontWeight: FontWeight.w500),
                                   ),
                                 ],
                               ),
@@ -1148,17 +1148,17 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                               final List<Color> activeGradientColors = [
                                 const Color(0xFFFF6B8B),
                                 const Color(0xFFFF8EAA),
-                                Colors.white.withOpacity(0.8), // Điểm giao thoa ánh sáng chéo lấp lánh cực đỉnh
+                                Colors.white.withValues(alpha: 0.8), // Điểm giao thoa ánh sáng chéo lấp lánh cực đỉnh
                                 const Color(0xFFFF8EAA),
                                 const Color(0xFFFF6B8B),
                               ];
 
                               final List<Color> inactiveGradientColors = [
-                                const Color(0xFFFF6B8B).withOpacity(0.08),
-                                const Color(0xFFFF8EAA).withOpacity(0.2),
-                                const Color(0xFFFFD6DA).withOpacity(0.6), // Dải sáng chéo mờ thanh lịch khi chưa chọn
-                                const Color(0xFFFF8EAA).withOpacity(0.2),
-                                const Color(0xFFFF6B8B).withOpacity(0.08),
+                                const Color(0xFFFF6B8B).withValues(alpha: 0.08),
+                                const Color(0xFFFF8EAA).withValues(alpha: 0.2),
+                                const Color(0xFFFFD6DA).withValues(alpha: 0.6), // Dải sáng chéo mờ thanh lịch khi chưa chọn
+                                const Color(0xFFFF8EAA).withValues(alpha: 0.2),
+                                const Color(0xFFFF6B8B).withValues(alpha: 0.08),
                               ];
 
                               return GestureDetector(
@@ -1179,12 +1179,12 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                                     border: Border.all(
                                       color: isSelected 
                                           ? const Color(0xFFFF4B72) 
-                                          : const Color(0xFFFF6B8B).withOpacity(0.4),
+                                          : const Color(0xFFFF6B8B).withValues(alpha: 0.4),
                                       width: 1.2,
                                     ),
                                     boxShadow: isSelected ? [
                                       BoxShadow(
-                                        color: const Color(0xFFFF6B8B).withOpacity(0.35),
+                                        color: const Color(0xFFFF6B8B).withValues(alpha: 0.35),
                                         blurRadius: 12,
                                         offset: const Offset(0, 4),
                                       )
@@ -1429,26 +1429,26 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                 switch (status.toUpperCase()) {
                   case 'APPROVED':
                   case 'PUBLISHED':
-                    badgeBgColor = const Color(0xFFE8F5E9).withOpacity(0.9);
+                    badgeBgColor = const Color(0xFFE8F5E9).withValues(alpha: 0.9);
                     dotColor = const Color(0xFF48C9B0);
                     textColor = const Color(0xFF1A3A35);
                     statusText = '';
                     break;
                   case 'PENDING_EDIT':
-                    badgeBgColor = const Color(0xFFE3F2FD).withOpacity(0.9);
+                    badgeBgColor = const Color(0xFFE3F2FD).withValues(alpha: 0.9);
                     dotColor = Colors.blue.shade600;
                     textColor = Colors.blue.shade900;
                     statusText = '';
                     break;
                   case 'PENDING_DELETE':
-                    badgeBgColor = const Color(0xFFFFEBEE).withOpacity(0.9);
+                    badgeBgColor = const Color(0xFFFFEBEE).withValues(alpha: 0.9);
                     dotColor = Colors.red.shade600;
                     textColor = Colors.red.shade900;
                     statusText = 'Chờ duyệt xóa';
                     break;
                   case 'PENDING':
                   default:
-                    badgeBgColor = const Color(0xFFFFF8E1).withOpacity(0.9);
+                    badgeBgColor = const Color(0xFFFFF8E1).withValues(alpha: 0.9);
                     dotColor = Colors.amber.shade700;
                     textColor = Colors.amber.shade900;
                     statusText = '';
@@ -1458,7 +1458,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                 return Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.5), blurRadius: 24, offset: const Offset(0, 8))],
+                    boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.5), blurRadius: 24, offset: const Offset(0, 8))],
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
@@ -1498,7 +1498,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.85),
+                              color: Colors.white.withValues(alpha: 0.85),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Row(
@@ -1524,7 +1524,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                           top: 10, right: 10,
                           child: Container(
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.85),
+                              color: Colors.white.withValues(alpha: 0.85),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Row(
@@ -1649,11 +1649,11 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                                           elevation: 0,
                                           child: Container(
                                             padding: const EdgeInsets.all(32),
-                                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32), border: Border.all(color: Colors.white, width: 2), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.08), blurRadius: 32, offset: const Offset(0, 16))]),
+                                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32), border: Border.all(color: Colors.white, width: 2), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.08), blurRadius: 32, offset: const Offset(0, 16))]),
                                             child: Column(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
-                                                Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: const Color(0xFFFFF0F2), shape: BoxShape.circle), child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFE63946), size: 36)),
+                                                Container(padding: const EdgeInsets.all(20), decoration: const BoxDecoration(color: Color(0xFFFFF0F2), shape: BoxShape.circle), child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFE63946), size: 36)),
                                                 const SizedBox(height: 24),
                                                 const Text('Gỡ Video', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 22, fontWeight: FontWeight.w900)),
                                                 const SizedBox(height: 12),
@@ -1703,7 +1703,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                           bottom: 0, left: 0, right: 0,
                           child: Container(
                             padding: const EdgeInsets.fromLTRB(12, 32, 12, 12),
-                            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withOpacity(0.8), Colors.transparent])),
+                            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withValues(alpha: 0.8), Colors.transparent])),
                             child: Text(v['title'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600, height: 1.3), maxLines: 2, overflow: TextOverflow.ellipsis),
                           ),
                         ),
@@ -1747,7 +1747,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 6))],
+          boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 6))],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1869,7 +1869,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                                   child: Container(
                                     padding: const EdgeInsets.all(24),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.9),
+                                      color: Colors.white.withValues(alpha: 0.9),
                                       borderRadius: BorderRadius.circular(28),
                                     ),
                                     child: Column(
@@ -2010,7 +2010,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
                 foregroundColor: const Color(0xFF1A3A35),
                 elevation: 0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                side: BorderSide(color: const Color(0xFF80BF84).withOpacity(0.3), width: 1),
+                side: BorderSide(color: const Color(0xFF80BF84).withValues(alpha: 0.3), width: 1),
               ),
               onPressed: _showEditModal,
               icon: const Icon(Icons.edit_rounded, size: 16),
@@ -2026,7 +2026,7 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isUnlocked ? const Color(0xFFF7FBF9) : const Color(0xFFF2F2F7).withOpacity(0.6),
+        color: isUnlocked ? const Color(0xFFF7FBF9) : const Color(0xFFF2F2F7).withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: isUnlocked ? const Color(0xFFE2ECEB) : Colors.transparent, width: 1),
       ),
@@ -2069,8 +2069,8 @@ class _PrivateProfileScreenState extends State<PrivateProfileScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2ECEB).withOpacity(0.7), width: 1),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10, offset: const Offset(0, 4))],
+        border: Border.all(color: const Color(0xFFE2ECEB).withValues(alpha: 0.7), width: 1),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Material(
         color: Colors.transparent,

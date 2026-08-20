@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter; // Import bắt buộc cho Glassmorphism
+// Import bắt buộc cho Glassmorphism
 import '../../../core/network/api_client.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/shimmer_wrapper.dart';
@@ -227,15 +227,15 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                         decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.15 + (_pulseController.value * 0.05)),
+                                          color: Colors.white.withValues(alpha: 0.15 + (_pulseController.value * 0.05)),
                                           borderRadius: BorderRadius.circular(14),
                                           border: Border.all(
-                                            color: Colors.white.withOpacity(0.3 + (_pulseController.value * 0.5)),
+                                            color: Colors.white.withValues(alpha: 0.3 + (_pulseController.value * 0.5)),
                                             width: 1.5,
                                           ),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: Colors.white.withOpacity(0.2 * _pulseController.value),
+                                              color: Colors.white.withValues(alpha: 0.2 * _pulseController.value),
                                               blurRadius: 12,
                                               spreadRadius: 2,
                                             )
@@ -290,13 +290,13 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                                         boxShadow: [
                                           // Bóng tĩnh cố định để giữ độ sâu
                                           BoxShadow(
-                                            color: const Color(0xFF80BF84).withOpacity(0.15),
+                                            color: const Color(0xFF80BF84).withValues(alpha: 0.15),
                                             blurRadius: 40,
                                             spreadRadius: 10,
                                           ),
                                           // Bóng động nhịp điệu (Ripple Effect) tỏa ra và mờ dần
                                           BoxShadow(
-                                            color: const Color(0xFF80BF84).withOpacity(0.25 * (1 - _pulseController.value)),
+                                            color: const Color(0xFF80BF84).withValues(alpha: 0.25 * (1 - _pulseController.value)),
                                             blurRadius: 60 * _pulseController.value,
                                             spreadRadius: 35 * _pulseController.value,
                                           ),
@@ -308,12 +308,12 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                                   child: Stack(
                                     alignment: Alignment.center,
                                     children: [
-                                      SizedBox(
+                                      const SizedBox(
                                         width: 220, height: 220,
                                         child: CircularProgressIndicator(
                                           value: 1.0,
                                           strokeWidth: 20,
-                                          valueColor: const AlwaysStoppedAnimation(Color(0xFFE2ECEB)), // Nền xám xanh nhạt chuẩn Wellness
+                                          valueColor: AlwaysStoppedAnimation(Color(0xFFE2ECEB)), // Nền xám xanh nhạt chuẩn Wellness
                                         ),
                                       ),
                                       SizedBox(
@@ -483,11 +483,11 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
             boxShadow: [
               if (isEligible && !hasClaimed)
                 BoxShadow(
-                  color: const Color(0xFF80BF84).withOpacity(0.3 * _pulseController.value), 
+                  color: const Color(0xFF80BF84).withValues(alpha: 0.3 * _pulseController.value), 
                   blurRadius: 30, spreadRadius: 4, offset: const Offset(0, 10)
                 )
               else
-                BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 24, offset: const Offset(0, 12)),
+                BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 24, offset: const Offset(0, 12)),
             ],
           ),
           child: Column(
@@ -517,10 +517,10 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: isEligible && !hasClaimed 
-                          ? const Color(0xFF80BF84).withOpacity(0.15 + (_pulseController.value * 0.1)) 
+                          ? const Color(0xFF80BF84).withValues(alpha: 0.15 + (_pulseController.value * 0.1)) 
                           : const Color(0xFFF4F9F6),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: isEligible && !hasClaimed ? const Color(0xFF80BF84).withOpacity(0.5) : Colors.transparent)
+                      border: Border.all(color: isEligible && !hasClaimed ? const Color(0xFF80BF84).withValues(alpha: 0.5) : Colors.transparent)
                     ),
                     child: const Text(
                       "Thưởng 500k",
@@ -562,7 +562,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                           boxShadow: [
                             if (isEligible)
                               BoxShadow(
-                                color: const Color(0xFF80BF84).withOpacity(0.4 + (_pulseController.value * 0.3)), 
+                                color: const Color(0xFF80BF84).withValues(alpha: 0.4 + (_pulseController.value * 0.3)), 
                                 blurRadius: 10
                               )
                           ],
@@ -615,7 +615,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                   decoration: BoxDecoration(
                     color: const Color(0xFFF4F9F6), 
                     borderRadius: BorderRadius.circular(16), 
-                    border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.3))
+                    border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.3))
                   ),
                   child: const Row(
                     children: [
@@ -668,7 +668,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF111827).withOpacity(0.03),
+            color: const Color(0xFF111827).withValues(alpha: 0.03),
             blurRadius: 24,
             offset: const Offset(0, 8),
           )
@@ -749,7 +749,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(14),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4))],
                       ),
                       child: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF111827), size: 18),
                     ),
@@ -769,7 +769,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                     ), 
                     fit: BoxFit.cover
                   ),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 4))],
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 8, offset: const Offset(0, 4))],
                 ),
               ),
             ],
@@ -786,7 +786,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                 begin: Alignment.topLeft, end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(32),
-              boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.25), blurRadius: 24, offset: const Offset(0, 8))],
+              boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.25), blurRadius: 24, offset: const Offset(0, 8))],
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -806,7 +806,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                         child: CircularProgressIndicator(
                           value: 1.0,
                           strokeWidth: 8.0, 
-                          valueColor: AlwaysStoppedAnimation(Colors.white.withOpacity(0.15)),
+                          valueColor: AlwaysStoppedAnimation(Colors.white.withValues(alpha: 0.15)),
                         ),
                       ),
                       // 2. Cung tiến trình chính
@@ -898,7 +898,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(24),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 24, offset: const Offset(0, 12))],
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 24, offset: const Offset(0, 12))],
                           border: Border.all(color: Colors.white, width: 2), // Glass border nhẹ
                         ),
                         child: Column(
@@ -921,9 +921,9 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                                   child: Container(
                                     height: 8, 
                                     decoration: BoxDecoration(
-                                      gradient: LinearGradient(colors: [adaptiveColor.withOpacity(0.6), adaptiveColor]),
+                                      gradient: LinearGradient(colors: [adaptiveColor.withValues(alpha: 0.6), adaptiveColor]),
                                       borderRadius: BorderRadius.circular(8),
-                                      boxShadow: [BoxShadow(color: adaptiveColor.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 2))], // Glow bóng tỏa
+                                      boxShadow: [BoxShadow(color: adaptiveColor.withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 2))], // Glow bóng tỏa
                                     )
                                   ),
                                 ),
@@ -941,7 +941,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(24),
-                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 24, offset: const Offset(0, 12))],
+                            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 24, offset: const Offset(0, 12))],
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -985,7 +985,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(24),
-                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 24, offset: const Offset(0, 12))],
+                            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 24, offset: const Offset(0, 12))],
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.center,
@@ -1003,7 +1003,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFF3F4F6),
                                       borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: const Color(0xFFE5E7EB).withOpacity(0.5), width: 2), // Viền kính bể chứa
+                                      border: Border.all(color: const Color(0xFFE5E7EB).withValues(alpha: 0.5), width: 2), // Viền kính bể chứa
                                     ),
                                     alignment: Alignment.bottomCenter,
                                     child: FractionallySizedBox(
@@ -1017,12 +1017,12 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                                           return Container(
                                             decoration: BoxDecoration(
                                               gradient: LinearGradient(
-                                                colors: [adaptiveColor.withOpacity(0.6), adaptiveColor], 
+                                                colors: [adaptiveColor.withValues(alpha: 0.6), adaptiveColor], 
                                                 begin: Alignment(0, -1.0 + liquidShift), 
                                                 end: Alignment(0, 1.0 - liquidShift)
                                               ),
                                               borderRadius: BorderRadius.circular(14),
-                                              boxShadow: [BoxShadow(color: adaptiveColor.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, -2))], // Ánh sáng hắt lên mặt nước
+                                              boxShadow: [BoxShadow(color: adaptiveColor.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, -2))], // Ánh sáng hắt lên mặt nước
                                             ),
                                             alignment: Alignment.center,
                                             child: Column(
@@ -1050,7 +1050,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(24),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 24, offset: const Offset(0, 12))],
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 24, offset: const Offset(0, 12))],
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1067,10 +1067,10 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
                                   duration: const Duration(milliseconds: 500),
                                   width: 16, height: 24, // Mở rộng block cho vững chãi
                                   decoration: BoxDecoration(
-                                    gradient: isFilled ? LinearGradient(colors: [adaptiveColor.withOpacity(0.6), adaptiveColor], begin: Alignment.topCenter, end: Alignment.bottomCenter) : null,
+                                    gradient: isFilled ? LinearGradient(colors: [adaptiveColor.withValues(alpha: 0.6), adaptiveColor], begin: Alignment.topCenter, end: Alignment.bottomCenter) : null,
                                     color: isFilled ? null : const Color(0xFFF3F4F6),
                                     borderRadius: BorderRadius.circular(6),
-                                    boxShadow: isFilled ? [BoxShadow(color: adaptiveColor.withOpacity(0.3), blurRadius: 6, offset: const Offset(0, 2))] : null,
+                                    boxShadow: isFilled ? [BoxShadow(color: adaptiveColor.withValues(alpha: 0.3), blurRadius: 6, offset: const Offset(0, 2))] : null,
                                   ),
                                 );
                               }),
@@ -1098,8 +1098,8 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
       child: InkWell(
         onTap: () => _submitMood(moodState, bodyFocus),
         borderRadius: BorderRadius.circular(24),
-        splashColor: themeColor.withOpacity(0.2),
-        highlightColor: themeColor.withOpacity(0.1),
+        splashColor: themeColor.withValues(alpha: 0.2),
+        highlightColor: themeColor.withValues(alpha: 0.1),
         child: Container(
           width: 72, // Mở rộng nhẹ vùng chạm (Hitbox) thân thiện ngón tay
           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -1109,7 +1109,7 @@ class _UserWellnessProfileScreenState extends State<UserWellnessProfileScreen> w
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: themeColor.withOpacity(0.08), // Nền sáng nhẹ mờ (Glow circle background)
+                  color: themeColor.withValues(alpha: 0.08), // Nền sáng nhẹ mờ (Glow circle background)
                   shape: BoxShape.circle,
                 ),
                 child: Icon(iconData, color: themeColor, size: 28),
@@ -1182,12 +1182,12 @@ class _VitalityArcPainter extends CustomPainter {
     final double radius = size.width / 2;
 
     // Góc bắt đầu là 135 độ (Góc dưới bên trái), Quét 270 độ sang góc dưới bên phải
-    final double startAngle = math.pi * 0.75; 
-    final double sweepAngle = math.pi * 1.5;
+    const double startAngle = math.pi * 0.75; 
+    const double sweepAngle = math.pi * 1.5;
 
     // 1. Vẽ Track nền mờ (Background Arc) - Đưa bán kính sát biên biên (radius - 4) và làm thanh mảnh nét vẽ
     final paintTrack = Paint()
-      ..color = const Color(0xFFE2ECEB).withOpacity(0.5)
+      ..color = const Color(0xFFE2ECEB).withValues(alpha: 0.5)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 5.0
       ..strokeCap = StrokeCap.round;
@@ -1206,7 +1206,7 @@ class _VitalityArcPainter extends CustomPainter {
       ..shader = SweepGradient(
         startAngle: startAngle,
         endAngle: startAngle + sweepAngle,
-        colors: [themeColor.withOpacity(0.5), themeColor],
+        colors: [themeColor.withValues(alpha: 0.5), themeColor],
         stops: const [0.0, 1.0],
       ).createShader(Rect.fromCircle(center: center, radius: radius - 4))
       ..style = PaintingStyle.stroke
@@ -1224,7 +1224,7 @@ class _VitalityArcPainter extends CustomPainter {
     // 3. Hiệu ứng hạt Pulse chạy ngầm trên quỹ đạo mới đã nới rộng
     final double pulseAngle = startAngle + (progress * sweepAngle);
     final paintPulse = Paint()
-      ..color = Colors.white.withOpacity(0.8)
+      ..color = Colors.white.withValues(alpha: 0.8)
       ..style = PaintingStyle.fill
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
 

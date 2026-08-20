@@ -334,7 +334,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
               duration: const Duration(milliseconds: 200),
               child: Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle, border: Border.all(color: Colors.white.withOpacity(0.3))),
+                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle, border: Border.all(color: Colors.white.withValues(alpha: 0.3))),
                 child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 64),
               ),
             ),
@@ -379,7 +379,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.wifi_off_rounded, color: Colors.black38, size: 48),
+                      const Icon(Icons.wifi_off_rounded, color: Colors.black38, size: 48),
                       const SizedBox(height: 12),
                       const Text(
                         'Lỗi tải video. Vui lòng kiểm tra kết nối.',
@@ -438,7 +438,7 @@ class _FeedVideoPlayerState extends State<FeedVideoPlayer> with WidgetsBindingOb
                             child: Stack(
                               alignment: Alignment.center,
                               children: [
-                                Icon(Icons.favorite, color: Colors.pinkAccent.withOpacity(0.4), size: 110),
+                                Icon(Icons.favorite, color: Colors.pinkAccent.withValues(alpha: 0.4), size: 110),
                                 const Icon(Icons.favorite, color: Colors.red, size: 90),
                               ],
                             ),

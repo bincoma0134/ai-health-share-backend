@@ -1,16 +1,18 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+
+import '../../../core/network/api_client.dart';
+import '../../../core/network/global_cache_engine.dart';
+import '../../../data/models/video_model.dart';
 import '../../../data/services/creator_api_service.dart';
 import '../../../data/services/user_api_service.dart';
-import '../../../core/network/global_cache_engine.dart';
-import '../../widgets/mini_video_player.dart';
-import '../../../core/network/api_client.dart';
-import '../../widgets/shimmer_wrapper.dart';
-import '../../../data/models/video_model.dart';
 import '../../widgets/app_toast.dart';
+import '../../widgets/mini_video_player.dart';
+import '../../widgets/shimmer_wrapper.dart';
 
 class CreatorProfileScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -36,7 +38,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
   List<dynamic> _videos = [];
   List<dynamic> _posts = [];
   List<dynamic> _savedItems = [];
-  int _visibleSavesCount = 5;
+  final int _visibleSavesCount = 5;
 
   final _nameCtrl = TextEditingController();
   final _usernameCtrl = TextEditingController();
@@ -279,8 +281,9 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
     TextInputType keyboardType = TextInputType.text,
   }) {
     IconData prefixIcon = Icons.edit_note_rounded;
-    if (label.contains('Tên hiển thị')) prefixIcon = Icons.badge_rounded;
-    else if (label.contains('Tên đăng nhập')) prefixIcon = Icons.alternate_email_rounded;
+    if (label.contains('Tên hiển thị')) {
+      prefixIcon = Icons.badge_rounded;
+    } else if (label.contains('Tên đăng nhập')) prefixIcon = Icons.alternate_email_rounded;
     else if (label.contains('Số điện thoại')) prefixIcon = Icons.phone_iphone_rounded;
     else if (label.contains('Tiểu sử')) prefixIcon = Icons.auto_stories_rounded;
 
@@ -291,7 +294,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1A3A35).withOpacity(0.04),
+            color: const Color(0xFF1A3A35).withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
             spreadRadius: -2,
@@ -525,7 +528,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         const SizedBox(height: 24),
                         const Padding(padding: EdgeInsets.only(left: 4, bottom: 8), child: Text('Tiêu đề / Nội dung video', style: TextStyle(color: Color(0xFF617D79), fontSize: 13, fontWeight: FontWeight.bold))),
                         Container(
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE5E5EA)), boxShadow: [BoxShadow(color: _crtPrimary.withOpacity(0.01), blurRadius: 4, offset: const Offset(0, 2))]),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE5E5EA)), boxShadow: [BoxShadow(color: _crtPrimary.withValues(alpha: 0.01), blurRadius: 4, offset: const Offset(0, 2))]),
                           child: TextField(controller: titleCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 15, fontWeight: FontWeight.w500), decoration: const InputDecoration(border: InputBorder.none, hintText: 'Nhập tiêu đề video bắt buộc...', hintStyle: TextStyle(color: Color(0xFFB0C4C1), fontSize: 14), contentPadding: EdgeInsets.all(16))),
                         ),
                         const SizedBox(height: 20),
@@ -779,7 +782,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                           height: 140,
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFF8EAA).withOpacity(0.1),
+                            color: const Color(0xFFFF8EAA).withValues(alpha: 0.1),
                             image: hasCover ? DecorationImage(image: GlobalCacheProvider.create(rawCover, maxWidth: 800, maxHeight: 600), fit: BoxFit.cover) : null,
                           ),
                           child: Container(
@@ -789,7 +792,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                 end: Alignment.bottomCenter,
                                 colors: [
                                   Colors.transparent,
-                                  const Color(0xFFFFF0F2).withOpacity(0.5),
+                                  const Color(0xFFFFF0F2).withValues(alpha: 0.5),
                                   const Color(0xFFF7FBF9),
                                 ],
                                 stops: const [0.3, 0.8, 1.0],
@@ -821,7 +824,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(color: Colors.white, width: 4),
-                                  boxShadow: [BoxShadow(color: _crtPrimary.withOpacity(0.25), blurRadius: 20, offset: const Offset(0, 8))],
+                                  boxShadow: [BoxShadow(color: _crtPrimary.withValues(alpha: 0.25), blurRadius: 20, offset: const Offset(0, 8))],
                                   image: DecorationImage(image: GlobalCacheProvider.create(avatarUrl, maxWidth: 300, maxHeight: 300), fit: BoxFit.cover),
                                 ),
                               ),
@@ -833,7 +836,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                     gradient: LinearGradient(colors: [_crtSecondary, _crtPrimary]),
                                     borderRadius: BorderRadius.circular(14),
                                     border: Border.all(color: Colors.white, width: 2),
-                                    boxShadow: [BoxShadow(color: _crtPrimary.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
+                                    boxShadow: [BoxShadow(color: _crtPrimary.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4))],
                                   ),
                                   child: const Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -851,7 +854,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                   onTap: _pickAndUploadAvatar,
                                   child: Container(
                                     padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)]),
+                                    decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)]),
                                     child: Icon(Icons.camera_alt_rounded, size: 13, color: _crtSecondary),
                                   ),
                                 ),
@@ -917,7 +920,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFFFF0F2),
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: _crtPrimary.withOpacity(0.2), width: 0.5),
+                                    border: Border.all(color: _crtPrimary.withValues(alpha: 0.2), width: 0.5),
                                   ),
                                   child: Icon(iconData, size: 13, color: _crtSecondary),
                                 )),
@@ -1023,9 +1026,9 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(24),
-                              border: Border.all(color: _crtPrimary.withOpacity(0.4), width: 1.2),
+                              border: Border.all(color: _crtPrimary.withValues(alpha: 0.4), width: 1.2),
                               boxShadow: [
-                                BoxShadow(color: _crtPrimary.withOpacity(0.12), blurRadius: 24, offset: const Offset(0, 8)),
+                                BoxShadow(color: _crtPrimary.withValues(alpha: 0.12), blurRadius: 24, offset: const Offset(0, 8)),
                               ],
                             ),
                             child: Row(
@@ -1037,14 +1040,14 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                     shape: BoxShape.circle,
                                     gradient: RadialGradient(
                                       colors: [
-                                        _crtPrimary.withOpacity(0.25),
+                                        _crtPrimary.withValues(alpha: 0.25),
                                         Colors.transparent,
                                       ],
                                       stops: const [0.3, 1.0],
                                     ),
-                                    border: Border.all(color: _crtPrimary.withOpacity(0.7), width: 1.5),
+                                    border: Border.all(color: _crtPrimary.withValues(alpha: 0.7), width: 1.5),
                                     boxShadow: [
-                                      BoxShadow(color: _crtPrimary.withOpacity(0.4), blurRadius: 12),
+                                      BoxShadow(color: _crtPrimary.withValues(alpha: 0.4), blurRadius: 12),
                                     ],
                                   ),
                                   child: Icon(Icons.all_inclusive_rounded, color: _crtSecondary, size: 22),
@@ -1079,7 +1082,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(24),
-                            boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 6))],
+                            boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 6))],
                           ),
                           child: Column(
                             children: [
@@ -1125,7 +1128,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                               children: [
                                 Container(
                                   padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle),
+                                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
                                   child: const Icon(Icons.calendar_today_rounded, color: Colors.white, size: 18),
                                 ),
                                 const SizedBox(width: 14),
@@ -1139,7 +1142,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                         _stats['bookings_count'] != null && _stats['bookings_count'] > 0
                                             ? 'Bạn có tổng cộng ${_stats['bookings_count']} hồ sơ theo dõi lịch trình'
                                             : 'Chưa có cuộc hẹn nào được thiết lập tại quầy',
-                                        style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w500),
+                                        style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 11, fontWeight: FontWeight.w500),
                                       ),
                                     ],
                                   ),
@@ -1160,7 +1163,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: _crtPrimary.withOpacity(0.3), width: 1),
+                              border: Border.all(color: _crtPrimary.withValues(alpha: 0.3), width: 1),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -1197,16 +1200,16 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                   final List<Color> activeGradientColors = [
                                     _crtSecondary,
                                     _crtPrimary,
-                                    Colors.white.withOpacity(0.8),
+                                    Colors.white.withValues(alpha: 0.8),
                                     _crtPrimary,
                                     _crtSecondary,
                                   ];
                                   final List<Color> inactiveGradientColors = [
-                                    _crtSecondary.withOpacity(0.08),
-                                    _crtPrimary.withOpacity(0.2),
-                                    const Color(0xFFFFD6DA).withOpacity(0.6),
-                                    _crtPrimary.withOpacity(0.2),
-                                    _crtSecondary.withOpacity(0.08),
+                                    _crtSecondary.withValues(alpha: 0.08),
+                                    _crtPrimary.withValues(alpha: 0.2),
+                                    const Color(0xFFFFD6DA).withValues(alpha: 0.6),
+                                    _crtPrimary.withValues(alpha: 0.2),
+                                    _crtSecondary.withValues(alpha: 0.08),
                                   ];
 
                                   return GestureDetector(
@@ -1225,7 +1228,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                         ),
                                         borderRadius: BorderRadius.circular(14),
                                         border: Border.all(
-                                          color: isSelected ? _crtSecondary : _crtPrimary.withOpacity(0.4),
+                                          color: isSelected ? _crtSecondary : _crtPrimary.withValues(alpha: 0.4),
                                           width: 1.2,
                                         ),
                                       ),
@@ -1433,7 +1436,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
               return Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
-                  boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
+                  boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
@@ -1465,7 +1468,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9),
+                            color: Colors.white.withValues(alpha: 0.9),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Row(
@@ -1483,7 +1486,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         top: 6, right: 6,
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9),
+                            color: Colors.white.withValues(alpha: 0.9),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Row(
@@ -1531,7 +1534,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         bottom: 0, left: 0, right: 0,
                         child: Container(
                           padding: const EdgeInsets.fromLTRB(6, 16, 6, 6),
-                          decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withOpacity(0.8), Colors.transparent])),
+                          decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withValues(alpha: 0.8), Colors.transparent])),
                           child: Text(v['title'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600, height: 1.2), maxLines: 1, overflow: TextOverflow.ellipsis),
                         ),
                       ),
@@ -1574,7 +1577,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                   foregroundColor: _crtSecondary,
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  side: BorderSide(color: _crtPrimary.withOpacity(0.3), width: 1),
+                  side: BorderSide(color: _crtPrimary.withValues(alpha: 0.3), width: 1),
                 ),
                 onPressed: _showEditModal,
                 icon: const Icon(Icons.edit_rounded, size: 16),
@@ -1627,7 +1630,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF0F2),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _crtPrimary.withOpacity(0.2), width: 1),
+                  border: Border.all(color: _crtPrimary.withValues(alpha: 0.2), width: 1),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -1734,7 +1737,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
             });
           }
           
-          InputDecoration _premiumInputDeco(String label, IconData icon) => InputDecoration(labelText: label, labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500), floatingLabelStyle: TextStyle(color: _crtPrimary, fontSize: 13, fontWeight: FontWeight.bold), prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20), filled: true, fillColor: Colors.white, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: _crtPrimary, width: 1.5)));
+          InputDecoration premiumInputDeco(String label, IconData icon) => InputDecoration(labelText: label, labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500), floatingLabelStyle: TextStyle(color: _crtPrimary, fontSize: 13, fontWeight: FontWeight.bold), prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20), filled: true, fillColor: Colors.white, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: _crtPrimary, width: 1.5)));
 
           return Container(
             height: MediaQuery.of(context).size.height * 0.9,
@@ -1754,24 +1757,24 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                     ],
                   ),
                 ),
-                Container(height: 1, width: double.infinity, margin: const EdgeInsets.only(top: 16, bottom: 24), decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, const Color(0xFFE2ECEB).withOpacity(0.5), Colors.transparent]))),
+                Container(height: 1, width: double.infinity, margin: const EdgeInsets.only(top: 16, bottom: 24), decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, const Color(0xFFE2ECEB).withValues(alpha: 0.5), Colors.transparent]))),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: titleCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _premiumInputDeco('Tiêu đề video (Bắt buộc)', Icons.title_rounded))),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: titleCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: premiumInputDeco('Tiêu đề video (Bắt buộc)', Icons.title_rounded))),
                         const SizedBox(height: 16),
-                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: contentCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _premiumInputDeco('Mô tả nội dung', Icons.description_outlined))),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: contentCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: premiumInputDeco('Mô tả nội dung', Icons.description_outlined))),
                         const SizedBox(height: 16),
                         
                         // 🚀 ĐỒNG BỘ: Thêm trường Giá Read-only
-                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: priceCtrl, enabled: false, style: const TextStyle(color: Color(0xFF617D79), fontWeight: FontWeight.bold), decoration: _premiumInputDeco('Giá tham khảo đính kèm (VNĐ)', Icons.monetization_on_outlined))),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: priceCtrl, enabled: false, style: const TextStyle(color: Color(0xFF617D79), fontWeight: FontWeight.bold), decoration: premiumInputDeco('Giá tham khảo đính kèm (VNĐ)', Icons.monetization_on_outlined))),
                         const SizedBox(height: 16),
 
                         // 🚀 ĐỒNG BỘ: Thêm trường Hoa hồng Read-only
-                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: rateCtrl, enabled: false, style: const TextStyle(color: Color(0xFF617D79), fontWeight: FontWeight.bold), decoration: _premiumInputDeco('Hoa hồng Affiliate (%)', Icons.percent_rounded))),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: rateCtrl, enabled: false, style: const TextStyle(color: Color(0xFF617D79), fontWeight: FontWeight.bold), decoration: premiumInputDeco('Hoa hồng Affiliate (%)', Icons.percent_rounded))),
                         const SizedBox(height: 16),
                         
                         // 🚀 ĐỒNG BỘ: Tích hợp Dropdown Đối tác (Affiliate) với cấu trúc Premium chống tràn
@@ -1789,11 +1792,11 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                             child: IgnorePointer(
                               ignoring: true,
                               child: Container(
-                                decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
+                                decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]),
                                 child: DropdownButtonFormField<String>(
                                   isExpanded: true,
-                                  value: creatorPartners.any((p) => p['partner_id'].toString() == selectedPartnerId) ? selectedPartnerId : null,
-                                  decoration: _premiumInputDeco(isFetchingPartners ? 'Đang tải Đối tác...' : 'Chọn Cơ sở Đối tác Y tế', Icons.maps_home_work_rounded),
+                                  initialValue: creatorPartners.any((p) => p['partner_id'].toString() == selectedPartnerId) ? selectedPartnerId : null,
+                                  decoration: premiumInputDeco(isFetchingPartners ? 'Đang tải Đối tác...' : 'Chọn Cơ sở Đối tác Y tế', Icons.maps_home_work_rounded),
                                   dropdownColor: Colors.white,
                                   icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
                               items: [
@@ -1803,7 +1806,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                     value: p['partner_id'].toString(),
                                     child: Text(p['full_name'] ?? 'Đối tác', style: const TextStyle(color: Color(0xFF1A3A35)), overflow: TextOverflow.ellipsis, maxLines: 1),
                                   );
-                                }).toList(),
+                                }),
                               ],
                               onChanged: (val) {
                                 setModalState(() {
@@ -1877,12 +1880,12 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                             child: IgnorePointer(
                               ignoring: true,
                               child: Container(
-                                decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
+                                decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]),
                                 child: DropdownButtonFormField<String>(
                                   isExpanded: true,
                                   itemHeight: null, // 🚀 KHẮC PHỤC LỖI: Cho phép menu tự động co giãn chiều cao linh hoạt
-                              value: partnerServices.any((s) => s['id'].toString() == selectedServiceId) ? selectedServiceId : null,
-                              decoration: _premiumInputDeco(isFetchingServices ? 'Đang tải Dịch vụ...' : 'Liên kết Gói dịch vụ y khoa', Icons.medical_services_rounded),
+                              initialValue: partnerServices.any((s) => s['id'].toString() == selectedServiceId) ? selectedServiceId : null,
+                              decoration: premiumInputDeco(isFetchingServices ? 'Đang tải Dịch vụ...' : 'Liên kết Gói dịch vụ y khoa', Icons.medical_services_rounded),
                               dropdownColor: Colors.white,
                               icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
                               selectedItemBuilder: (BuildContext context) {
@@ -1890,7 +1893,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                   const Text('Không liên kết dịch vụ', style: TextStyle(color: Color(0xFF617D79)), overflow: TextOverflow.ellipsis, maxLines: 1),
                                   ...partnerServices.map((s) {
                                     return Text(s['service_name'] ?? 'Dịch vụ', style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600, fontSize: 14), overflow: TextOverflow.ellipsis, maxLines: 1);
-                                  }).toList(),
+                                  }),
                                 ];
                               },
                               items: [
@@ -1922,7 +1925,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                       ),
                                     ),
                                   );
-                                }).toList(),
+                                }),
                               ],
                               onChanged: selectedPartnerId == null ? null : (val) {
                                 setModalState(() {
@@ -1948,12 +1951,12 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                         
                         // 🚀 ĐỒNG BỘ: Tích hợp Dropdown Voucher có chức năng check điều kiện theo DedicatedUploadScreen
                         Container(
-                          decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
+                          decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]),
                           child: DropdownButtonFormField<String>(
                             isExpanded: true,
                             itemHeight: null, // 🚀 KHẮC PHỤC LỖI: Cho phép menu tự động co giãn chiều cao linh hoạt
-                            value: partnerVouchers.any((v) => v['code'].toString() == selectedVoucherCode) ? selectedVoucherCode : null,
-                            decoration: _premiumInputDeco(isFetchingVouchers ? 'Đang tải Voucher...' : 'Đính kèm Mã ưu đãi (Voucher)', Icons.local_offer_rounded),
+                            initialValue: partnerVouchers.any((v) => v['code'].toString() == selectedVoucherCode) ? selectedVoucherCode : null,
+                            decoration: premiumInputDeco(isFetchingVouchers ? 'Đang tải Voucher...' : 'Đính kèm Mã ưu đãi (Voucher)', Icons.local_offer_rounded),
                             dropdownColor: Colors.white,
                             icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
                             selectedItemBuilder: (BuildContext context) {
@@ -1966,7 +1969,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                   final double dVal = double.tryParse(v['discount_value']?.toString() ?? '0') ?? 0.0;
                                   String discountStr = dType == 'PERCENTAGE' ? 'Giảm ${dVal.toStringAsFixed(0)}%' : 'Giảm ${formatCurrency.format(dVal)}đ';
                                   return Text('$code ($discountStr)', style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis, maxLines: 1);
-                                }).toList(),
+                                }),
                               ];
                             },
                             items: [
@@ -2009,7 +2012,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                                     ),
                                   ),
                                 );
-                              }).toList(),
+                              }),
                             ],
                             onChanged: selectedPartnerId == null ? null : (val) {
                               if (val != null) {
@@ -2026,8 +2029,9 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
 
                                 List<dynamic> applicableServices = [];
                                 final rawServices = v['applicable_services'];
-                                if (rawServices is List) applicableServices = rawServices;
-                                else if (rawServices is String && rawServices.isNotEmpty) {
+                                if (rawServices is List) {
+                                  applicableServices = rawServices;
+                                } else if (rawServices is String && rawServices.isNotEmpty) {
                                   applicableServices = rawServices.replaceAll(RegExp(r'[{}[\]]'), '').split(',').map((e) => e.trim().replaceAll('"', '').replaceAll("'", "")).where((e) => e.isNotEmpty).toList();
                                 }
 
@@ -2056,7 +2060,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
                     width: double.infinity, height: 52,
-                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: isUploading ? _crtSecondary : _crtPrimary, boxShadow: [BoxShadow(color: _crtPrimary.withOpacity(0.3), blurRadius: 16, offset: const Offset(0, 6))]),
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: isUploading ? _crtSecondary : _crtPrimary, boxShadow: [BoxShadow(color: _crtPrimary.withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 6))]),
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                       onPressed: isUploading ? null : () async {
@@ -2188,7 +2192,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Bài viết (${_posts.length})', style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.w900)), ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: _crtPrimary, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _showAddPostModal, icon: const Icon(Icons.add, size: 16), label: const Text('Tạo mới', style: TextStyle(fontWeight: FontWeight.bold)))]),
         const SizedBox(height: 16),
         ..._posts.map((p) => Container(
-          margin: const EdgeInsets.only(bottom: 16), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE2ECEB)), boxShadow: [BoxShadow(color: const Color(0xFFFF7A8A).withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+          margin: const EdgeInsets.only(bottom: 16), padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE2ECEB)), boxShadow: [BoxShadow(color: const Color(0xFFFF7A8A).withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [CircleAvatar(radius: 16, backgroundImage: NetworkImage(widget.profile['avatar_url'] ?? '')), const SizedBox(width: 8), const Text('Hôm nay', style: TextStyle(color: Color(0xFF617D79), fontSize: 11, fontWeight: FontWeight.bold))]),
             const SizedBox(height: 12),
@@ -2202,7 +2206,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
 
   Widget _buildInfoTab() {
     return Container(
-      padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.white.withOpacity(0.03), borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white.withOpacity(0.05))),
+      padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.03), borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white.withValues(alpha: 0.05))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2226,7 +2230,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: const Color(0xFFE2ECEB)),
-            boxShadow: [BoxShadow(color: const Color(0xFFFF7A8A).withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))],
+            boxShadow: [BoxShadow(color: const Color(0xFFFF7A8A).withValues(alpha: 0.02), blurRadius: 4, offset: const Offset(0, 2))],
           ),
           child: TextField(
             controller: controller, 
@@ -2413,7 +2417,7 @@ class _CreatorProfileScreenState extends State<CreatorProfileScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.6),
+          color: Colors.white.withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: const Color(0xFFE2ECEB), width: 0.8),
         ),
@@ -2456,12 +2460,12 @@ class _PremiumSparklinePainter extends CustomPainter {
     if (values.isEmpty) return;
     
     final paint = Paint()
-      ..color = color.withOpacity(0.8)
+      ..color = color.withValues(alpha: 0.8)
       ..style = PaintingStyle.fill
       ..strokeCap = StrokeCap.round;
 
     final double widthBetween = size.width / (values.length - 1 + 0.6);
-    final double barWidth = 6.0;
+    const double barWidth = 6.0;
 
     for (int i = 0; i < values.length; i++) {
       final double x = i * widthBetween + barWidth;
@@ -2504,9 +2508,9 @@ class CreatorFloatingActionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF1A3A35),
           borderRadius: BorderRadius.circular(26),
-          border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.2),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.2),
           boxShadow: [
-            BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 6)),
+            BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 6)),
           ],
         ),
         child: ClipRRect(
@@ -2518,7 +2522,7 @@ class CreatorFloatingActionButton extends StatelessWidget {
                 final currentRole = profile['role'] ?? 'CREATOR';
                 context.push('/upload-studio', extra: currentRole.toString());
               },
-              splashColor: crtPrimary.withOpacity(0.2),
+              splashColor: crtPrimary.withValues(alpha: 0.2),
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20),
                 child: Row(

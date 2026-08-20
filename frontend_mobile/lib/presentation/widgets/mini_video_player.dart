@@ -190,7 +190,7 @@ class _MiniVideoPlayerState extends State<MiniVideoPlayer> {
             width: 20,
             height: 20,
             child: CircularProgressIndicator(
-              color: const Color(0xFF80BF84).withOpacity(0.4),
+              color: const Color(0xFF80BF84).withValues(alpha: 0.4),
               strokeWidth: 2,
             ),
           ),

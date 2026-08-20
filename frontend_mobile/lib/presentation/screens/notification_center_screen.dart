@@ -106,11 +106,11 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isRead ? Colors.white : const Color(0xFF80BF84).withOpacity(0.04),
+          color: isRead ? Colors.white : const Color(0xFF80BF84).withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.02),
+              color: Colors.black.withValues(alpha: 0.02),
               blurRadius: 16,
               offset: const Offset(0, 4),
             )
@@ -122,7 +122,7 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.1),
+                color: iconColor.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(iconData, color: iconColor, size: 20),
@@ -188,7 +188,7 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.spa_outlined, size: 64, color: const Color(0xFF10B981).withOpacity(0.3)),
+          Icon(Icons.spa_outlined, size: 64, color: const Color(0xFF10B981).withValues(alpha: 0.3)),
           const SizedBox(height: 16),
           const Text(
             'Không gian yên tĩnh.\nBạn không có thông báo mới nào tại thời điểm này.',

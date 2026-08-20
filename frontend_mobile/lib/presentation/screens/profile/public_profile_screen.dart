@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import '../../../data/services/user_api_service.dart';
 import '../../widgets/mini_video_player.dart';
 import '../../widgets/app_toast.dart';
-import '../../../core/network/api_client.dart';
 import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/booking_bottom_sheet.dart';
 import '../../widgets/auth_guard.dart';
@@ -112,7 +111,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   }
 
   // [LAZY LOADING ENGINE] Hàm nạp dữ liệu trễ chuyên dụng theo Tab
-  bool _isLazyFetching = false;
+  final bool _isLazyFetching = false;
   Future<void> _loadTabDataIfNeeded(String tab, String userId) async {
     // 🚀 Đã ngắt toàn bộ luồng nạp trễ API (/services và /tiktok/feeds) 
     // Dữ liệu chuẩn xác của riêng Partner đã được lấy đầy đủ từ public profile.
@@ -217,7 +216,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
 
     final String? rawAvatar = profile['avatar_url'] != null && profile['avatar_url'].toString().trim().isNotEmpty ? '${profile['avatar_url']}?w=200&q=75' : null;
     final bool hasAvatar = rawAvatar != null;
-    final String fallbackAvatar = 'https://ui-avatars.com/api/?name=${profile['full_name']}&background=${primaryColor.value.toRadixString(16).substring(2)}&color=fff';
+    final String fallbackAvatar = 'https://ui-avatars.com/api/?name=${profile['full_name']}&background=${primaryColor.toARGB32().toRadixString(16).substring(2)}&color=fff';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F6),
@@ -238,13 +237,13 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   background: Stack(
                     fit: StackFit.expand,
                     children: [
-                      hasCover ? GlobalCacheImage(imageUrl: rawCover, fit: BoxFit.cover, memCacheWidth: 800, memCacheHeight: 600) : Container(color: primaryColor.withOpacity(0.15)),
+                      hasCover ? GlobalCacheImage(imageUrl: rawCover, fit: BoxFit.cover, memCacheWidth: 800, memCacheHeight: 600) : Container(color: primaryColor.withValues(alpha: 0.15)),
                       Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [Colors.transparent, const Color(0xFFF4F7F6).withOpacity(0.8), const Color(0xFFF4F7F6)],
+                            colors: [Colors.transparent, const Color(0xFFF4F7F6).withValues(alpha: 0.8), const Color(0xFFF4F7F6)],
                             stops: const [0.5, 0.9, 1.0],
                           ),
                         ),
@@ -261,8 +260,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                               shape: BoxShape.circle,
                               color: Colors.white,
                               boxShadow: [
-                                BoxShadow(color: primaryColor.withOpacity(0.15), blurRadius: 32, offset: const Offset(0, 12)),
-                                BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4)),
+                                BoxShadow(color: primaryColor.withValues(alpha: 0.15), blurRadius: 32, offset: const Offset(0, 12)),
+                                BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 16, offset: const Offset(0, 4)),
                               ],
                             ),
                             child: Container(
@@ -291,7 +290,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     child: BackdropFilter(
                       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                       child: Container(
-                        color: Colors.white.withOpacity(0.4),
+                        color: Colors.white.withValues(alpha: 0.4),
                         child: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black87, size: 18), onPressed: () => context.pop())
                       ),
                     ),
@@ -305,7 +304,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                       child: BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                         child: Container(
-                          color: Colors.white.withOpacity(0.4),
+                          color: Colors.white.withValues(alpha: 0.4),
                           child: IconButton(
                             icon: const Icon(Icons.ios_share_rounded, color: Colors.black87, size: 20), 
                             onPressed: () => AppToast.show(context: context, message: 'Đã sao chép liên kết hồ sơ!', isSuccess: true)
@@ -341,9 +340,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: primaryColor.withOpacity(0.1),
+                            color: primaryColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: primaryColor.withOpacity(0.2), width: 0.5),
+                            border: Border.all(color: primaryColor.withValues(alpha: 0.2), width: 0.5),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -399,8 +398,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                           decoration: BoxDecoration(
                             color: _isFollowing ? const Color(0xFFF4F7F6) : primaryColor,
                             borderRadius: BorderRadius.circular(24),
-                            border: Border.all(color: _isFollowing ? Colors.black.withOpacity(0.1) : primaryColor),
-                            boxShadow: _isFollowing ? [] : [BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))],
+                            border: Border.all(color: _isFollowing ? Colors.black.withValues(alpha: 0.1) : primaryColor),
+                            boxShadow: _isFollowing ? [] : [BoxShadow(color: primaryColor.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -490,7 +489,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                               return Container(
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(20),
-                                  boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.5), blurRadius: 24, offset: const Offset(0, 8))],
+                                  boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.5), blurRadius: 24, offset: const Offset(0, 8))],
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(20),
@@ -542,7 +541,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                           child: Container(
                                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                                             decoration: BoxDecoration(
-                                              color: Colors.white.withOpacity(0.85),
+                                              color: Colors.white.withValues(alpha: 0.85),
                                               borderRadius: BorderRadius.circular(8),
                                             ),
                                             child: Row(
@@ -568,7 +567,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                           bottom: 0, left: 0, right: 0,
                                           child: Container(
                                             padding: const EdgeInsets.fromLTRB(12, 32, 12, 12),
-                                            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withOpacity(0.8), Colors.transparent])),
+                                            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withValues(alpha: 0.8), Colors.transparent])),
                                             child: Text(v['title'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600, height: 1.3), maxLines: 2, overflow: TextOverflow.ellipsis),
                                           ),
                                         ),
@@ -608,7 +607,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 4))],
+                                  boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.5), blurRadius: 10, offset: const Offset(0, 4))],
                                 ),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(16),
@@ -702,7 +701,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                               top: 8, right: 8,
                                               child: Container(
                                                 padding: const EdgeInsets.all(4),
-                                                decoration: BoxDecoration(color: Colors.black.withOpacity(0.4), shape: BoxShape.circle),
+                                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.4), shape: BoxShape.circle),
                                                 child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 12),
                                               ),
                                             ),
@@ -711,7 +710,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                             bottom: 0, left: 0, right: 0,
                                             child: Container(
                                               padding: const EdgeInsets.fromLTRB(8, 24, 8, 8),
-                                              decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withOpacity(0.8), Colors.transparent])),
+                                              decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withValues(alpha: 0.8), Colors.transparent])),
                                               child: Column(
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 mainAxisSize: MainAxisSize.min,
@@ -779,7 +778,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                   margin: const EdgeInsets.only(right: 8),
                                                   decoration: BoxDecoration(
-                                                    color: (v['issuer_type'] == 'ADMIN' ? Colors.amber : primaryColor).withOpacity(0.1),
+                                                    color: (v['issuer_type'] == 'ADMIN' ? Colors.amber : primaryColor).withValues(alpha: 0.1),
                                                     borderRadius: BorderRadius.circular(6),
                                                   ),
                                                   child: Text(
@@ -836,7 +835,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                                 ],
                               ),
                             );
-                          }).toList(),
+                          }),
                           if (_fetchedVouchers.isEmpty)
                             const Padding(
                               padding: EdgeInsets.only(top: 40),
@@ -867,8 +866,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16).copyWith(bottom: MediaQuery.paddingOf(context).bottom > 0 ? MediaQuery.paddingOf(context).bottom : 16),
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.85), border: Border(top: BorderSide(color: Colors.black.withOpacity(0.05)))),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16).copyWith(bottom: MediaQuery.paddingOf(context).bottom > 0 ? MediaQuery.paddingOf(context).bottom : 16),
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.85), border: Border(top: BorderSide(color: Colors.black.withValues(alpha: 0.05)))),
                     child: Row(
                       children: [
                         // Nút Action Chính (Đặt Lịch Ngay)
@@ -959,7 +958,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         margin: const EdgeInsets.symmetric(horizontal: 4),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isActive ? primaryColor.withOpacity(0.12) : Colors.transparent,
+          color: isActive ? primaryColor.withValues(alpha: 0.12) : Colors.transparent,
           borderRadius: BorderRadius.circular(24),
         ),
         child: Row(
@@ -1069,7 +1068,7 @@ class _PartnerRippleAiButtonState extends State<PartnerRippleAiButton> with Sing
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: widget.buttonColor.withOpacity(0.3),
+                color: widget.buttonColor.withValues(alpha: 0.3),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               )
@@ -1099,7 +1098,7 @@ class _RipplePainter extends CustomPainter {
       final double opacity = (1.0 - progress) * 0.35;
 
       final Paint paint = Paint()
-        ..color = rippleColor.withOpacity(opacity)
+        ..color = rippleColor.withValues(alpha: opacity)
         ..style = PaintingStyle.fill;
 
       canvas.drawCircle(center, currentRadius, paint);

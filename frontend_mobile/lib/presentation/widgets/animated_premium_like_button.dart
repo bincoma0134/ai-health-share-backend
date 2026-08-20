@@ -138,8 +138,8 @@ class _AnimatedPremiumLikeButtonState extends State<AnimatedPremiumLikeButton> w
                     color: color, 
                     size: 36,
                     shadows: [
-                      Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 6, offset: const Offset(0, 2)),
-                      Shadow(color: Colors.black.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4)),
+                      Shadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 6, offset: const Offset(0, 2)),
+                      Shadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4)),
                     ],
                   ),
                 ),

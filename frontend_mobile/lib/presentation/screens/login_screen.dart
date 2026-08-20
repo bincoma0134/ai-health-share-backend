@@ -195,7 +195,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.6),
+                  color: Colors.white.withValues(alpha: 0.6),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(Icons.eco_rounded, color: primaryGreen, size: 64),
@@ -208,7 +208,7 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 16),
               Text(
                 'Khám phá không gian sức khỏe và chia sẻ giá trị sống đích thực cùng mạng lưới chuyên gia VN SHARE.',
-                style: TextStyle(fontSize: 15, color: primaryGreen.withOpacity(0.8), height: 1.5, fontWeight: FontWeight.w500),
+                style: TextStyle(fontSize: 15, color: primaryGreen.withValues(alpha: 0.8), height: 1.5, fontWeight: FontWeight.w500),
               ),
               const Spacer(),
               ElevatedButton(
@@ -226,7 +226,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Center(
                 child: TextButton(
                   onPressed: () => context.go('/'),
-                  child: Text('Bỏ qua & Khám phá', style: TextStyle(color: primaryGreen.withOpacity(0.6), fontSize: 15, fontWeight: FontWeight.w600)),
+                  child: Text('Bỏ qua & Khám phá', style: TextStyle(color: primaryGreen.withValues(alpha: 0.6), fontSize: 15, fontWeight: FontWeight.w600)),
                 ),
               ),
             ],
@@ -249,7 +249,7 @@ class _LoginScreenState extends State<LoginScreen> {
               IconButton(
                 padding: EdgeInsets.zero,
                 alignment: Alignment.centerLeft,
-                icon: Icon(Icons.arrow_back_ios_new_rounded, color: primaryGreen.withOpacity(0.8)),
+                icon: Icon(Icons.arrow_back_ios_new_rounded, color: primaryGreen.withValues(alpha: 0.8)),
                 onPressed: () => _pageController.previousPage(duration: const Duration(milliseconds: 500), curve: Curves.easeInOut),
               ),
               const SizedBox(height: 24),
@@ -273,7 +273,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(32),
                   boxShadow: [
-                    BoxShadow(color: primaryGreen.withOpacity(0.04), blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 12))
+                    BoxShadow(color: primaryGreen.withValues(alpha: 0.04), blurRadius: 24, spreadRadius: 0, offset: const Offset(0, 12))
                   ]
                 ),
                 child: Column(
@@ -305,7 +305,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: TextButton(
                           onPressed: () => AppToast.show(context: context, message: 'Tính năng Quên mật khẩu đang cập nhật...', isSuccess: true),
                           style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero),
-                          child: Text('Quên mật khẩu?', style: TextStyle(color: primaryGreen.withOpacity(0.7), fontWeight: FontWeight.w600)),
+                          child: Text('Quên mật khẩu?', style: TextStyle(color: primaryGreen.withValues(alpha: 0.7), fontWeight: FontWeight.w600)),
                         ),
                       )
                     else
@@ -322,7 +322,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             minimumSize: const Size(double.infinity, 56),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                             elevation: 4,
-                            shadowColor: primaryGreen.withOpacity(0.4),
+                            shadowColor: primaryGreen.withValues(alpha: 0.4),
                           ),
                           onPressed: _handleEmailAuth,
                           child: Text(isLogin ? 'Đăng nhập' : 'Đăng ký', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
@@ -382,14 +382,14 @@ class _LoginScreenState extends State<LoginScreen> {
       style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black87, fontSize: 15),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: Colors.black.withOpacity(0.4), fontWeight: FontWeight.w500),
-        prefixIcon: Icon(icon, color: primaryGreen.withOpacity(0.6), size: 22),
+        labelStyle: TextStyle(color: Colors.black.withValues(alpha: 0.4), fontWeight: FontWeight.w500),
+        prefixIcon: Icon(icon, color: primaryGreen.withValues(alpha: 0.6), size: 22),
         filled: true,
         fillColor: Colors.white,
         contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade200, width: 0.5)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey.shade200, width: 0.5)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: primaryGreen.withOpacity(0.5), width: 1.0)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: primaryGreen.withValues(alpha: 0.5), width: 1.0)),
       ),
     );
   }
@@ -406,7 +406,7 @@ class _LoginScreenState extends State<LoginScreen> {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.grey.shade200, width: 0.5),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
+            BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))
           ]
         ),
         child: Icon(icon, size: size, color: color ?? Colors.black87),

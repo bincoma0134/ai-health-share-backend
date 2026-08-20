@@ -1,22 +1,22 @@
 import 'dart:io';
 import 'dart:ui';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-import 'package:dio/dio.dart';
-import '../../../data/services/partner_api_service.dart';
-import '../../../core/network/api_client.dart';
-import '../../../data/services/user_api_service.dart';
-import '../../../core/network/global_cache_engine.dart';
-import '../../widgets/mini_video_player.dart';
-import '../../widgets/image_uploader.dart';
-import '../../widgets/video_uploader.dart';
-import '../../widgets/app_toast.dart';
-import '../../widgets/shimmer_wrapper.dart';
-import 'package:flutter_map/flutter_map.dart';
-import '../../../data/models/video_model.dart';
 import 'package:latlong2/latlong.dart';
+
+import '../../../core/network/api_client.dart';
+import '../../../core/network/global_cache_engine.dart';
+import '../../../data/models/video_model.dart';
+import '../../../data/services/partner_api_service.dart';
+import '../../../data/services/user_api_service.dart';
+import '../../widgets/app_toast.dart';
+import '../../widgets/mini_video_player.dart';
+import '../../widgets/shimmer_wrapper.dart';
 
 class PartnerProfileScreen extends StatefulWidget {
   final Map<String, dynamic> profile;
@@ -41,7 +41,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
   List<dynamic> _myServices = [];
   List<dynamic> _myVideos = [];
   List<dynamic> _savedItems = [];
-  int _visibleSavesCount = 5;
+  final int _visibleSavesCount = 5;
   
   Map<String, dynamic> _stats = {'total_bookings': 0, 'response_rate': 100, 'reputation_points': 100};
   bool _isFetchingLock = false;
@@ -87,9 +87,9 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
 
     if (mounted) {
       setState(() {
-        _myServices = results[0] as List<dynamic>;
-        _myVideos = results[1] as List<dynamic>;
-        _savedItems = results[2] as List<dynamic>;
+        _myServices = results[0];
+        _myVideos = results[1];
+        _savedItems = results[2];
         
         _stats = {
           'total_bookings': widget.profile['bookings_count'] ?? 0,
@@ -269,7 +269,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                           child: OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(
                               foregroundColor: const Color(0xFF48C9B0),
-                              backgroundColor: const Color(0xFF48C9B0).withOpacity(0.05),
+                              backgroundColor: const Color(0xFF48C9B0).withValues(alpha: 0.05),
                               side: const BorderSide(color: Color(0xFF48C9B0), width: 1.5),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               padding: const EdgeInsets.symmetric(vertical: 14),
@@ -321,24 +321,6 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     );
   }
 
-  Widget _buildSaaSInputField({required TextEditingController controller, required String label, int maxLines = 1, TextInputType keyboardType = TextInputType.text}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(label, style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 14, fontWeight: FontWeight.w500)),
-        ),
-        Container(
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE5E5EA))),
-          child: TextField(
-            controller: controller, maxLines: maxLines, keyboardType: keyboardType,
-            decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.all(16)),
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _buildHubRowTile({
     required IconData icon,
@@ -544,7 +526,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.6),
+          color: Colors.white.withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: const Color(0xFFE2ECEB), width: 0.8),
         ),
@@ -577,367 +559,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
   // ==========================================
   // LOGIC 2: MODAL THÊM DỊCH VỤ VÀ VIDEO
   // ==========================================
-  void _showAddServiceModal() {
-    final nameCtrl = TextEditingController();
-    final priceCtrl = TextEditingController();
-    final tagsCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    String uploadedMediaUrl = '';
-    String mediaType = 'image';
-    bool isSubmitting = false;
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) {
-          
-          InputDecoration _inputDeco(String label) => InputDecoration(
-            labelText: label,
-            labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500),
-            filled: true,
-            fillColor: const Color(0xFFF7FBF9),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)),
-          );
-
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.9,
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 12),
-            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 48, height: 5,
-                    margin: const EdgeInsets.only(bottom: 24),
-                    decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-                const Text('Thêm Dịch Vụ Mới', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-                const SizedBox(height: 6),
-                const Text('Thiết lập thông tin và tải lên phương tiện giới thiệu.', style: TextStyle(color: Color(0xFF617D79), fontSize: 14)),
-                const SizedBox(height: 28),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Cụm Segmented Control Mềm Mại
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF0F7F4),
-                            borderRadius: BorderRadius.circular(24),
-                            border: Border.all(color: const Color(0xFFE2ECEB), width: 1),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () => setModalState((){ mediaType = 'image'; uploadedMediaUrl = ''; }),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: mediaType == 'image' ? Colors.white : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(20),
-                                      boxShadow: mediaType == 'image' ? [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4))] : [],
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text('Hình ảnh', style: TextStyle(color: mediaType == 'image' ? const Color(0xFF1A3A35) : const Color(0xFF617D79), fontWeight: FontWeight.bold, fontSize: 14)),
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () => setModalState((){ mediaType = 'video'; uploadedMediaUrl = ''; }),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
-                                    decoration: BoxDecoration(
-                                      color: mediaType == 'video' ? Colors.white : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(20),
-                                      boxShadow: mediaType == 'video' ? [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4))] : [],
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text('Video', style: TextStyle(color: mediaType == 'video' ? const Color(0xFF1A3A35) : const Color(0xFF617D79), fontWeight: FontWeight.bold, fontSize: 14)),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        
-                        // Khu vực Tải lên Lơ lửng (Floating Upload Zone)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(28),
-                            border: Border.all(color: Colors.white, width: 2),
-                            boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.06), blurRadius: 24, offset: const Offset(0, 8))],
-                          ),
-                          child: Column(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle),
-                                child: const Icon(Icons.cloud_upload_rounded, size: 36, color: Color(0xFF48C9B0))
-                              ),
-                              const SizedBox(height: 16),
-                              const Text('Khu vực tải lên Media', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 17, fontWeight: FontWeight.w800)),
-                              const SizedBox(height: 6),
-                              Text(mediaType == 'image' ? 'Hỗ trợ định dạng JPG, PNG (Tối đa 10MB)' : 'Hỗ trợ định dạng MP4 (Tỉ lệ 9:16 hoặc 16:9)', style: const TextStyle(color: Color(0xFF617D79), fontSize: 13)),
-                              const SizedBox(height: 20),
-                              if (mediaType == 'image')
-                                ImageUploader(
-                                  label: 'Duyệt tìm tệp hình ảnh',
-                                  onUploadSuccess: (url) => setModalState(() => uploadedMediaUrl = url),
-                                )
-                              else
-                                VideoUploader(
-                                  label: 'Duyệt tìm tệp video',
-                                  folder: 'services/videos',
-                                  onUploadSuccess: (url) => setModalState(() => uploadedMediaUrl = url),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 32),
-
-                        // Form Fields
-                        const Text('Thông tin chi tiết', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-                        const SizedBox(height: 16),
-                        TextField(controller: nameCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _inputDeco('Tên dịch vụ (Bắt buộc)')),
-                        const SizedBox(height: 16),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _inputDeco('Giá tiền (VNĐ)'))),
-                            const SizedBox(width: 16),
-                            Expanded(child: TextField(controller: tagsCtrl, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _inputDeco('Tags (cách nhau ,)'))),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(controller: descCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _inputDeco('Mô tả dịch vụ')),
-                        const SizedBox(height: 32),
-                      ]
-                    )
-                  )
-                ),
-                Container(
-                  width: double.infinity, 
-                  height: 60,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(100),
-                    gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2B5A53)]),
-                    boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8))],
-                  ),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent, 
-                      shadowColor: Colors.transparent,
-                      foregroundColor: Colors.white, 
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100))
-                    ),
-                    onPressed: isSubmitting ? null : () async {
-                      if (nameCtrl.text.isEmpty || priceCtrl.text.isEmpty) {
-                        AppToast.show(context: context, message: 'Vui lòng nhập Tên và Giá!', isSuccess: false); return;
-                      }
-                      setModalState(() => isSubmitting = true);
-                      
-                      final payload = {
-                        'service_name': nameCtrl.text,
-                        'description': descCtrl.text,
-                        'price': double.tryParse(priceCtrl.text) ?? 0,
-                        'tags': tagsCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-                        'service_type': 'RELAXATION',
-                        if (mediaType == 'image' && uploadedMediaUrl.isNotEmpty) 'image_url': uploadedMediaUrl,
-                        if (mediaType == 'video' && uploadedMediaUrl.isNotEmpty) 'video_url': uploadedMediaUrl,
-                      };
-                      
-                      final success = await PartnerApiService.createService(payload, null, mediaType);
-                      if (!context.mounted) return;
-                      setModalState(() => isSubmitting = false);
-                      
-                      if (success) {
-                        Navigator.pop(context);
-                        _loadPartnerData();
-                        AppToast.show(context: context, message: 'Đã gửi dịch vụ đi chờ kiểm duyệt!', isSuccess: true);
-                      } else {
-                        AppToast.show(context: context, message: 'Lỗi đường truyền!', isSuccess: false);
-                      }
-                    },
-                    child: isSubmitting ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('GỬI YÊU CẦU DUYỆT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 0.5)),
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
-          );
-        }
-      )
-    );
-  }
-
-  void _showAddVideoModal() {
-    final titleCtrl = TextEditingController();
-    final contentCtrl = TextEditingController();
-    final priceCtrl = TextEditingController();
-    String uploadedVideoUrl = '';
-    bool isSubmitting = false;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      useRootNavigator: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) {
-          
-          InputDecoration _inputDeco(String label) => InputDecoration(
-            labelText: label,
-            labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500),
-            filled: true,
-            fillColor: const Color(0xFFF7FBF9),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)),
-          );
-
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.9,
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 12),
-            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 48, height: 5,
-                    margin: const EdgeInsets.only(bottom: 24),
-                    decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-                const Text('Tải Lên Video Studio', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-                const SizedBox(height: 6),
-                const Text('Chia sẻ không gian và quy trình dịch vụ của bạn.', style: TextStyle(color: Color(0xFF617D79), fontSize: 14)),
-                const SizedBox(height: 28),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(28),
-                            border: Border.all(color: Colors.white, width: 2),
-                            boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.06), blurRadius: 24, offset: const Offset(0, 8))],
-                          ),
-                          child: Column(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle),
-                                child: const Icon(Icons.video_library_rounded, size: 36, color: Color(0xFF48C9B0))
-                              ),
-                              const SizedBox(height: 16),
-                              const Text('Video ngắn (Tỉ lệ 9:16)', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 17, fontWeight: FontWeight.w800)),
-                              const SizedBox(height: 20),
-                              VideoUploader(
-                                width: 140,
-                                label: 'Chọn tệp Video',
-                                folder: 'tiktok_feeds/videos',
-                                onUploadSuccess: (url) => setModalState(() => uploadedVideoUrl = url),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 32),
-                        const Text('Thông tin chi tiết', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-                        const SizedBox(height: 16),
-                        TextField(controller: titleCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _inputDeco('Tiêu đề video (Bắt buộc)')),
-                        const SizedBox(height: 16),
-                        TextField(controller: contentCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _inputDeco('Mô tả nội dung')),
-                        const SizedBox(height: 16),
-                        TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _inputDeco('Giá tham khảo đính kèm (VNĐ)')),
-                        const SizedBox(height: 32),
-                      ]
-                    )
-                  )
-                ),
-                Container(
-                  width: double.infinity, height: 60,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(100),
-                    gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2B5A53)]),
-                    boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8))],
-                  ),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent, 
-                      shadowColor: Colors.transparent,
-                      foregroundColor: Colors.white, 
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100))
-                    ),
-                    onPressed: isSubmitting ? null : () async {
-                      if (uploadedVideoUrl.isEmpty) {
-                        AppToast.show(context: context, message: 'Vui lòng chờ hệ thống tải video lên!', isSuccess: false); return;
-                      }
-                      if (titleCtrl.text.isEmpty) {
-                        AppToast.show(context: context, message: 'Vui lòng nhập Tiêu đề cho video!', isSuccess: false); return;
-                      }
-                      setModalState(() => isSubmitting = true);
-                      
-                      final payload = {
-                        'title': titleCtrl.text,
-                        'content': contentCtrl.text.isEmpty ? null : contentCtrl.text,
-                        'price': priceCtrl.text.isEmpty ? null : double.tryParse(priceCtrl.text),
-                        'video_url': uploadedVideoUrl,
-                      };
-                      
-                      try {
-                        final res = await ApiClient.instance.post('/tiktok/feeds', data: payload);
-                        if (!context.mounted) return;
-                        final success = res.statusCode == 200;
-                        setModalState(() => isSubmitting = false);
-                        
-                        if (success) {
-                          Navigator.pop(context);
-                          _loadPartnerData();
-                          AppToast.show(context: context, message: 'Đã gửi video đi chờ duyệt!', isSuccess: true);
-                        } else {
-                          AppToast.show(context: context, message: 'Lỗi dữ liệu không hợp lệ!', isSuccess: false);
-                        }
-                      } catch (e) {
-                        if (!context.mounted) return;
-                        setModalState(() => isSubmitting = false);
-                        AppToast.show(context: context, message: 'Lỗi kết nối máy chủ!', isSuccess: false);
-                      }
-                    },
-                    child: isSubmitting ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('PHÁT SÓNG VIDEO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 0.5)),
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
-          );
-        }
-      )
-    );
-  }
 
   Future<void> _handleDeleteService(String id) async {
     final confirm = await showDialog<bool>(
@@ -951,7 +573,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(32),
             border: Border.all(color: Colors.white, width: 2),
-            boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.08), blurRadius: 32, offset: const Offset(0, 16))],
+            boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.08), blurRadius: 32, offset: const Offset(0, 16))],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -961,7 +583,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF0F2), 
                   shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: const Color(0xFFE63946).withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 8))]
+                  boxShadow: [BoxShadow(color: const Color(0xFFE63946).withValues(alpha: 0.15), blurRadius: 20, offset: const Offset(0, 8))]
                 ), 
                 child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFE63946), size: 36)
               ),
@@ -982,7 +604,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Container(
-                      decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFFE63946).withOpacity(0.25), blurRadius: 16, offset: const Offset(0, 8))]),
+                      decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFFE63946).withValues(alpha: 0.25), blurRadius: 16, offset: const Offset(0, 8))]),
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), backgroundColor: const Color(0xFFE63946), foregroundColor: Colors.white, elevation: 0), 
                         onPressed: () => Navigator.pop(context, true), 
@@ -1033,7 +655,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
-          InputDecoration _premiumInputDeco(String label, IconData icon) => InputDecoration(labelText: label, labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500), floatingLabelStyle: const TextStyle(color: Color(0xFF48C9B0), fontSize: 13, fontWeight: FontWeight.bold), prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20), filled: true, fillColor: Colors.white, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)));
+          InputDecoration premiumInputDeco(String label, IconData icon) => InputDecoration(labelText: label, labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500), floatingLabelStyle: const TextStyle(color: Color(0xFF48C9B0), fontSize: 13, fontWeight: FontWeight.bold), prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20), filled: true, fillColor: Colors.white, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)));
 
           return Container(
             height: MediaQuery.of(context).size.height * 0.9,
@@ -1053,27 +675,27 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                     ],
                   ),
                 ),
-                Container(height: 1, width: double.infinity, margin: const EdgeInsets.only(top: 16, bottom: 24), decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, const Color(0xFFE2ECEB).withOpacity(0.5), Colors.transparent]))),
+                Container(height: 1, width: double.infinity, margin: const EdgeInsets.only(top: 16, bottom: 24), decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, const Color(0xFFE2ECEB).withValues(alpha: 0.5), Colors.transparent]))),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: nameCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _premiumInputDeco('Tên dịch vụ (Bắt buộc)', Icons.medical_services_outlined))),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: nameCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: premiumInputDeco('Tên dịch vụ (Bắt buộc)', Icons.medical_services_outlined))),
                         const SizedBox(height: 16),
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(child: Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _premiumInputDeco('Giá tiền (VNĐ)', Icons.monetization_on_outlined)))),
+                            Expanded(child: Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: premiumInputDeco('Giá tiền (VNĐ)', Icons.monetization_on_outlined)))),
                             const SizedBox(width: 16),
-                            Expanded(child: Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: tagsCtrl, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _premiumInputDeco('Tags (cách nhau ,)', Icons.local_offer_outlined)))),
+                            Expanded(child: Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: tagsCtrl, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: premiumInputDeco('Tags (cách nhau ,)', Icons.local_offer_outlined)))),
                           ],
                         ),
                         const SizedBox(height: 16),
-                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: affiliateCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _premiumInputDeco('% Hoa hồng Affiliate (VD: 15)', Icons.percent_rounded))),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: affiliateCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: premiumInputDeco('% Hoa hồng Affiliate (VD: 15)', Icons.percent_rounded))),
                         const SizedBox(height: 16),
-                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: descCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _premiumInputDeco('Mô tả chi tiết', Icons.description_outlined))),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: descCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: premiumInputDeco('Mô tả chi tiết', Icons.description_outlined))),
                         const SizedBox(height: 32),
                       ]
                     )
@@ -1084,7 +706,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
                     width: double.infinity, height: 52,
-                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: isUploading ? const Color(0xFF2B5A53) : const Color(0xFF1A3A35), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.2), blurRadius: 16, offset: const Offset(0, 6))]),
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: isUploading ? const Color(0xFF2B5A53) : const Color(0xFF1A3A35), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.2), blurRadius: 16, offset: const Offset(0, 6))]),
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                       onPressed: isUploading ? null : () async {
@@ -1135,7 +757,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(32),
             border: Border.all(color: Colors.white, width: 2),
-            boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.08), blurRadius: 32, offset: const Offset(0, 16))],
+            boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.08), blurRadius: 32, offset: const Offset(0, 16))],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1145,7 +767,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF0F2), 
                   shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: const Color(0xFFE63946).withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 8))]
+                  boxShadow: [BoxShadow(color: const Color(0xFFE63946).withValues(alpha: 0.15), blurRadius: 20, offset: const Offset(0, 8))]
                 ), 
                 child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFE63946), size: 36)
               ),
@@ -1166,7 +788,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Container(
-                      decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFFE63946).withOpacity(0.25), blurRadius: 16, offset: const Offset(0, 8))]),
+                      decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFFE63946).withValues(alpha: 0.25), blurRadius: 16, offset: const Offset(0, 8))]),
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), backgroundColor: const Color(0xFFE63946), foregroundColor: Colors.white, elevation: 0), 
                         onPressed: () => Navigator.pop(context, true), 
@@ -1240,7 +862,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
             });
           }
           
-          InputDecoration _premiumInputDeco(String label, IconData icon) => InputDecoration(labelText: label, labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500), floatingLabelStyle: const TextStyle(color: Color(0xFF48C9B0), fontSize: 13, fontWeight: FontWeight.bold), prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20), filled: true, fillColor: Colors.white, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)));
+          InputDecoration premiumInputDeco(String label, IconData icon) => InputDecoration(labelText: label, labelStyle: const TextStyle(color: Color(0xFF617D79), fontSize: 14, fontWeight: FontWeight.w500), floatingLabelStyle: const TextStyle(color: Color(0xFF48C9B0), fontSize: 13, fontWeight: FontWeight.bold), prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 20), filled: true, fillColor: Colors.white, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16), border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Color(0xFF48C9B0), width: 1.5)));
 
           return Container(
             height: MediaQuery.of(context).size.height * 0.9,
@@ -1260,27 +882,27 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                     ],
                   ),
                 ),
-                Container(height: 1, width: double.infinity, margin: const EdgeInsets.only(top: 16, bottom: 24), decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, const Color(0xFFE2ECEB).withOpacity(0.5), Colors.transparent]))),
+                Container(height: 1, width: double.infinity, margin: const EdgeInsets.only(top: 16, bottom: 24), decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, const Color(0xFFE2ECEB).withValues(alpha: 0.5), Colors.transparent]))),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: titleCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: _premiumInputDeco('Tiêu đề video (Bắt buộc)', Icons.title_rounded))),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: titleCtrl, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w600), decoration: premiumInputDeco('Tiêu đề video (Bắt buộc)', Icons.title_rounded))),
                         const SizedBox(height: 16),
-                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: contentCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: _premiumInputDeco('Mô tả nội dung', Icons.description_outlined))),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: contentCtrl, maxLines: 3, style: const TextStyle(color: Color(0xFF1A3A35)), decoration: premiumInputDeco('Mô tả nội dung', Icons.description_outlined))),
                         const SizedBox(height: 16),
-                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: _premiumInputDeco('Giá tham khảo đính kèm (VNĐ)', Icons.monetization_on_outlined))),
+                        Container(decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]), child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.bold), decoration: premiumInputDeco('Giá tham khảo đính kèm (VNĐ)', Icons.monetization_on_outlined))),
                         const SizedBox(height: 16),
                         
                         // 🚀 ĐỒNG BỘ: Tích hợp Dropdown liên kết Gói Dịch vụ
                         Container(
-                          decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
+                          decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]),
                           child: DropdownButtonFormField<String>(
                             isExpanded: true, // 🚀 KHẮC PHỤC LỖI: Bật thuộc tính co giãn chiều rộng tối đa tránh tràn giao diện
-                            value: _myServices.where((s) => s['status'] == 'APPROVED').any((s) => s['id'].toString() == selectedServiceId) ? selectedServiceId : null,
-                            decoration: _premiumInputDeco('Liên kết Gói dịch vụ y khoa', Icons.medical_services_rounded),
+                            initialValue: _myServices.where((s) => s['status'] == 'APPROVED').any((s) => s['id'].toString() == selectedServiceId) ? selectedServiceId : null,
+                            decoration: premiumInputDeco('Liên kết Gói dịch vụ y khoa', Icons.medical_services_rounded),
                             dropdownColor: Colors.white,
                             icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
                             items: [
@@ -1303,7 +925,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                                     maxLines: 1,
                                   ),
                                 );
-                              }).toList(),
+                              }),
                             ],
                             onChanged: (val) {
                               setModalState(() {
@@ -1320,11 +942,11 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                         
                         // 🚀 ĐỒNG BỘ: Tích hợp Voucher có chức năng check điều kiện theo DedicatedUploadScreen
                         Container(
-                          decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))]),
+                          decoration: BoxDecoration(boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4))]),
                           child: DropdownButtonFormField<String>(
                             isExpanded: true, // 🚀 KHẮC PHỤC LỖI: Đảm bảo dropdown Voucher cũng không bị lỗi tương tự
-                            value: partnerVouchers.any((v) => v['code'].toString() == selectedVoucherCode) ? selectedVoucherCode : null,
-                            decoration: _premiumInputDeco(isFetchingVouchers ? 'Đang tải Voucher...' : 'Đính kèm Mã ưu đãi (Voucher)', Icons.local_offer_rounded),
+                            initialValue: partnerVouchers.any((v) => v['code'].toString() == selectedVoucherCode) ? selectedVoucherCode : null,
+                            decoration: premiumInputDeco(isFetchingVouchers ? 'Đang tải Voucher...' : 'Đính kèm Mã ưu đãi (Voucher)', Icons.local_offer_rounded),
                             dropdownColor: Colors.white,
                             icon: const Icon(Icons.arrow_drop_down_rounded, color: Color(0xFF94A3B8)),
                             items: [
@@ -1347,7 +969,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                                     maxLines: 1,
                                   ),
                                 );
-                              }).toList(),
+                              }),
                             ],
                             onChanged: (val) {
                               if (val != null) {
@@ -1357,8 +979,9 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                                 
                                 List<dynamic> applicableServices = [];
                                 final rawServices = v['applicable_services'];
-                                if (rawServices is List) applicableServices = rawServices;
-                                else if (rawServices is String && rawServices.isNotEmpty) {
+                                if (rawServices is List) {
+                                  applicableServices = rawServices;
+                                } else if (rawServices is String && rawServices.isNotEmpty) {
                                   applicableServices = rawServices.replaceAll(RegExp(r'[{}[\]]'), '').split(',').map((e) => e.trim().replaceAll('"', '').replaceAll("'", "")).where((e) => e.isNotEmpty).toList();
                                 }
 
@@ -1390,7 +1013,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
                     width: double.infinity, height: 52,
-                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: isUploading ? const Color(0xFF2B5A53) : const Color(0xFF1A3A35), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.2), blurRadius: 16, offset: const Offset(0, 6))]),
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: isUploading ? const Color(0xFF2B5A53) : const Color(0xFF1A3A35), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.2), blurRadius: 16, offset: const Offset(0, 6))]),
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.transparent, shadowColor: Colors.transparent, foregroundColor: Colors.white, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
                       onPressed: isUploading ? null : () async {
@@ -1576,7 +1199,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                           height: 140,
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF2196F3).withOpacity(0.1),
+                            color: const Color(0xFF2196F3).withValues(alpha: 0.1),
                             image: hasCover ? DecorationImage(image: GlobalCacheProvider.create(rawCover, maxWidth: 800, maxHeight: 600), fit: BoxFit.cover) : null,
                           ),
                           child: Container(
@@ -1586,7 +1209,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                                 end: Alignment.bottomCenter,
                                 colors: [
                                   Colors.transparent,
-                                  const Color(0xFFE3F2FD).withOpacity(0.5),
+                                  const Color(0xFFE3F2FD).withValues(alpha: 0.5),
                                   const Color(0xFFF7FBF9),
                                 ],
                                 stops: const [0.3, 0.8, 1.0],
@@ -1617,7 +1240,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(color: Colors.white, width: 4),
-                                  boxShadow: [BoxShadow(color: _bizPrimary.withOpacity(0.25), blurRadius: 20, offset: const Offset(0, 8))],
+                                  boxShadow: [BoxShadow(color: _bizPrimary.withValues(alpha: 0.25), blurRadius: 20, offset: const Offset(0, 8))],
                                   image: DecorationImage(image: GlobalCacheProvider.create(avatarUrl, maxWidth: 300, maxHeight: 300), fit: BoxFit.cover),
                                 ),
                               ),
@@ -1629,7 +1252,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                                     gradient: LinearGradient(colors: [_bizSecondary, _bizPrimary]),
                                     borderRadius: BorderRadius.circular(14),
                                     border: Border.all(color: Colors.white, width: 2),
-                                    boxShadow: [BoxShadow(color: _bizPrimary.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
+                                    boxShadow: [BoxShadow(color: _bizPrimary.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4))],
                                   ),
                                   child: const Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -1647,7 +1270,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                                   onTap: () => _showImageOptions(hasAvatar ? rawAvatar : null, 'avatar'),
                                   child: Container(
                                     padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)]),
+                                    decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)]),
                                     child: Icon(Icons.camera_alt_rounded, size: 13, color: _bizSecondary),
                                   ),
                                 ),
@@ -1703,7 +1326,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFE3F2FD),
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: _bizPrimary.withOpacity(0.2), width: 0.5),
+                                    border: Border.all(color: _bizPrimary.withValues(alpha: 0.2), width: 0.5),
                                   ),
                                   child: Icon(iconData, size: 13, color: _bizSecondary),
                                 )),
@@ -1802,7 +1425,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(24),
-                            boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 6))],
+                            boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 6))],
                           ),
                           child: Column(
                             children: [
@@ -1847,7 +1470,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                               children: [
                                 Container(
                                   padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle),
+                                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
                                   child: const Icon(Icons.calendar_today_rounded, color: Colors.white, size: 18),
                                 ),
                                 const SizedBox(width: 14),
@@ -1861,7 +1484,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                                         _stats['total_bookings'] != null && _stats['total_bookings'] > 0
                                             ? 'Cơ sở có tổng cộng ${_stats['total_bookings']} hồ sơ đặt lịch'
                                             : 'Chưa có cuộc hẹn nào được thiết lập tại quầy',
-                                        style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w500),
+                                        style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 11, fontWeight: FontWeight.w500),
                                       ),
                                     ],
                                   ),
@@ -1881,7 +1504,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: _bizPrimary.withOpacity(0.3), width: 1),
+                              border: Border.all(color: _bizPrimary.withValues(alpha: 0.3), width: 1),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -1955,9 +1578,9 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
           decoration: BoxDecoration(
             color: const Color(0xFF1A3A35),
             borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.2),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.2),
             boxShadow: [
-              BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 6)),
+              BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 6)),
             ],
           ),
           child: ClipRRect(
@@ -1969,7 +1592,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                         final currentRole = widget.profile['role'] ?? 'PARTNER';
                         context.push('/upload-studio', extra: currentRole.toString());
                       },
-                      splashColor: const Color(0xFF80BF84).withOpacity(0.2),
+                      splashColor: const Color(0xFF80BF84).withValues(alpha: 0.2),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -2087,7 +1710,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
             Text('Dịch vụ hiện tại (${_myServices.length})', style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.w900)),
             TextButton.icon(
               style: TextButton.styleFrom(
-                backgroundColor: _bizPrimary.withOpacity(0.1),
+                backgroundColor: _bizPrimary.withValues(alpha: 0.1),
                 foregroundColor: _bizPrimary,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)
@@ -2108,7 +1731,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
             child: Center(
               child: Column(
                 children: [
-                  Icon(Icons.spa_rounded, size: 48, color: const Color(0xFFB0C4C1).withOpacity(0.5)),
+                  Icon(Icons.spa_rounded, size: 48, color: const Color(0xFFB0C4C1).withValues(alpha: 0.5)),
                   const SizedBox(height: 16),
                   const Text('Chưa có dịch vụ nào', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
@@ -2135,7 +1758,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
               return Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
-                  boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.5), blurRadius: 16, offset: const Offset(0, 4))],
+                  boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.5), blurRadius: 16, offset: const Offset(0, 4))],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
@@ -2160,7 +1783,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                           child: BackdropFilter(
                             filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                             child: Container(
-                              color: Colors.white.withOpacity(0.8),
+                              color: Colors.white.withValues(alpha: 0.8),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -2201,7 +1824,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                             gradient: LinearGradient(
                               begin: Alignment.bottomCenter,
                               end: Alignment.topCenter,
-                              colors: [Colors.black.withOpacity(0.85), Colors.black.withOpacity(0.4), Colors.transparent],
+                              colors: [Colors.black.withValues(alpha: 0.85), Colors.black.withValues(alpha: 0.4), Colors.transparent],
                             ),
                           ),
                           child: Column(
@@ -2225,7 +1848,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: isApproved ? const Color(0xFF48C9B0).withOpacity(0.2) : Colors.amber.withOpacity(0.2),
+                                  color: isApproved ? const Color(0xFF48C9B0).withValues(alpha: 0.2) : Colors.amber.withValues(alpha: 0.2),
                                   borderRadius: BorderRadius.circular(4),
                                   border: Border.all(
                                     color: isApproved ? const Color(0xFF48C9B0) : Colors.amber,
@@ -2277,7 +1900,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
             Text('Video của tôi (${_myVideos.length})', style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 18, fontWeight: FontWeight.w900)),
             TextButton.icon(
               style: TextButton.styleFrom(
-                backgroundColor: _bizPrimary.withOpacity(0.1),
+                backgroundColor: _bizPrimary.withValues(alpha: 0.1),
                 foregroundColor: _bizPrimary,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)
@@ -2298,7 +1921,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
             child: Center(
               child: Column(
                 children: [
-                  Icon(Icons.video_library_rounded, size: 48, color: const Color(0xFFB0C4C1).withOpacity(0.5)),
+                  Icon(Icons.video_library_rounded, size: 48, color: const Color(0xFFB0C4C1).withValues(alpha: 0.5)),
                   const SizedBox(height: 16),
                   const Text('Chưa có video nào', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
@@ -2320,7 +1943,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
               return Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
-                  boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.5), blurRadius: 24, offset: const Offset(0, 8))],
+                  boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.5), blurRadius: 24, offset: const Offset(0, 8))],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
@@ -2372,7 +1995,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                           child: BackdropFilter(
                             filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                             child: Container(
-                              color: Colors.white.withOpacity(0.8),
+                              color: Colors.white.withValues(alpha: 0.8),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -2413,7 +2036,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                             gradient: LinearGradient(
                               begin: Alignment.bottomCenter, 
                               end: Alignment.topCenter, 
-                              colors: [Colors.black.withOpacity(0.85), Colors.black.withOpacity(0.3), Colors.transparent]
+                              colors: [Colors.black.withValues(alpha: 0.85), Colors.black.withValues(alpha: 0.3), Colors.transparent]
                             )
                           ), 
                           child: Column(
@@ -2432,7 +2055,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), 
                                 decoration: BoxDecoration(
-                                  color: isApproved ? const Color(0xFF48C9B0).withOpacity(0.2) : Colors.amber.withOpacity(0.2), 
+                                  color: isApproved ? const Color(0xFF48C9B0).withValues(alpha: 0.2) : Colors.amber.withValues(alpha: 0.2), 
                                   borderRadius: BorderRadius.circular(4),
                                   border: Border.all(
                                     color: isApproved ? const Color(0xFF48C9B0) : Colors.amber,
@@ -2640,9 +2263,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                               onPositionChanged: (position, hasGesture) {
                                 // Bỏ điều kiện hasGesture để đồng bộ biến center 
                                 // trong mọi trường hợp camera di chuyển (rê tay hoặc chọn gợi ý)
-                                if (position.center != null) {
-                                  center = position.center!;
-                                }
+                                center = position.center;
                               },
                             ),
                             children: [
@@ -2724,8 +2345,9 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
   }) {
     // 🚀 ĐỒNG BỘ MAP ICON: Tự động nhận diện ngữ cảnh tiêu đề để gán Icon Line-art cao cấp phù hợp
     IconData prefixIcon = Icons.edit_note_rounded;
-    if (label.contains('Tên doanh nghiệp')) prefixIcon = Icons.business_rounded;
-    else if (label.contains('Username')) prefixIcon = Icons.alternate_email_rounded;
+    if (label.contains('Tên doanh nghiệp')) {
+      prefixIcon = Icons.business_rounded;
+    } else if (label.contains('Username')) prefixIcon = Icons.alternate_email_rounded;
     else if (label.contains('Điện thoại')) prefixIcon = Icons.phone_iphone_rounded;
     else if (label.contains('Địa chỉ')) prefixIcon = Icons.location_on_rounded;
     else if (label.contains('Tiểu sử')) prefixIcon = Icons.auto_stories_rounded;
@@ -2737,7 +2359,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1A3A35).withOpacity(0.04), // Bóng đổ Neumorphic khuếch tán đa tầng mịn màng
+            color: const Color(0xFF1A3A35).withValues(alpha: 0.04), // Bóng đổ Neumorphic khuếch tán đa tầng mịn màng
             blurRadius: 12,
             offset: const Offset(0, 4),
             spreadRadius: -2,
@@ -2882,7 +2504,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                 foregroundColor: _bizPrimary,
                 elevation: 0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                side: BorderSide(color: _bizPrimary.withOpacity(0.3), width: 1),
+                side: BorderSide(color: _bizPrimary.withValues(alpha: 0.3), width: 1),
               ),
               onPressed: _showEditModal,
               icon: const Icon(Icons.edit_rounded, size: 16),
@@ -2894,87 +2516,6 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     );
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, {int maxLines = 1}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: Color(0xFF617D79), fontSize: 13, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          maxLines: maxLines,
-          style: const TextStyle(color: Color(0xFF1A3A35), fontWeight: FontWeight.w500, fontSize: 15),
-          decoration: InputDecoration(
-            filled: true, 
-            fillColor: Colors.white, 
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2ECEB))),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: _bizPrimary, width: 1.5)),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2ECEB))),
-          ),
-        ),
-      ],
-    );
-  }
 
-  Widget _buildPremiumStatCard(IconData icon, String value, String label, {required Color iconColor, bool isHighlight = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: isHighlight ? iconColor.withOpacity(0.4) : Colors.white, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: isHighlight ? iconColor.withOpacity(0.15) : const Color(0xFF94A3B8).withOpacity(0.12),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          )
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, size: 18, color: iconColor),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(value, style: const TextStyle(color: Color(0xFF0F172A), fontSize: 16, fontWeight: FontWeight.w900, height: 1), maxLines: 1, overflow: TextOverflow.ellipsis),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildTabBtn(String label, IconData icon, String tabKey) {
-    final isActive = _activeTab == tabKey;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() => _activeTab = tabKey);
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: isActive ? const Color(0xFF1A3A35) : Colors.transparent,
-            borderRadius: BorderRadius.circular(20)
-          ),
-          child: Column(
-            children: [
-              Icon(icon, size: 20, color: isActive ? Colors.white : const Color(0xFFB0C4C1)),
-              const SizedBox(height: 4),
-              Text(label, style: TextStyle(color: isActive ? Colors.white : const Color(0xFFB0C4C1), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.2)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

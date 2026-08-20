@@ -75,7 +75,7 @@ class _ImageUploaderState extends State<ImageUploader> {
         height: widget.height,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: _selectedFile != null ? Colors.blueAccent : Colors.white24,
@@ -104,7 +104,7 @@ class _ImageUploaderState extends State<ImageUploader> {
             // Lớp phủ khi đang Upload
             if (_isUploading)
               Container(
-                decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(14)),
+                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(14)),
                 child: const Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,

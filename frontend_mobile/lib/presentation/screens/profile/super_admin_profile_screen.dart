@@ -1,11 +1,9 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../data/services/admin_api_service.dart';
 import '../../../data/services/user_api_service.dart';
 import '../../../core/network/global_cache_engine.dart';
-import '../../widgets/mini_video_player.dart';
 import '../../widgets/shimmer_wrapper.dart';
 import '../../widgets/app_toast.dart';
 import 'package:go_router/go_router.dart';
@@ -67,7 +65,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
     // 1. Fetch Profile Stats Độc lập
     try {
       final statsRes = await AdminApiService.fetchStats();
-      if (mounted && statsRes != null) setState(() => _stats = statsRes as Map<String, dynamic>);
+      if (mounted && statsRes != null) setState(() => _stats = statsRes);
     } catch (e) {
       debugPrint('Lỗi fetchStats: $e');
     }
@@ -75,7 +73,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
     // 2. Fetch Dashboard Stats Độc lập (Bảo vệ thông số User/Partner)
     try {
       final dashRes = await AdminApiService.fetchDashboardStats();
-      if (mounted && dashRes != null) setState(() => _dashboardStats = dashRes as Map<String, dynamic>);
+      if (mounted && dashRes != null) setState(() => _dashboardStats = dashRes);
     } catch (e) {
       debugPrint('Lỗi fetchDashboardStats: $e');
     }
@@ -91,27 +89,23 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
       
       if (mounted) {
         setState(() {
-          if (withdrawals != null && withdrawals is List) {
-            _systemLogs = withdrawals.take(15).map((w) {
-              final status = w['status'] ?? 'PENDING';
-              String type = 'warning';
-              if (status == 'COMPLETED') type = 'success';
-              if (status == 'REJECTED') type = 'error';
-              
-              // Xử lý an toàn các trường dữ liệu null
-              final amountText = (w['amount'] ?? 0).toString();
-              final name = w['users']?['full_name'] ?? 'Hệ thống';
-              final timeStr = w['created_at']?.toString().substring(0, 10) ?? 'Gần đây';
-              
-              return {
-                'status': type,
-                'msg': 'Lệnh giải ngân $amountText VNĐ từ $name\nTrạng thái xử lý: $status',
-                'time': timeStr,
-              };
-            }).toList();
-          } else {
-            _systemLogs = [];
-          }
+          _systemLogs = withdrawals.take(15).map((w) {
+            final status = w['status'] ?? 'PENDING';
+            String type = 'warning';
+            if (status == 'COMPLETED') type = 'success';
+            if (status == 'REJECTED') type = 'error';
+            
+            // Xử lý an toàn các trường dữ liệu null
+            final amountText = (w['amount'] ?? 0).toString();
+            final name = w['users']?['full_name'] ?? 'Hệ thống';
+            final timeStr = w['created_at']?.toString().substring(0, 10) ?? 'Gần đây';
+            
+            return {
+              'status': type,
+              'msg': 'Lệnh giải ngân $amountText VNĐ từ $name\nTrạng thái xử lý: $status',
+              'time': timeStr,
+            };
+          }).toList();
           _isLoadingLogs = false;
         });
       }
@@ -391,7 +385,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
                           height: 140,
                           width: double.infinity,
                           decoration: BoxDecoration(
-                            color: _admPrimary.withOpacity(0.15),
+                            color: _admPrimary.withValues(alpha: 0.15),
                             image: hasCover ? DecorationImage(image: GlobalCacheProvider.create(rawCover, maxWidth: 800, maxHeight: 600), fit: BoxFit.cover) : null,
                           ),
                           child: Container(
@@ -401,7 +395,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
                                 end: Alignment.bottomCenter,
                                 colors: [
                                   Colors.transparent,
-                                  const Color(0xFFFFFBEB).withOpacity(0.5),
+                                  const Color(0xFFFFFBEB).withValues(alpha: 0.5),
                                   const Color(0xFFF7FBF9),
                                 ],
                                 stops: const [0.3, 0.8, 1.0],
@@ -432,7 +426,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   border: Border.all(color: Colors.white, width: 4),
-                                  boxShadow: [BoxShadow(color: _admPrimary.withOpacity(0.25), blurRadius: 20, offset: const Offset(0, 8))],
+                                  boxShadow: [BoxShadow(color: _admPrimary.withValues(alpha: 0.25), blurRadius: 20, offset: const Offset(0, 8))],
                                   image: DecorationImage(image: GlobalCacheProvider.create(avatarUrl, maxWidth: 300, maxHeight: 300), fit: BoxFit.cover),
                                 ),
                               ),
@@ -444,7 +438,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
                                     gradient: LinearGradient(colors: [const Color(0xFFD97706), _admPrimary]),
                                     borderRadius: BorderRadius.circular(14),
                                     border: Border.all(color: Colors.white, width: 2),
-                                    boxShadow: [BoxShadow(color: _admPrimary.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
+                                    boxShadow: [BoxShadow(color: _admPrimary.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4))],
                                   ),
                                   child: const Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -462,7 +456,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
                                   onTap: () => _showImageOptions(hasAvatar ? rawAvatar : null, 'avatar'),
                                   child: Container(
                                     padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)]),
+                                    decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)]),
                                     child: Icon(Icons.camera_alt_rounded, size: 13, color: _admPrimary),
                                   ),
                                 ),
@@ -522,7 +516,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(24),
-                            boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 6))],
+                            boxShadow: [BoxShadow(color: const Color(0xFFE2ECEB).withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 6))],
                           ),
                           child: Column(
                             children: [
@@ -559,7 +553,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: _admPrimary.withOpacity(0.3), width: 1),
+                              border: Border.all(color: _admPrimary.withValues(alpha: 0.3), width: 1),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -656,10 +650,10 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
           return Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE2ECEB)), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 4))]),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE2ECEB)), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.02), blurRadius: 8, offset: const Offset(0, 4))]),
             child: Row(
               children: [
-                Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: iconColor.withOpacity(0.1), shape: BoxShape.circle), child: Icon(iconData, color: iconColor, size: 20)),
+                Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.1), shape: BoxShape.circle), child: Icon(iconData, color: iconColor, size: 20)),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -707,7 +701,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
                 foregroundColor: _admPrimary,
                 elevation: 0,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                side: BorderSide(color: _admPrimary.withOpacity(0.3), width: 1),
+                side: BorderSide(color: _admPrimary.withValues(alpha: 0.3), width: 1),
               ),
               onPressed: _showEditModal,
               icon: const Icon(Icons.edit_rounded, size: 16),
@@ -872,7 +866,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
             Text(subtitle, style: const TextStyle(color: Color(0xFF617D79), fontSize: 11, fontWeight: FontWeight.w500)),
           ]),
         ),
-        Switch(value: isOn, onChanged: onChanged, activeColor: Colors.white, activeTrackColor: const Color(0xFF48C9B0), inactiveThumbColor: Colors.white, inactiveTrackColor: const Color(0xFFE2ECEB)),
+        Switch(value: isOn, onChanged: onChanged, activeThumbColor: Colors.white, activeTrackColor: const Color(0xFF48C9B0), inactiveThumbColor: Colors.white, inactiveTrackColor: const Color(0xFFE2ECEB)),
       ],
     );
   }
@@ -882,7 +876,7 @@ class _SuperAdminProfileScreenState extends State<SuperAdminProfileScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.6),
+          color: Colors.white.withValues(alpha: 0.6),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: const Color(0xFFE2ECEB), width: 0.8),
         ),

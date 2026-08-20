@@ -145,7 +145,7 @@ class _VideoUploaderState extends State<VideoUploader> {
         height: widget.height,
         width: widget.width ?? double.infinity,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: _isUploadSuccess ? Colors.blueAccent : Colors.white24,
@@ -182,7 +182,7 @@ class _VideoUploaderState extends State<VideoUploader> {
             // Lớp phủ Loading (Giống giao diện web báo "Đang xử lý nén")
             if (_isUploading)
               Container(
-                decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(14)),
+                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(14)),
                 child: Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,

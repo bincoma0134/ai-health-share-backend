@@ -1,19 +1,20 @@
-import 'dart:ui';
 import 'dart:async'; // Bổ sung thư viện quản lý luồng Timer tự động chuyển slide banner
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart'; // Đấu nối định tuyến nhanh Router 
+import 'package:intl/intl.dart';
+
+import '../../../core/network/api_client.dart'; // Đảm bảo nạp ApiClient bọc thép
+import '../../../core/network/global_cache_engine.dart';
 import '../../../data/models/partner_map_model.dart'; // Nạp mô hình đối tác sạch 
 import '../../../data/services/explore_api_service.dart'; // Nạp lớp dịch vụ 
-import '../../../core/network/global_cache_engine.dart';
-import '../../widgets/mini_video_player.dart'; // Nạp trình phát video thực tế hệ thống
-import '../../widgets/booking_bottom_sheet.dart'; // Nạp bảng cấu hình đặt lịch chuẩn 404-resolved
 import '../../widgets/app_toast.dart'; // Bổ sung import AppToast để xử lý lỗi biên dịch
 import '../../widgets/auth_guard.dart';
-import '../../widgets/shimmer_wrapper.dart';
+import '../../widgets/booking_bottom_sheet.dart'; // Nạp bảng cấu hình đặt lịch chuẩn 404-resolved
+import '../../widgets/mini_video_player.dart'; // Nạp trình phát video thực tế hệ thống
 import '../../widgets/notification_notifier.dart'; // 🚀 Bổ sung thư viện quản lý State thông báo
-import '../../../core/network/api_client.dart'; // Đảm bảo nạp ApiClient bọc thép
-import '../../widgets/auth_bottom_sheet.dart'; // Phục vụ luồng AuthGuard
+import '../../widgets/shimmer_wrapper.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -83,31 +84,31 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
       "title": "VÒNG XANH\nSỨC KHỎE",
       "slogan": "Trải nghiệm y tế chuẩn 5 sao",
       "wish": "✨ Chúc bạn một ngày mới ngập tràn năng lượng và thân tâm an lạc!",
-      "colors": [Color(0xFF80BF84), Color(0xFF5B9E5F)]
+      "colors": [const Color(0xFF80BF84), const Color(0xFF5B9E5F)]
     },
     {
       "title": "AN NHIÊN\nMỖI NGÀY",
       "slogan": "Chăm sóc chủ động, an tâm vững bước",
       "wish": "🌿 Sức khỏe là vàng, chúc bạn luôn giữ vững tinh thần lạc quan và rạng rỡ!",
-      "colors": [Color(0xFF3B82F6), Color(0xFF1D4ED8)]
+      "colors": [const Color(0xFF3B82F6), const Color(0xFF1D4ED8)]
     },
     {
       "title": "SỐNG KHỎE\nSỐNG ĐẸP",
       "slogan": "Cân bằng thân - tâm - trí toàn diện",
       "wish": "🌸 Chúc bạn luôn rạng ngời, biết yêu thương bản thân và tràn đầy hạnh phúc!",
-      "colors": [Color(0xFFEC4899), Color(0xFFBE185D)]
+      "colors": [const Color(0xFFEC4899), const Color(0xFFBE185D)]
     },
     {
       "title": "TĨNH TÂM\nPHỤC HỒI",
       "slogan": "Liệu pháp chuyên sâu từ chuyên gia",
       "wish": "☀️ Mong mọi điều bình an và nhẹ nhàng nhất sẽ đến với hành trình của bạn ngày hôm nay!",
-      "colors": [Color(0xFFF59E0B), Color(0xFFD97706)]
+      "colors": [const Color(0xFFF59E0B), const Color(0xFFD97706)]
     },
     {
       "title": "NĂNG LƯỢNG\nBẤT TẬN",
       "slogan": "Lắng nghe cơ thể bạn lên tiếng mỗi giây",
       "wish": "💪 Khỏe mạnh từ bên trong! Chúc bạn vượt qua mọi mục tiêu với nguồn năng lượng đỉnh cao!",
-      "colors": [Color(0xFF14B8A6), Color(0xFF0F766E)]
+      "colors": [const Color(0xFF14B8A6), const Color(0xFF0F766E)]
     },
   ];
 
@@ -189,14 +190,10 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
           }
           
           final voucherRes = BenedictVoucherWrapper(results[4]);
-          if (voucherRes != null) {
-            _publicVouchers = voucherRes;
-          }
+          _publicVouchers = voucherRes;
 
           final myVoucherRes = BenedictVoucherWrapper(results[5]);
-          if (myVoucherRes != null) {
-            _myVouchers = myVoucherRes;
-          }
+          _myVouchers = myVoucherRes;
           
           _isProfileSyncing = false;
           _isLoadingMissions = false;
@@ -241,17 +238,17 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
         // 1. Kiểm tra điều kiện từ khóa tìm kiếm
         bool matchesSearch = true;
         if (query.isNotEmpty) {
-          final String partnerName = partner.fullName?.toLowerCase() ?? '';
-          final String partnerUsername = partner.username?.toLowerCase() ?? '';
+          final String partnerName = partner.fullName.toLowerCase() ?? '';
+          final String partnerUsername = partner.username.toLowerCase() ?? '';
           final bool matchesName = partnerName.contains(query) || partnerUsername.contains(query);
-          final bool matchesTags = partner.tags?.any((tag) => tag.toLowerCase().contains(query)) ?? false;
+          final bool matchesTags = partner.tags.any((tag) => tag.toLowerCase().contains(query)) ?? false;
           matchesSearch = matchesName || matchesTags;
         }
 
         // 2. Kiểm tra điều kiện loại hình dịch vụ nâng cao (RELAXATION / TREATMENT)
         bool matchesType = true;
         if (_selectedTypeFilter != 'ALL') {
-          matchesType = partner.services?.any((s) => 
+          matchesType = partner.services.any((s) => 
             (s['service_type'] ?? s['service_type_enum'] ?? '').toString().toUpperCase() == _selectedTypeFilter
           ) ?? false;
         }
@@ -259,12 +256,12 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
         // 3. Kiểm tra điều kiện Bộ lọc nhanh (Khám Online / Đặt lịch cơ sở)
         bool matchesQuickService = true;
         if (_selectedQuickService == 'ONLINE') {
-          matchesQuickService = partner.services?.any((s) {
+          matchesQuickService = partner.services.any((s) {
             final String serviceName = (s['service_name'] ?? '').toString().toLowerCase();
             return serviceName.contains('online') || serviceName.contains('video') || serviceName.contains('từ xa');
           }) ?? false;
         } else if (_selectedQuickService == 'CLINIC') {
-          matchesQuickService = partner.services?.any((s) {
+          matchesQuickService = partner.services.any((s) {
             final String serviceName = (s['service_name'] ?? '').toString().toLowerCase();
             return !serviceName.contains('online') && !serviceName.contains('video');
           }) ?? false;
@@ -274,8 +271,8 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
         bool matchesCategory = true;
         if (_selectedCategoryFilter != 'ALL') {
           final String targetCat = _selectedCategoryFilter.toLowerCase();
-          final bool hasMatchingTag = partner.tags?.any((tag) => tag.toLowerCase().contains(targetCat)) ?? false;
-          final bool hasMatchingServiceName = partner.services?.any((s) => 
+          final bool hasMatchingTag = partner.tags.any((tag) => tag.toLowerCase().contains(targetCat)) ?? false;
+          final bool hasMatchingServiceName = partner.services.any((s) => 
             (s['service_name'] ?? '').toString().toLowerCase().contains(targetCat)
           ) ?? false;
           matchesCategory = hasMatchingTag || hasMatchingServiceName;
@@ -434,7 +431,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.06),
+                              color: Colors.black.withValues(alpha: 0.06),
                               blurRadius: 15,
                               offset: const Offset(0, 5),
                             ),
@@ -603,7 +600,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
               _activeSelectedService = null;
             }),
             child: Container(
-              color: Colors.black.withOpacity(0.75),
+              color: Colors.black.withValues(alpha: 0.75),
             ),
           ),
           // Khối hộp khung hình Mini-Player thông minh
@@ -614,7 +611,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
               decoration: BoxDecoration(
                 color: const Color(0xFF131316), 
                 borderRadius: BorderRadius.circular(32),
-                border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.5)
+                border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1.5)
               ),
               clipBehavior: Clip.antiAlias,
               child: Stack(
@@ -636,7 +633,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                       }),
                       child: Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), shape: BoxShape.circle),
+                        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.5), shape: BoxShape.circle),
                         child: const Icon(Icons.close_rounded, color: Colors.white, size: 18),
                       ),
                     ),
@@ -651,8 +648,8 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF131316).withOpacity(0.92),
-                        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.08))),
+                        color: const Color(0xFF131316).withValues(alpha: 0.92),
+                        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
                       ),
                       child: Row(
                         children: [
@@ -748,7 +745,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                 decoration: BoxDecoration(
                   color: Colors.white, 
                   borderRadius: BorderRadius.circular(20), 
-                  border: Border.all(color: Colors.black.withOpacity(0.05)),
+                  border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -826,12 +823,12 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.04), 
+                    color: Colors.black.withValues(alpha: 0.04), 
                     blurRadius: 12, 
                     offset: const Offset(0, 4)
                   )
                 ],
-                border: Border.all(color: Colors.black.withOpacity(0.03), width: 1),
+                border: Border.all(color: Colors.black.withValues(alpha: 0.03), width: 1),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -910,7 +907,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                                 child: Container(
                                   padding: const EdgeInsets.all(6),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF80BF84).withOpacity(0.12), 
+                                    color: const Color(0xFF80BF84).withValues(alpha: 0.12), 
                                     shape: BoxShape.circle
                                   ),
                                   child: const Icon(Icons.calendar_month_rounded, size: 14, color: Color(0xFF5B9E5F)),
@@ -942,7 +939,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
         borderRadius: BorderRadius.circular(30),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -1130,7 +1127,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: colors[0].withOpacity(0.35),
+                      color: colors[0].withValues(alpha: 0.35),
                       blurRadius: 12,
                       offset: const Offset(0, 6),
                     ),
@@ -1158,7 +1155,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                           Text(
                             banner['slogan'].toString(),
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.8),
+                              color: Colors.white.withValues(alpha: 0.8),
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
                             ),
@@ -1181,7 +1178,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                             width: isActive ? 16 : 5,
                             height: 5,
                             decoration: BoxDecoration(
-                              color: isActive ? Colors.white : Colors.white.withOpacity(0.4),
+                              color: isActive ? Colors.white : Colors.white.withValues(alpha: 0.4),
                               borderRadius: BorderRadius.circular(3),
                             ),
                           );
@@ -1220,8 +1217,8 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                 decoration: BoxDecoration(
                   color: isOnlineSelected ? const Color(0xFFE3F2FD) : Colors.white,
                   borderRadius: BorderRadius.circular(20),
-                  border: isOnlineSelected ? Border.all(color: Colors.blue.withOpacity(0.5), width: 1.5) : null,
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+                  border: isOnlineSelected ? Border.all(color: Colors.blue.withValues(alpha: 0.5), width: 1.5) : null,
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1259,8 +1256,8 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                 decoration: BoxDecoration(
                   color: isClinicSelected ? const Color(0xFFE8F5E9) : Colors.white,
                   borderRadius: BorderRadius.circular(20),
-                  border: isClinicSelected ? Border.all(color: const Color(0xFF80BF84).withOpacity(0.5), width: 1.5) : null,
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+                  border: isClinicSelected ? Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.5), width: 1.5) : null,
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1308,7 +1305,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                 itemBuilder: (context, index) => Container(
                   width: 160,
                   margin: const EdgeInsets.symmetric(horizontal: 6),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.black.withOpacity(0.05))),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.black.withValues(alpha: 0.05))),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1361,7 +1358,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(20),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 4))],
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 4))],
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1471,10 +1468,10 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                     width: 54,
                     height: 54,
                     decoration: BoxDecoration(
-                      color: isSelected ? (cat['color'] as Color) : (cat['color'] as Color).withOpacity(0.08),
+                      color: isSelected ? (cat['color'] as Color) : (cat['color'] as Color).withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(16),
                       border: isSelected ? Border.all(color: Colors.white, width: 2) : null,
-                      boxShadow: isSelected ? [BoxShadow(color: (cat['color'] as Color).withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))] : null,
+                      boxShadow: isSelected ? [BoxShadow(color: (cat['color'] as Color).withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 4))] : null,
                     ),
                     child: Icon(
                       cat['icon'] as IconData, 
@@ -1515,10 +1512,10 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.82),
+              color: Colors.white.withValues(alpha: 0.82),
               borderRadius: BorderRadius.circular(35),
-              border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+              border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 1),
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1537,7 +1534,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                       decoration: BoxDecoration(
                         color: isPassed 
                             ? const Color(0xFF10B981) 
-                            : (isTodayLoc ? const Color(0xFF10B981).withOpacity(0.4) : const Color(0xFFE4E4E7)),
+                            : (isTodayLoc ? const Color(0xFF10B981).withValues(alpha: 0.4) : const Color(0xFFE4E4E7)),
                         borderRadius: BorderRadius.circular(10),
                       ),
                     );
@@ -1671,15 +1668,15 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                 decoration: BoxDecoration(
                   color: isExpired 
                       ? const Color(0xFFE2E8F0) // Tone xám xi măng cao cấp khi hết hạn sử dụng
-                      : (isAlreadyClaimed ? const Color(0xFF10B981).withOpacity(0.02) : Colors.white),
+                      : (isAlreadyClaimed ? const Color(0xFF10B981).withValues(alpha: 0.02) : Colors.white),
                   borderRadius: BorderRadius.circular(35), // Khóa đồng bộ hình học viên thuốc 35px hệ thống
                   border: Border.all(
                     color: isExpired 
                         ? const Color(0xFFCBD5E1) 
-                        : (isAlreadyClaimed ? const Color(0xFF10B981).withOpacity(0.2) : const Color(0xFFF4F7F6)), 
+                        : (isAlreadyClaimed ? const Color(0xFF10B981).withValues(alpha: 0.2) : const Color(0xFFF4F7F6)), 
                     width: 1.5
                   ),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.015), blurRadius: 8, offset: const Offset(0, 3))],
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.015), blurRadius: 8, offset: const Offset(0, 3))],
                 ),
                 child: Row(
                   children: [
@@ -1696,7 +1693,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: isAdmin ? const Color(0xFFF59E0B).withOpacity(0.12) : const Color(0xFF10B981).withOpacity(0.12),
+                                    color: isAdmin ? const Color(0xFFF59E0B).withValues(alpha: 0.12) : const Color(0xFF10B981).withValues(alpha: 0.12),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
@@ -1755,7 +1752,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                         decoration: BoxDecoration(
                           color: isExpired 
                               ? Colors.grey.shade400 
-                              : (isAlreadyClaimed ? const Color(0xFF10B981).withOpacity(0.08) : const Color(0xFF1E1E1E)),
+                              : (isAlreadyClaimed ? const Color(0xFF10B981).withValues(alpha: 0.08) : const Color(0xFF1E1E1E)),
                           borderRadius: const BorderRadius.horizontal(right: Radius.circular(33)),
                         ),
                         child: Text(
@@ -1844,13 +1841,13 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
         decoration: BoxDecoration(
           gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2A5951)], begin: Alignment.topLeft, end: Alignment.bottomRight),
           borderRadius: BorderRadius.circular(24),
-          boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.12), blurRadius: 10, offset: const Offset(0, 4))],
+          boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.12), blurRadius: 10, offset: const Offset(0, 4))],
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.white.withOpacity(0.12), shape: BoxShape.circle),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), shape: BoxShape.circle),
               child: Icon(isClaimable ? Icons.card_giftcard_rounded : Icons.explore_outlined, color: Colors.white, size: 20),
             ),
             const SizedBox(width: 14),
@@ -1862,7 +1859,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                   const SizedBox(height: 2),
                   Text(
                     isClaimable ? 'Nhấn nút nhận thưởng ngay!' : (task['description'] ?? 'Tích lũy điểm thưởng đổi voucher đặc quyền'),
-                    style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w500)
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 11, fontWeight: FontWeight.w500)
                   ),
                 ],
               ),
@@ -1872,7 +1869,7 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
               height: 32,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isClaimable ? const Color(0xFF80BF84) : Colors.white.withOpacity(0.16),
+                  backgroundColor: isClaimable ? const Color(0xFF80BF84) : Colors.white.withValues(alpha: 0.16),
                   foregroundColor: Colors.white,
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(horizontal: 14),

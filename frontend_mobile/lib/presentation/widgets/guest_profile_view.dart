@@ -12,7 +12,7 @@ class GuestProfileView extends StatelessWidget {
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Dismiss',
-      barrierColor: Colors.black.withOpacity(0.4), // Sương mù dịu nhẹ
+      barrierColor: Colors.black.withValues(alpha: 0.4), // Sương mù dịu nhẹ
       transitionDuration: const Duration(milliseconds: 400),
       pageBuilder: (context, anim1, anim2) {
         return Stack(
@@ -71,9 +71,9 @@ class GuestProfileView extends StatelessWidget {
                 width: 100, height: 100,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: const Color(0xFF4A8B6F).withOpacity(0.08),
-                  border: Border.all(color: const Color(0xFF4A8B6F).withOpacity(0.15), width: 0.5),
-                  boxShadow: [BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.1), blurRadius: 40, spreadRadius: 5)],
+                  color: const Color(0xFF4A8B6F).withValues(alpha: 0.08),
+                  border: Border.all(color: const Color(0xFF4A8B6F).withValues(alpha: 0.15), width: 0.5),
+                  boxShadow: [BoxShadow(color: const Color(0xFF80BF84).withValues(alpha: 0.1), blurRadius: 40, spreadRadius: 5)],
                 ),
                 child: const Icon(Icons.spa_rounded, size: 48, color: Color(0xFF4A8B6F)),
               ),
@@ -94,11 +94,11 @@ class GuestProfileView extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.7),
+                  color: Colors.white.withValues(alpha: 0.7),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF4A8B6F).withOpacity(0.1), width: 0.5),
+                  border: Border.all(color: const Color(0xFF4A8B6F).withValues(alpha: 0.1), width: 0.5),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 20, offset: const Offset(0, 8))
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 20, offset: const Offset(0, 8))
                   ]
                 ),
                 child: Row(
@@ -106,7 +106,7 @@ class GuestProfileView extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF4A8B6F).withOpacity(0.1),
+                        color: const Color(0xFF4A8B6F).withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(Icons.auto_awesome_rounded, color: Color(0xFF4A8B6F), size: 20),
@@ -116,9 +116,9 @@ class GuestProfileView extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(height: 10, width: 120, decoration: BoxDecoration(color: const Color(0xFF2C3E35).withOpacity(0.2), borderRadius: BorderRadius.circular(5))),
+                          Container(height: 10, width: 120, decoration: BoxDecoration(color: const Color(0xFF2C3E35).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(5))),
                           const SizedBox(height: 10),
-                          Container(height: 6, width: 70, decoration: BoxDecoration(color: const Color(0xFF5A6E63).withOpacity(0.15), borderRadius: BorderRadius.circular(3))),
+                          Container(height: 6, width: 70, decoration: BoxDecoration(color: const Color(0xFF5A6E63).withValues(alpha: 0.15), borderRadius: BorderRadius.circular(3))),
                         ],
                       ),
                     )

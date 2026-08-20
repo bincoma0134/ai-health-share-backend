@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../data/services/partner_api_service.dart';
 import '../../widgets/app_toast.dart';
@@ -27,8 +26,8 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
   double _totalEarned = 0;
 
   // Forms
-  Map<String, String> _checkInCodes = {};
-  Map<String, Map<String, String>> _respondForms = {};
+  final Map<String, String> _checkInCodes = {};
+  final Map<String, Map<String, String>> _respondForms = {};
   final _bankCtrl = TextEditingController();
   final _accNumCtrl = TextEditingController();
   final _accNameCtrl = TextEditingController();
@@ -317,7 +316,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
               color: Colors.white, 
               borderRadius: BorderRadius.circular(24), 
               border: Border.all(color: _borderColor),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]
+              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -370,7 +369,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
               ],
             ),
           );
-        }).toList()
+        })
       ],
     );
   }
@@ -391,7 +390,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             color: Colors.white, 
             borderRadius: BorderRadius.circular(24), 
             border: Border.all(color: _borderColor),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -476,7 +475,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
       children: [
         Container(
           width: double.infinity, padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2C554D)]), borderRadius: BorderRadius.circular(32), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))]),
+          decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2C554D)]), borderRadius: BorderRadius.circular(32), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 10))]),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -490,7 +489,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         
         Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -556,7 +555,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
           padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -670,7 +669,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                               ),
                               Switch(
                                 value: isVip,
-                                activeColor: const Color(0xFF48C9B0),
+                                activeThumbColor: const Color(0xFF48C9B0),
                                 activeTrackColor: Colors.white24,
                                 onChanged: (val) => setModalState(() => isVip = val),
                               ),
@@ -688,7 +687,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                                 onTap: () => setModalState(() => type = 'PERCENTAGE'),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(vertical: 14),
-                                  decoration: BoxDecoration(color: type == 'PERCENTAGE' ? _bizPrimary.withOpacity(0.1) : Colors.white, border: Border.all(color: type == 'PERCENTAGE' ? _bizPrimary : _borderColor), borderRadius: BorderRadius.circular(14)),
+                                  decoration: BoxDecoration(color: type == 'PERCENTAGE' ? _bizPrimary.withValues(alpha: 0.1) : Colors.white, border: Border.all(color: type == 'PERCENTAGE' ? _bizPrimary : _borderColor), borderRadius: BorderRadius.circular(14)),
                                   alignment: Alignment.center,
                                   child: Text('Phần trăm (%)', style: TextStyle(color: type == 'PERCENTAGE' ? _bizPrimary : _textSub, fontWeight: FontWeight.bold, fontSize: 13)),
                                 ),
@@ -700,7 +699,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                                 onTap: () => setModalState(() => type = 'FIXED_AMOUNT'),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(vertical: 14),
-                                  decoration: BoxDecoration(color: type == 'FIXED_AMOUNT' ? _bizPrimary.withOpacity(0.1) : Colors.white, border: Border.all(color: type == 'FIXED_AMOUNT' ? _bizPrimary : _borderColor), borderRadius: BorderRadius.circular(14)),
+                                  decoration: BoxDecoration(color: type == 'FIXED_AMOUNT' ? _bizPrimary.withValues(alpha: 0.1) : Colors.white, border: Border.all(color: type == 'FIXED_AMOUNT' ? _bizPrimary : _borderColor), borderRadius: BorderRadius.circular(14)),
                                   alignment: Alignment.center,
                                   child: Text('Tiền mặt (VNĐ)', style: TextStyle(color: type == 'FIXED_AMOUNT' ? _bizPrimary : _textSub, fontWeight: FontWeight.bold, fontSize: 13)),
                                 ),
@@ -905,7 +904,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 color: Colors.white, 
                 borderRadius: BorderRadius.circular(24), 
                 border: Border.all(color: isVip ? const Color(0xFF1A3A35) : _borderColor, width: isVip ? 1.5 : 1.0), 
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]
               ),
               child: Row(
                 children: [
@@ -959,7 +958,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 ],
               ),
             );
-          }).toList(),
+          }),
       ],
     );
   }
@@ -1028,7 +1027,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: _borderColor),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1050,7 +1049,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: isToday 
-                          ? [_bizPrimary, _bizPrimary.withOpacity(0.5)] 
+                          ? [_bizPrimary, _bizPrimary.withValues(alpha: 0.5)] 
                           : [Colors.blue.shade200, Colors.blue.shade50]
                       ),
                       borderRadius: BorderRadius.circular(6),
@@ -1103,7 +1102,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 )
               ],
             ),
-          )).toList(),
+          )),
       ],
     );
   }
@@ -1112,9 +1111,9 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
     return Container(
       height: 90,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Stack(
         children: [
@@ -1122,7 +1121,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
           Positioned(
             right: -8,
             bottom: -8,
-            child: Icon(icon, size: 54, color: color.withOpacity(0.15)),
+            child: Icon(icon, size: 54, color: color.withValues(alpha: 0.15)),
           ),
           Padding(
             padding: const EdgeInsets.all(14),
@@ -1225,7 +1224,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: _borderColor),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1302,7 +1301,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 )
               ],
             ),
-          )).toList(),
+          )),
       ],
     );
   }
@@ -1330,13 +1329,13 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
   Widget _buildMetricCard(String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
             child: Icon(icon, color: color, size: 22),
           ),
           const SizedBox(height: 16),

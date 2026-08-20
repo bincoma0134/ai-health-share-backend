@@ -327,7 +327,7 @@ class _VoucherDropWidgetState extends State<_VoucherDropWidget> with SingleTicke
         // Backdrop mờ cản tương tác phía sau
         GestureDetector(
           onTap: _close,
-          child: Container(color: Colors.black.withOpacity(0.6)),
+          child: Container(color: Colors.black.withValues(alpha: 0.6)),
         ),
         Center(
           child: ScaleTransition(
@@ -338,10 +338,10 @@ class _VoucherDropWidgetState extends State<_VoucherDropWidget> with SingleTicke
                 width: MediaQuery.of(context).size.width * 0.85,
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF18181B).withOpacity(0.9),
+                  color: const Color(0xFF18181B).withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(32),
                   border: Border.all(color: Colors.white24),
-                  boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withOpacity(0.2), blurRadius: 40)],
+                  boxShadow: [BoxShadow(color: const Color(0xFFF59E0B).withValues(alpha: 0.2), blurRadius: 40)],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -500,7 +500,7 @@ class _TopBannerWidgetState extends State<_TopBannerWidget> with SingleTickerPro
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, 4)),
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 16, offset: const Offset(0, 4)),
                 ],
               ),
               child: Row(
@@ -509,7 +509,7 @@ class _TopBannerWidgetState extends State<_TopBannerWidget> with SingleTickerPro
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10B981).withOpacity(0.1),
+                      color: const Color(0xFF10B981).withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.notifications_active, color: Color(0xFF10B981), size: 20),

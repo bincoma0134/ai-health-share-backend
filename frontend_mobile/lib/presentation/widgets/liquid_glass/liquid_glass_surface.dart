@@ -16,7 +16,7 @@ class LiquidGlassSurface extends StatefulWidget {
   final bool isDenseList; // Cờ an toàn bảo vệ FPS khi dùng trong ScrollView
 
   const LiquidGlassSurface({
-    Key? key,
+    super.key,
     required this.child,
     this.blur = LiquidGlassTokens.blurMedium,
     this.borderRadius = LiquidGlassTokens.radiusMd,
@@ -25,7 +25,7 @@ class LiquidGlassSurface extends StatefulWidget {
     this.enableShader = true,
     this.backgroundImage,
     this.isDenseList = false, // Mặc định false. Khuyến nghị bật true cho Card/Button trong List dài
-  }) : super(key: key);
+  });
 
   @override
   State<LiquidGlassSurface> createState() => _LiquidGlassSurfaceState();
@@ -89,7 +89,7 @@ class _LiquidGlassSurfaceState extends State<LiquidGlassSurface> {
             // Layer 3: Tint Color (Vibrancy emulation - Đặt lên trên cùng để không bị Shader làm mất sắc độ)
             Positioned.fill(
               child: Container(
-                color: widget.tintColor.withOpacity(useBlur ? widget.tintOpacity : 0.95), // Fallback gần như đặc hoàn toàn (0.95) để đảm bảo độ tương phản text khi tắt blur
+                color: widget.tintColor.withValues(alpha: useBlur ? widget.tintOpacity : 0.95), // Fallback gần như đặc hoàn toàn (0.95) để đảm bảo độ tương phản text khi tắt blur
               ),
             ),
 
@@ -100,16 +100,16 @@ class _LiquidGlassSurfaceState extends State<LiquidGlassSurface> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(widget.borderRadius),
                     border: Border.all(
-                      color: Colors.white.withOpacity(LiquidGlassTokens.highlightSoft),
+                      color: Colors.white.withValues(alpha: LiquidGlassTokens.highlightSoft),
                       width: 0.5, // Viền cực mảnh chuẩn Apple
                     ),
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Colors.white.withOpacity(0.3),
-                        Colors.white.withOpacity(0.0),
-                        Colors.white.withOpacity(0.05),
+                        Colors.white.withValues(alpha: 0.3),
+                        Colors.white.withValues(alpha: 0.0),
+                        Colors.white.withValues(alpha: 0.05),
                       ],
                       stops: const [0.0, 0.5, 1.0],
                     ),

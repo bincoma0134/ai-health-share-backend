@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import '../../../core/network/api_client.dart';
 import '../../widgets/app_toast.dart';
 
@@ -19,8 +18,6 @@ class _PartnerAiContextScreenState extends State<PartnerAiContextScreen> {
   late TextEditingController _contextController;
   bool _isSaving = false;
 
-  final Color _bizPrimary = Colors.blue;
-  final Color _bizSecondary = Colors.cyan;
   final Color _darkBgColor = const Color(0xFF1A3A35);
   final Color _partnerColor = const Color(0xFF80BF84);
 
@@ -94,9 +91,9 @@ class _PartnerAiContextScreenState extends State<PartnerAiContextScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _partnerColor.withOpacity(0.1),
+                  color: _partnerColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: _partnerColor.withOpacity(0.3)),
+                  border: Border.all(color: _partnerColor.withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -114,7 +111,7 @@ class _PartnerAiContextScreenState extends State<PartnerAiContextScreen> {
                           const SizedBox(height: 4),
                           Text(
                             'AI sẽ kết hợp thông tin bạn nhập dưới đây với danh sách Dịch vụ và Voucher để tư vấn chuẩn xác cho khách hàng.',
-                            style: TextStyle(color: _darkBgColor.withOpacity(0.7), fontSize: 13, height: 1.4),
+                            style: TextStyle(color: _darkBgColor.withValues(alpha: 0.7), fontSize: 13, height: 1.4),
                           ),
                         ],
                       ),
@@ -134,7 +131,7 @@ class _PartnerAiContextScreenState extends State<PartnerAiContextScreen> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
+                      color: Colors.black.withValues(alpha: 0.04),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),

@@ -1,9 +1,6 @@
-import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/network/api_client.dart';
 import '../../../data/models/chat_message_model.dart';
@@ -445,7 +442,7 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.white, borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.15)),
+                border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.15)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -492,7 +489,7 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
                       bottomLeft: Radius.circular(isUser ? 20 : 4),
                       bottomRight: Radius.circular(isUser ? 4 : 20),
                     ),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4)],
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 4)],
                   ),
                   child: MarkdownBody(
                     data: msg.content,
@@ -522,8 +519,8 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.blue.withOpacity(0.3), width: 1.5),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+        border: Border.all(color: Colors.blue.withValues(alpha: 0.3), width: 1.5),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -585,7 +582,7 @@ class _AiChatScreenState extends State<AiChatScreen> with TickerProviderStateMix
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
           color: Colors.white, borderRadius: BorderRadius.circular(30),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, -4))],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, -4))],
         ),
         child: Row(
           children: [
@@ -624,9 +621,9 @@ class _AiOrbPainter extends CustomPainter {
     final paintOrb = Paint()
       ..shader = RadialGradient(
         colors: [
-          const Color(0xFF80BF84).withOpacity(0.9),
-          const Color(0xFF4C8D50).withOpacity(0.5),
-          const Color(0xFF80BF84).withOpacity(0.0),
+          const Color(0xFF80BF84).withValues(alpha: 0.9),
+          const Color(0xFF4C8D50).withValues(alpha: 0.5),
+          const Color(0xFF80BF84).withValues(alpha: 0.0),
         ],
       ).createShader(Rect.fromCircle(center: center, radius: baseRadius * 1.5))
       ..style = PaintingStyle.fill;
@@ -636,10 +633,10 @@ class _AiOrbPainter extends CustomPainter {
 
     // 2. Thuật toán lượng giác vẽ 3 vòng hạt sóng điện từ 3D đan xen lướt động
     final paintLine = Paint()..style = PaintingStyle.stroke..strokeWidth = 1.2;
-    final int particleCount = 24;
+    const int particleCount = 24;
 
     for (int layer = 0; layer < 3; layer++) {
-      paintLine.color = const Color(0xFF80BF84).withOpacity(0.6 - (layer * 0.15));
+      paintLine.color = const Color(0xFF80BF84).withValues(alpha: 0.6 - (layer * 0.15));
       final path = Path();
 
       for (int i = 0; i <= particleCount; i++) {

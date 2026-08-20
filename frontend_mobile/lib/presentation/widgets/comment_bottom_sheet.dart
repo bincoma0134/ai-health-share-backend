@@ -161,7 +161,7 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
         icon = Icons.gavel_rounded;
         break;
       case 'PARTNER_ADMIN':
-        bgColor = const Color(0xFF80BF84).withOpacity(0.3);
+        bgColor = const Color(0xFF80BF84).withValues(alpha: 0.3);
         text = 'Đối tác';
         icon = Icons.verified_rounded;
         break;
@@ -306,9 +306,9 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
           margin: const EdgeInsets.only(top: kToolbarHeight), 
           padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.95),
+            color: Colors.white.withValues(alpha: 0.95),
             borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-            border: Border(top: BorderSide(color: Colors.white.withOpacity(0.5))),
+            border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.5))),
           ),
           child: Column(
             children: [
@@ -360,12 +360,12 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
               Container(
                 margin: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.9),
+                  color: Colors.white.withValues(alpha: 0.9),
                   borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 1.5),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF80BF84).withOpacity(0.2),
+                      color: const Color(0xFF80BF84).withValues(alpha: 0.2),
                       blurRadius: 20,
                       spreadRadius: 2,
                       offset: const Offset(0, 4),
@@ -388,7 +388,7 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF80BF84).withOpacity(0.1),
+                              color: const Color(0xFF80BF84).withValues(alpha: 0.1),
                               border: const Border(bottom: BorderSide(color: Colors.black12, width: 0.5)),
                             ),
                             child: Row(
@@ -445,7 +445,7 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
                                     hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13, fontStyle: FontStyle.italic),
                                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
                                     filled: true,
-                                    fillColor: Colors.grey.shade100.withOpacity(0.8),
+                                    fillColor: Colors.grey.shade100.withValues(alpha: 0.8),
                                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                     isDense: true,
                                   ),
@@ -460,7 +460,7 @@ class _CommentBottomSheetState extends State<CommentBottomSheet> {
                                   decoration: BoxDecoration(
                                     gradient: const LinearGradient(colors: [Color(0xFF80BF84), Color(0xFF5A9B60)], begin: Alignment.topLeft, end: Alignment.bottomRight),
                                     shape: BoxShape.circle,
-                                    boxShadow: [BoxShadow(color: const Color(0xFF80BF84).withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 2))],
+                                    boxShadow: [BoxShadow(color: const Color(0xFF80BF84).withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 2))],
                                   ),
                                   child: _isSending
                                       ? const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))

@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
@@ -321,10 +320,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         Container(
           height: 260,
           padding: const EdgeInsets.only(right: 16, top: 24, bottom: 8),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFE2E8F0)), boxShadow: [BoxShadow(color: const Color(0xFF0F172A).withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFE2E8F0)), boxShadow: [BoxShadow(color: const Color(0xFF0F172A).withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))]),
           child: chartData.isEmpty ? const Center(child: Text('Đang khởi tạo dữ liệu...')) : LineChart(
             LineChartData(
-              gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (value) => FlLine(color: const Color(0xFFF1F5F9), strokeWidth: 1)),
+              gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (value) => const FlLine(color: Color(0xFFF1F5F9), strokeWidth: 1)),
               titlesData: FlTitlesData(
                 rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                 topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -342,8 +341,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
               borderData: FlBorderData(show: false),
               lineBarsData: [
-                LineChartBarData(spots: gmvSpots, isCurved: true, color: const Color(0xFF6366F1), barWidth: 4, isStrokeCapRound: true, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: const Color(0xFF6366F1).withOpacity(0.05))),
-                LineChartBarData(spots: revSpots, isCurved: true, color: const Color(0xFF10B981), barWidth: 4, isStrokeCapRound: true, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: const Color(0xFF10B981).withOpacity(0.05))),
+                LineChartBarData(spots: gmvSpots, isCurved: true, color: const Color(0xFF6366F1), barWidth: 4, isStrokeCapRound: true, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: const Color(0xFF6366F1).withValues(alpha: 0.05))),
+                LineChartBarData(spots: revSpots, isCurved: true, color: const Color(0xFF10B981), barWidth: 4, isStrokeCapRound: true, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: const Color(0xFF10B981).withValues(alpha: 0.05))),
               ],
             ),
           ),
@@ -402,7 +401,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     child: Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: w['status'] == 'PENDING' ? const Color(0xFFFDE68A) : const Color(0xFFE2E8F0)), boxShadow: [BoxShadow(color: const Color(0xFF0F172A).withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 2))]),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: w['status'] == 'PENDING' ? const Color(0xFFFDE68A) : const Color(0xFFE2E8F0)), boxShadow: [BoxShadow(color: const Color(0xFF0F172A).withValues(alpha: 0.02), blurRadius: 8, offset: const Offset(0, 2))]),
                       child: Row(
                         children: [
                           Container(width: 48, height: 48, decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(12)), child: Center(child: Text(w['users']?['full_name']?.substring(0,1) ?? 'U', style: const TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w900, fontSize: 18)))),
@@ -582,10 +581,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFE2E8F0)), boxShadow: [BoxShadow(color: const Color(0xFF0F172A).withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFE2E8F0)), boxShadow: [BoxShadow(color: const Color(0xFF0F172A).withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]),
       child: Row(
         children: [
-          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: color, size: 24)),
+          Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: color, size: 24)),
           const SizedBox(width: 18),
           Expanded(
             child: Column(

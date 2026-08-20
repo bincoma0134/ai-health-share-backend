@@ -101,7 +101,7 @@ class _AuthBottomSheetState extends State<AuthBottomSheet> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade200, width: 0.5),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10, offset: const Offset(0, 2))
+          BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 10, offset: const Offset(0, 2))
         ]
       ),
       child: TextField(
@@ -111,7 +111,7 @@ class _AuthBottomSheetState extends State<AuthBottomSheet> {
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: TextStyle(color: Colors.grey.shade400, fontWeight: FontWeight.w300),
-          prefixIcon: Icon(icon, color: const Color(0xFF4A8B6F).withOpacity(0.6), size: 20), // Thu nhỏ Icon
+          prefixIcon: Icon(icon, color: const Color(0xFF4A8B6F).withValues(alpha: 0.6), size: 20), // Thu nhỏ Icon
           suffixIcon: isPassword 
             ? IconButton(
                 icon: Icon(_obscurePassword ? Icons.visibility_off_rounded : Icons.visibility_rounded, color: Colors.grey.shade400, size: 18),
@@ -196,7 +196,7 @@ class _AuthBottomSheetState extends State<AuthBottomSheet> {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: Colors.grey.shade200, width: 1.0),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
+            BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))
           ]
         ),
         child: Center(child: iconWidget),
@@ -224,11 +224,11 @@ class _AuthBottomSheetState extends State<AuthBottomSheet> {
                 child: Container(
                   padding: const EdgeInsets.fromLTRB(24, 32, 24, 24), // Padding đồng nhất, ép chặt nội dung
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFAF9F6).withOpacity(0.95), 
+                    color: const Color(0xFFFAF9F6).withValues(alpha: 0.95), 
                     borderRadius: BorderRadius.circular(32),
                     border: Border.all(color: Colors.white, width: 1.5),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 40, offset: const Offset(0, 10))
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 40, offset: const Offset(0, 10))
                     ]
                   ),
                   child: Column( // Bỏ SingleChildScrollView ở đây để tránh dãn Modal
@@ -241,7 +241,7 @@ class _AuthBottomSheetState extends State<AuthBottomSheet> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))],
                       ),
                       child: const Icon(Icons.spa_rounded, size: 28, color: Color(0xFF6B8E7B)), // Thu nhỏ Icon
                     ),

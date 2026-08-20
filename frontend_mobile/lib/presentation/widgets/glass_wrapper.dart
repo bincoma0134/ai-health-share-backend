@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
@@ -87,7 +86,7 @@ class _GlassWrapperState extends State<GlassWrapper> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     final glassBorder = Border.all(
-      color: Colors.white.withOpacity(0.22),
+      color: Colors.white.withValues(alpha: 0.22),
       width: 1.2,
     );
 
@@ -102,7 +101,7 @@ class _GlassWrapperState extends State<GlassWrapper> with SingleTickerProviderSt
                 filter: ui.ImageFilter.blur(sigmaX: widget.blurX, sigmaY: widget.blurY),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: widget.fallbackColor ?? Colors.white.withOpacity(0.07),
+                    color: widget.fallbackColor ?? Colors.white.withValues(alpha: 0.07),
                     borderRadius: widget.borderRadius,
                   ),
                 ),
@@ -266,12 +265,12 @@ class GlassButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GlassWrapper(
       borderRadius: borderRadius,
-      fallbackColor: color ?? Colors.white.withOpacity(0.12),
+      fallbackColor: color ?? Colors.white.withValues(alpha: 0.12),
       child: InkWell(
         onTap: onPressed,
         borderRadius: borderRadius,
-        splashColor: Colors.white.withOpacity(0.15),
-        highlightColor: Colors.white.withOpacity(0.05),
+        splashColor: Colors.white.withValues(alpha: 0.15),
+        highlightColor: Colors.white.withValues(alpha: 0.05),
         child: Padding(
           padding: padding,
           child: Center(

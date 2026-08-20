@@ -5,8 +5,6 @@ import 'package:intl/intl.dart';
 import '../../../core/network/api_client.dart';
 import '../../widgets/app_toast.dart';
 import '../../../data/models/voucher_model.dart';
-import '../../../data/services/explore_api_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import '../../widgets/auth_guard.dart';
 import '../../widgets/notification_notifier.dart'; // 🚀 Bổ sung thư viện quản lý State thông báo
@@ -288,9 +286,9 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFCD34D).withOpacity(0.2),
+                      color: const Color(0xFFFCD34D).withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFFCD34D).withOpacity(0.4)),
+                      border: Border.all(color: const Color(0xFFFCD34D).withValues(alpha: 0.4)),
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
@@ -314,8 +312,8 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: isVip 
-                    ? const Color(0xFF80BF84).withOpacity(0.15) 
-                    : (voucher.issuerType == 'ADMIN' ? Colors.amber.withOpacity(0.1) : const Color(0xFF80BF84).withOpacity(0.1)),
+                    ? const Color(0xFF80BF84).withValues(alpha: 0.15) 
+                    : (voucher.issuerType == 'ADMIN' ? Colors.amber.withValues(alpha: 0.1) : const Color(0xFF80BF84).withValues(alpha: 0.1)),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -342,7 +340,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(16)),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(16)),
               child: Column(
                 children: [
                   Row(
@@ -611,7 +609,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
               color: Colors.white,
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 12, offset: const Offset(0, 6))
+                BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 12, offset: const Offset(0, 6))
               ]
             ),
             child: Column(
@@ -759,7 +757,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                           }
                         },
                       );
-                    }).toList(),
+                    }),
                 ],
               ),
             ),
@@ -775,7 +773,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: const Color(0xFFE2F3E4), width: 1),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)]
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10)]
                 ),
                 child: Row(
                   children: [
@@ -920,7 +918,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 6)]
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 6)]
       ),
       child: Row(
         children: [
@@ -1036,7 +1034,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
               } else {
                 return _buildPremiumTicketCard(voucher, isClaimable: false);
               }
-            }).toList(),
+            }),
         ],
       ),
     );
@@ -1054,7 +1052,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
           color: isSelected ? (activeColor ?? const Color(0xFF80BF84)) : Colors.white,
           borderRadius: BorderRadius.circular(35),
           border: Border.all(color: isSelected ? Colors.transparent : const Color(0xFFE2ECEB), width: 1.2),
-          boxShadow: isSelected ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 3))] : null,
+          boxShadow: isSelected ? [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 8, offset: const Offset(0, 3))] : null,
         ),
         child: Row(
           children: [
@@ -1099,15 +1097,15 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.35), width: 1.2),
-          boxShadow: [BoxShadow(color: const Color(0xFF0F2B26).withOpacity(0.25), blurRadius: 12, offset: const Offset(0, 6))],
+          border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.35), width: 1.2),
+          boxShadow: [BoxShadow(color: const Color(0xFF0F2B26).withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 6))],
         ),
         child: Stack(
           children: [
             Positioned(
               right: -10,
               bottom: -15,
-              child: Icon(Icons.stars_rounded, size: 110, color: Colors.white.withOpacity(0.04)),
+              child: Icon(Icons.stars_rounded, size: 110, color: Colors.white.withValues(alpha: 0.04)),
             ),
             Padding(
               padding: const EdgeInsets.all(16),
@@ -1122,9 +1120,9 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFCD34D).withOpacity(0.18),
+                                color: const Color(0xFFFCD34D).withValues(alpha: 0.18),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFFFCD34D).withOpacity(0.3)),
+                                border: Border.all(color: const Color(0xFFFCD34D).withValues(alpha: 0.3)),
                               ),
                               child: const Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -1140,7 +1138,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.1),
+                                  color: Colors.white.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Row(
@@ -1180,7 +1178,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                     decoration: BoxDecoration(
                       color: isExpired 
                           ? Colors.white12 
-                          : (voucher.walletStatus == 'LOCKED' ? const Color(0xFFF59E0B).withOpacity(0.2) : const Color(0xFF80BF84)),
+                          : (voucher.walletStatus == 'LOCKED' ? const Color(0xFFF59E0B).withValues(alpha: 0.2) : const Color(0xFF80BF84)),
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: Column(
@@ -1253,7 +1251,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
         margin: const EdgeInsets.only(bottom: 14.0),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10)],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 10)],
         ),
         child: IntrinsicHeight(
           child: Stack(
@@ -1297,7 +1295,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: isAdmin ? Colors.amber.withOpacity(0.12) : const Color(0xFF80BF84).withOpacity(0.12),
+                                  color: isAdmin ? Colors.amber.withValues(alpha: 0.12) : const Color(0xFF80BF84).withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(isAdmin ? 'TOÀN SÀN' : 'CƠ SỞ', style: TextStyle(color: isAdmin ? Colors.amber.shade800 : const Color(0xFF4C8D50), fontSize: 9, fontWeight: FontWeight.w900)),
@@ -1352,7 +1350,7 @@ class _PromoScreenState extends State<PromoScreen> with TickerProviderStateMixin
                       child: BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                         child: Container(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           child: Center(
                             child: isExpired
@@ -1432,7 +1430,7 @@ class SValueCoinPainter extends CustomPainter {
 
     // 1. Vẽ vòng bóng sáng Neon mờ bao quanh (Glow effect)
     final glowPaint = Paint()
-      ..color = const Color(0xFF22C55E).withOpacity(0.15)
+      ..color = const Color(0xFF22C55E).withValues(alpha: 0.15)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
     canvas.drawCircle(center, radius - 2, glowPaint);
 

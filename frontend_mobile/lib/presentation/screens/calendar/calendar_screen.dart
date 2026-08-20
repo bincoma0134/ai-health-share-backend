@@ -1,19 +1,20 @@
 import 'dart:async';
-import 'dart:ui';
+
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Đã bổ sung: Phục vụ tương tác hệ thống Clipboard sao chép một chạm
-import 'package:url_launcher/url_launcher.dart';
+import 'package:go_router/go_router.dart'; // 🚀 BẢN VÁ: Khai thông hàm extension .push() cho context
 import 'package:intl/intl.dart';
-import 'package:fl_chart/fl_chart.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../core/network/api_client.dart';
 import '../../../data/models/appointment_model.dart';
 import '../../../data/services/calendar_api_service.dart';
-import '../../../core/network/api_client.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/auth_bottom_sheet.dart';
 import '../../widgets/auth_guard.dart';
-import '../../widgets/shimmer_wrapper.dart';
 import '../../widgets/notification_notifier.dart'; // 🚀 Bổ sung thư viện quản lý State thông báo
-import 'package:go_router/go_router.dart'; // 🚀 BẢN VÁ: Khai thông hàm extension .push() cho context
+import '../../widgets/shimmer_wrapper.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -514,7 +515,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
           border: Border.all(color: const Color(0xFFF4F7F6), width: 1.5),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.02),
+              color: Colors.black.withValues(alpha: 0.02),
               blurRadius: 8,
               offset: const Offset(0, 4),
             )
@@ -607,7 +608,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
             decoration: BoxDecoration(
               gradient: const LinearGradient(colors: [Color(0xFF4C8D50), Color(0xFF80BF84)], begin: Alignment.topLeft, end: Alignment.bottomRight),
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: const Color(0xFF4C8D50).withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 8))],
+              boxShadow: [BoxShadow(color: const Color(0xFF4C8D50).withValues(alpha: 0.2), blurRadius: 15, offset: const Offset(0, 8))],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -622,8 +623,8 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                     return Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('AOV: ${_formatPrice(aovValue)}', style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 11, fontWeight: FontWeight.bold)),
-                        Text('Đã xong: ${m['totalCompleted']} đơn phục vụ', style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 11, fontWeight: FontWeight.bold)),
+                        Text('AOV: ${_formatPrice(aovValue)}', style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 11, fontWeight: FontWeight.bold)),
+                        Text('Đã xong: ${m['totalCompleted']} đơn phục vụ', style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 11, fontWeight: FontWeight.bold)),
                       ],
                     );
                   }
@@ -658,7 +659,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                     BarChartData(
                       alignment: BarChartAlignment.spaceAround,
                       maxY: chartValues.map((v) => v).fold(100000.0, (prev, element) => element > prev ? element : prev) * 1.15,
-                      barTouchData: BarTouchData(enabled: true),
+                      barTouchData: const BarTouchData(enabled: true),
                       titlesData: FlTitlesData(
                         show: true,
                         bottomTitles: AxisTitles(
@@ -845,9 +846,9 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF80BF84).withOpacity(0.15),
+                        color: const Color(0xFF80BF84).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.3), width: 1),
+                        border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.3), width: 1),
                       ),
                       child: const Text(
                         'Today',
@@ -956,7 +957,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                 decoration: BoxDecoration(
                   color: const Color(0xFFF4F7F6),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.black.withOpacity(0.05)),
+                  border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
                 ),
                 child: Row(
                   children: [
@@ -975,7 +976,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
               decoration: BoxDecoration(
                 color: const Color(0xFFF4F7F6),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF80BF84).withOpacity(0.5)),
+                border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.5)),
               ),
               child: TextField(
                 controller: _searchController,
@@ -984,7 +985,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                 decoration: InputDecoration(
                   hintText: _isMyClient ? 'Tìm tên khách hàng, dịch vụ...' : 'Tìm tên dịch vụ, cơ sở đặt lịch...',
                   hintStyle: const TextStyle(fontSize: 13, color: Colors.black38),
-                  prefixIcon: const Icon(Icons.search_rounded, color: const Color(0xFF80BF84), size: 18),
+                  prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF80BF84), size: 18),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 11),
                   suffixIcon: IconButton(
@@ -1087,12 +1088,12 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: Colors.black.withValues(alpha: 0.06),
               blurRadius: 20,
               offset: const Offset(0, 10),
             ),
             BoxShadow(
-              color: Colors.black.withOpacity(0.02),
+              color: Colors.black.withValues(alpha: 0.02),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -1341,7 +1342,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.calendar_today_rounded, size: 36, color: Colors.grey.withOpacity(0.3)),
+            Icon(Icons.calendar_today_rounded, size: 36, color: Colors.grey.withValues(alpha: 0.3)),
             const SizedBox(height: 12),
             const Text('Không có lịch hẹn nào ở mục này.', style: TextStyle(color: Colors.black38, fontSize: 13, fontWeight: FontWeight.w700)),
           ],
@@ -1350,7 +1351,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
     }
 
     // Thống kê số lượng ngắn gọn ở đầu list đồng bộ giao diện mẫu [Sun 1 events and 2 tasks]
-    final String focusedDayStr = DateFormat('EEE, dd MMM yyyy').format(_focusedDate);
+    DateFormat('EEE, dd MMM yyyy').format(_focusedDate);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1376,7 +1377,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(color: const Color(0xFF80BF84).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                decoration: BoxDecoration(color: const Color(0xFF80BF84).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
                 child: const Text('Xem tất cả', style: TextStyle(color: Color(0xFF4C8D50), fontSize: 11, fontWeight: FontWeight.bold)), // Chuyển sang tone xanh đậm mượt mà
               )
             ],
@@ -1416,7 +1417,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 12, offset: const Offset(0, 4))
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 12, offset: const Offset(0, 4))
                   ],
                 ),
                 child: ClipRRect(
@@ -1440,20 +1441,20 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          (appt.note != null && appt.note!.contains('Combo')) 
-                                              ? (appt.note!.contains(' - ') ? appt.note!.split(' - ')[0] : appt.note!) 
+                                          (appt.note.contains('Combo')) 
+                                              ? (appt.note.contains(' - ') ? appt.note.split(' - ')[0] : appt.note) 
                                               : (appt.serviceInfo['service_name'] ?? 'Trị liệu chuyên sâu'),
                                           style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
-                                        if (appt.note != null && appt.note!.isNotEmpty && (!appt.note!.contains('Combo') || appt.note!.contains(' - ')))
+                                        if (appt.note.isNotEmpty && (!appt.note.contains('Combo') || appt.note.contains(' - ')))
                                           Padding(
                                             padding: const EdgeInsets.only(top: 2),
                                             child: Text(
-                                              appt.note!.contains('Combo') && appt.note!.contains(' - ') 
-                                                  ? appt.note!.split(' - ').sublist(1).join(' - ') 
-                                                  : appt.note!,
+                                              appt.note.contains('Combo') && appt.note.contains(' - ') 
+                                                  ? appt.note.split(' - ').sublist(1).join(' - ') 
+                                                  : appt.note,
                                               style: const TextStyle(fontSize: 12, color: Colors.black54, fontStyle: FontStyle.italic),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
@@ -1484,7 +1485,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                               const SizedBox(height: 8),
                               Row(
                                 children: [
-                                  Icon(Icons.person_outline_rounded, color: Colors.black26, size: 14),
+                                  const Icon(Icons.person_outline_rounded, color: Colors.black26, size: 14),
                                   const SizedBox(width: 6),
                                   Text(
                                     _isMyClient ? 'Khách: ${appt.customerName}' : 'Cơ sở: ${appt.partnerInfo['full_name'] ?? "VN Share"}',
@@ -1500,7 +1501,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                   children: [
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(color: const Color(0xFFF59E0B).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                                      decoration: BoxDecoration(color: const Color(0xFFF59E0B).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
                                       child: Text(
                                         'Khách đi ${appt.guestCount} người',
                                         style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.amber.shade800),
@@ -1510,7 +1511,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                     if (appt.preferredTime != null && appt.preferredTime!.isNotEmpty)
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(color: const Color(0xFFF59E0B).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                                        decoration: BoxDecoration(color: const Color(0xFFF59E0B).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
                                         child: Builder(
                                           builder: (ctx) {
                                             try {
@@ -1564,7 +1565,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                     children: [
                                       Row(
                                         children: [
-                                          Icon(Icons.credit_card_rounded, color: Colors.black26, size: 14),
+                                          const Icon(Icons.credit_card_rounded, color: Colors.black26, size: 14),
                                           const SizedBox(width: 6),
                                           Text(
                                             _formatPrice(finalPrice), // Đã sửa: In đậm số tiền khách thực trả
@@ -1582,7 +1583,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                       if (v.isNotEmpty && v['code'] != null)
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(color: const Color(0xFF3B82F6).withOpacity(0.08), borderRadius: BorderRadius.circular(6)),
+                                          decoration: BoxDecoration(color: const Color(0xFF3B82F6).withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6)),
                                           child: Text(v['code'].toString(), style: const TextStyle(color: Color(0xFF3B82F6), fontSize: 9, fontWeight: FontWeight.bold)), // Tag Voucher xanh lam bảo chứng khớp với Web
                                         )
                                     ],
@@ -1610,7 +1611,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
 
                               if (appt.status.toUpperCase() == 'PENDING_PAYMENT' && !_isMyClient) ...[
                                 const SizedBox(height: 12),
-                                _buildActionWidgetButton('Xem hóa đơn & Thanh toán', const Color(0xFF3B82F6).withOpacity(0.08), const Color(0xFF3B82F6), () => _handlePayment(appt.id)), // Đổi sang tone xanh lam an toàn bảo chứng Escrow
+                                _buildActionWidgetButton('Xem hóa đơn & Thanh toán', const Color(0xFF3B82F6).withValues(alpha: 0.08), const Color(0xFF3B82F6), () => _handlePayment(appt.id)), // Đổi sang tone xanh lam an toàn bảo chứng Escrow
                               ],
                               if (appt.status.toUpperCase() == 'CONFIRMED' && _isMyClient) ...[
                                 const SizedBox(height: 12),
@@ -1654,7 +1655,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                 Container(
                                   width: double.infinity,
                                   padding: const EdgeInsets.symmetric(vertical: 8),
-                                  decoration: BoxDecoration(color: const Color(0xFF4C8D50).withOpacity(0.06), borderRadius: BorderRadius.circular(10)),
+                                  decoration: BoxDecoration(color: const Color(0xFF4C8D50).withValues(alpha: 0.06), borderRadius: BorderRadius.circular(10)),
                                   child: Center(
                                     child: Text('MÃ XÁC NHẬN TẠI QUẦY: ${appt.checkInCode}', style: const TextStyle(color: Color(0xFF4C8D50), fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1)),
                                   ),
@@ -1662,7 +1663,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                               ],
                               if (appt.status.toUpperCase() == 'SERVED' && !_isMyClient) ...[
                                 const SizedBox(height: 12),
-                                _buildActionWidgetButton('Xác nhận hài lòng & Giải ngân', const Color(0xFF4C8D50).withOpacity(0.08), const Color(0xFF4C8D50), () => _handleUserConfirm(appt.id)),
+                                _buildActionWidgetButton('Xác nhận hài lòng & Giải ngân', const Color(0xFF4C8D50).withValues(alpha: 0.08), const Color(0xFF4C8D50), () => _handleUserConfirm(appt.id)),
                               ],
                               
                               // Thêm 2 nút tương tác nhanh Gọi điện / Nhắn tin tiện dụng như bản Web
@@ -2137,7 +2138,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                               border: Border.all(color: const Color(0xFFF4F7F6), width: 1.5),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
+                                  color: Colors.black.withValues(alpha: 0.03),
                                   blurRadius: 16,
                                   offset: const Offset(0, 8),
                                 )
@@ -2208,7 +2209,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                             const Row(
                               children: [
                                 Icon(Icons.access_time_rounded, size: 14, color: Colors.black26),
-                                const SizedBox(width: 4),
+                                SizedBox(width: 4),
                                 Text(
                                   '14:52',
                                   style: TextStyle(fontSize: 12, color: Colors.black38, fontWeight: FontWeight.w700, fontFeatures: [FontFeature.tabularFigures()]),
@@ -2373,14 +2374,14 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                         label: const Text('Hài lòng 💖'),
                         selected: isSatisfied,
                         onSelected: (val) => setDialogState(() => isSatisfied = true),
-                        selectedColor: const Color(0xFF80BF84).withOpacity(0.3),
+                        selectedColor: const Color(0xFF80BF84).withValues(alpha: 0.3),
                       ),
                       const SizedBox(width: 12),
                       ChoiceChip(
                         label: const Text('Chưa tốt 💔'),
                         selected: !isSatisfied,
                         onSelected: (val) => setDialogState(() => isSatisfied = false),
-                        selectedColor: Colors.red.withOpacity(0.2),
+                        selectedColor: Colors.red.withValues(alpha: 0.2),
                       ),
                     ],
                   ),

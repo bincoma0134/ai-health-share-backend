@@ -7,7 +7,7 @@ import 'liquid_glass_tokens.dart';
 class LiquidGlassPanel extends StatelessWidget {
   final Widget child;
   
-  const LiquidGlassPanel({Key? key, required this.child}) : super(key: key);
+  const LiquidGlassPanel({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) {

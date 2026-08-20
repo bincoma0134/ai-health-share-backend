@@ -23,7 +23,6 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   String _activeTab = 'overview'; // 'overview' hoặc 'wallet'
   
   Map<String, dynamic> _stats = {'total_videos': 0, 'total_posts': 0, 'total_likes': 0, 'approval_rate': 0};
-  Map<String, dynamic> _walletData = {'balance': 0.0, 'total_earned': 0.0};
   List<dynamic> _recentVideos = [];
   List<dynamic> _recentPosts = [];
   List<dynamic> _withdrawalHistory = [];
@@ -35,7 +34,6 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
   bool _hasLoadedAffiliateData = false; // 🚀 LAZY LOAD: Cờ kiểm soát chỉ tải API khi cần
   int _currentDisplayLimit = 50; // 🚀 CLIENT-PAGINATION: Giới hạn Render UI tránh Crash
   Map<String, dynamic>? _selectedPartnerDetail;
-  bool _isLoadingPartnerDetail = false;
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounceSearchTimer; // 🚀 NÂNG CẤP: Bộ đệm thời gian chặn gọi hàm liên tục
   
@@ -157,13 +155,13 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
       });
 
       if (mounted) {
-        if (response != null && response.statusCode == 200) {
+        if (response.statusCode == 200) {
           AppToast.show(context: context, message: 'Gửi đơn yêu cầu quyết toán số dư thành công! Đang chờ hệ thống phê duyệt.', isSuccess: true);
           _amountController.clear();
           // Tái tải lại nguồn sự thật dữ liệu tổng thể để cập nhật dòng tiền và danh sách lịch sử lệnh rút
           _loadDashboardData();
         } else {
-          final Map<String, dynamic>? errData = response?.data as Map<String, dynamic>?;
+          final Map<String, dynamic>? errData = response.data as Map<String, dynamic>?;
           AppToast.show(context: context, message: errData?['detail'] ?? 'Có lỗi xảy ra trong quá trình xử lý rút tiền!', isSuccess: false);
         }
       }
@@ -182,7 +180,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
     });
     try {
       final response = await ApiClient.instance.get('/creator/affiliate/partners');
-      if (response != null && response.statusCode == 200) {
+      if (response.statusCode == 200) {
         setState(() {
           _affiliatePartners = response.data['data'] ?? [];
           _applyFiltersAndSort(); // 🚀 Áp dụng thuật toán Filter & Sort khởi tạo
@@ -190,7 +188,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
       }
     } catch (e) {
       AppToast.show(context: context, message: 'Không thể tải danh sách đối tác: $e', isSuccess: false);
-    } finally {
+    } finally { 
       setState(() {
         _isLoadingAffiliate = false;
       });
@@ -203,7 +201,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
         '/creator/affiliate/apply',
         data: {'partner_id': partnerId},
       );
-      if (response != null && response.statusCode == 200) {
+      if (response.statusCode == 200) {
         AppToast.show(context: context, message: 'Gửi yêu cầu ứng tuyển Affiliate thành công!', isSuccess: true);
         _fetchAffiliatePartners();
       }
@@ -214,12 +212,11 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
 
   Future<void> _fetchPartnerServices(String partnerId, String partnerName) async {
     setState(() {
-      _isLoadingPartnerDetail = true;
       _selectedPartnerDetail = null;
     });
     try {
       final response = await ApiClient.instance.get('/creator/affiliate/partners/$partnerId/services');
-      if (response != null && response.statusCode == 200) {
+      if (response.statusCode == 200) {
         setState(() {
           _selectedPartnerDetail = {
             'name': partnerName,
@@ -232,7 +229,6 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
       AppToast.show(context: context, message: 'Không thể tải danh sách dịch vụ: $e', isSuccess: false);
     } finally {
       setState(() {
-        _isLoadingPartnerDetail = false;
       });
     }
   }
@@ -307,9 +303,9 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF48C9B0).withOpacity(0.1),
+                                    color: const Color(0xFF48C9B0).withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: const Color(0xFF48C9B0).withOpacity(0.3)),
+                                    border: Border.all(color: const Color(0xFF48C9B0).withValues(alpha: 0.3)),
                                   ),
                                   child: Text(
                                     '+${s['affiliate_rate'] ?? 0}% Hoa hồng',
@@ -431,11 +427,11 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
+                      const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Hiệu suất Kênh', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 24, fontWeight: FontWeight.w900)),
-                          Text('Đánh giá chất lượng và tăng trưởng.', style: TextStyle(color: const Color(0xFF617D79), fontSize: 12, fontWeight: FontWeight.w500)),
+                          Text('Hiệu suất Kênh', style: TextStyle(color: Color(0xFF1A3A35), fontSize: 24, fontWeight: FontWeight.w900)),
+                          Text('Đánh giá chất lượng và tăng trưởng.', style: TextStyle(color: Color(0xFF617D79), fontSize: 12, fontWeight: FontWeight.w500)),
                         ],
                       ),
                       ElevatedButton.icon(
@@ -492,7 +488,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                         color: Colors.white, 
                         borderRadius: BorderRadius.circular(24), 
                         border: Border.all(color: const Color(0xFFE2ECEB)),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -574,7 +570,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2ECEB))),
                       child: Row(
                         children: [
-                          Container(width: 40, height: 40, decoration: BoxDecoration(color: _crtPrimary.withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Icon(Icons.article, color: _crtPrimary)),
+                          Container(width: 40, height: 40, decoration: BoxDecoration(color: _crtPrimary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: Icon(Icons.article, color: _crtPrimary)),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -694,7 +690,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
             ),
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
-              BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.15), blurRadius: 15, offset: const Offset(0, 8))
+              BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.15), blurRadius: 15, offset: const Offset(0, 8))
             ],
           ),
           child: Column(
@@ -735,7 +731,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
             color: Colors.white, 
             borderRadius: BorderRadius.circular(24), 
             border: Border.all(color: const Color(0xFFE2ECEB)),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10, offset: const Offset(0, 4))],
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -797,7 +793,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: const Color(0xFFE2ECEB)),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10, offset: const Offset(0, 4))],
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 10, offset: const Offset(0, 4))],
                   ),
                   child: Stack(
                     children: [
@@ -805,7 +801,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                       Positioned(
                         bottom: -10,
                         right: -10,
-                        child: Icon(Icons.analytics_rounded, size: 54, color: const Color(0xFF1A3A35).withOpacity(0.04)),
+                        child: Icon(Icons.analytics_rounded, size: 54, color: const Color(0xFF1A3A35).withValues(alpha: 0.04)),
                       ),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -861,7 +857,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: const Color(0xFFE2ECEB)),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10, offset: const Offset(0, 4))],
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 10, offset: const Offset(0, 4))],
                   ),
                   child: Stack(
                     children: [
@@ -869,7 +865,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                       Positioned(
                         bottom: -10,
                         right: -10,
-                        child: Icon(Icons.domain_rounded, size: 54, color: _crtPrimary.withOpacity(0.04)),
+                        child: Icon(Icons.domain_rounded, size: 54, color: _crtPrimary.withValues(alpha: 0.04)),
                       ),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -937,8 +933,9 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
             // Đồng bộ giả lập tên Partner y khoa dựa trên tiêu chuẩn gắn nhãn hệ thống
             final String videoTitle = v['title'] ?? 'Video liên kết';
             String mockPartner = 'Cơ sở Y tế Đối tác';
-            if (videoTitle.toLowerCase().contains('spa')) mockPartner = 'An Nhiên Spa & Clinic';
-            else if (videoTitle.toLowerCase().contains('lab')) mockPartner = 'Alpha Lab Toàn Cầu';
+            if (videoTitle.toLowerCase().contains('spa')) {
+              mockPartner = 'An Nhiên Spa & Clinic';
+            } else if (videoTitle.toLowerCase().contains('lab')) mockPartner = 'Alpha Lab Toàn Cầu';
             else mockPartner = 'Trung tâm Trị liệu Đông Y Wellness';
 
             return Container(
@@ -1044,7 +1041,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
         color: Colors.white, 
         borderRadius: BorderRadius.circular(24), 
         border: Border.all(color: const Color(0xFFE2ECEB)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1078,7 +1075,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
               Container(
                 width: 16, height: blockHeight,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_crtPrimary, _crtPrimary.withOpacity(0.1)]),
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [_crtPrimary, _crtPrimary.withValues(alpha: 0.1)]),
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -1123,7 +1120,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
               Container(
                 width: 16, height: 120 * financialCurve[index],
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [const Color(0xFF48C9B0), const Color(0xFF48C9B0).withOpacity(0.1)]),
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [const Color(0xFF48C9B0), const Color(0xFF48C9B0).withValues(alpha: 0.1)]),
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -1163,9 +1160,9 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
           padding: const EdgeInsets.all(16),
           margin: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1A3A35).withOpacity(0.05),
+            color: const Color(0xFF1A3A35).withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFF1A3A35).withOpacity(0.1)),
+            border: Border.all(color: const Color(0xFF1A3A35).withValues(alpha: 0.1)),
           ),
           child: Row(
             children: [
@@ -1333,7 +1330,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(color: statusColor.withOpacity(0.08), borderRadius: BorderRadius.circular(8)),
+                        decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
                         child: Text(statusText, style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
                       )
                     ],
@@ -1522,7 +1519,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: const Color(0xFFE2ECEB)),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 8, offset: const Offset(0, 2))],
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.01), blurRadius: 8, offset: const Offset(0, 2))],
                 ),
                 child: Material(
                   color: Colors.transparent,
@@ -1604,7 +1601,7 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
               child: Center(
                 child: OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: _crtPrimary.withOpacity(0.5)),
+                    side: BorderSide(color: _crtPrimary.withValues(alpha: 0.5)),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   ),
@@ -1632,9 +1629,9 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.amber.withOpacity(0.08),
+            color: Colors.amber.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.amber.withOpacity(0.3)),
+            border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
           ),
           child: Text('Chờ duyệt', style: TextStyle(color: Colors.amber.shade900, fontSize: 12, fontWeight: FontWeight.bold)),
         );
@@ -1642,9 +1639,9 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFF48C9B0).withOpacity(0.08),
+            color: const Color(0xFF48C9B0).withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF48C9B0).withOpacity(0.3)),
+            border: Border.all(color: const Color(0xFF48C9B0).withValues(alpha: 0.3)),
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
@@ -1659,10 +1656,10 @@ class _CreatorDashboardScreenState extends State<CreatorDashboardScreen> {
         return ElevatedButton(
           onPressed: () => _applyForAffiliate(partnerId),
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFFF7A8A).withOpacity(0.1),
+            backgroundColor: const Color(0xFFFF7A8A).withValues(alpha: 0.1),
             foregroundColor: _crtPrimary,
             elevation: 0,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: _crtPrimary.withOpacity(0.3))),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: _crtPrimary.withValues(alpha: 0.3))),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           ),
           child: const Text('Ứng tuyển lại', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),

@@ -106,13 +106,13 @@ class _ToastWidgetState extends State<_ToastWidget> with SingleTickerProviderSta
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
                   color: widget.isSuccess 
-                      ? const Color(0xFF80BF84).withOpacity(0.65) // Hạ Opacity để tăng xuyên thấu ánh sáng
-                      : const Color(0xFFFE2C55).withOpacity(0.65), 
+                      ? const Color(0xFF80BF84).withValues(alpha: 0.65) // Hạ Opacity để tăng xuyên thấu ánh sáng
+                      : const Color(0xFFFE2C55).withValues(alpha: 0.65), 
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Colors.white.withOpacity(0.15), width: 0.5), // Làm mảnh viền sáng tạo cảm giác viền kính thực tế
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 0.5), // Làm mảnh viền sáng tạo cảm giác viền kính thực tế
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: 24,
                       offset: const Offset(0, 10),
                     )
