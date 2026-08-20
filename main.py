@@ -132,9 +132,44 @@ async def startup_event():
                     ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS moderation_note TEXT;
                     ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS moderated_by UUID;
                     ALTER TABLE vouchers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+                    -- 🚀 AUTO-MIGRATION: Tách biệt bảng chuyên trách Nạp tiền đổi điểm
+                    CREATE TABLE IF NOT EXISTS point_topup_transactions (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        amount_vnd NUMERIC NOT NULL,
+                        points_received INT NOT NULL,
+                        order_code BIGINT UNIQUE NOT NULL,
+                        payment_status VARCHAR(50) DEFAULT 'UNPAID',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_point_topup_order_code ON point_topup_transactions(order_code);
+                    CREATE INDEX IF NOT EXISTS idx_point_topup_user_id ON point_topup_transactions(user_id);
+
+                    -- 🚀 AUTO-MIGRATION PHASE 07: Cấu trúc Gói Hội viên Đối tác (Partner Premium)
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_premium BOOLEAN DEFAULT FALSE;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_tier VARCHAR(50) DEFAULT 'STANDARD';
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until TIMESTAMP WITH TIME ZONE;
+
+                    CREATE TABLE IF NOT EXISTS partner_subscriptions (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        partner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        plan_tier VARCHAR(50) NOT NULL,
+                        duration_months INT NOT NULL,
+                        amount NUMERIC NOT NULL,
+                        order_code BIGINT UNIQUE NOT NULL,
+                        payment_status VARCHAR(50) DEFAULT 'UNPAID',
+                        starts_at TIMESTAMP WITH TIME ZONE,
+                        expires_at TIMESTAMP WITH TIME ZONE,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_partner_subscriptions_order_code ON partner_subscriptions(order_code);
+                    CREATE INDEX IF NOT EXISTS idx_partner_subscriptions_partner_id ON partner_subscriptions(partner_id);
                 """)
             conn.commit()
-            print("[AUTO-MIGRATION-SUCCESS] Đồng bộ các cột kiểm duyệt bảng vouchers thành công.")
+            print("[AUTO-MIGRATION-SUCCESS] Đồng bộ bảng partner_subscriptions và thuộc tính VIP users thành công.")
         except Exception as e:
             print(f"[Database Hotfix Error] Lỗi Auto-Migration: {e}")
         finally:
@@ -1043,6 +1078,116 @@ def delete_my_video(video_id: str, current_user = Depends(verify_user_token), co
         conn.commit()
         return {"status": "success"}
     finally: cur.close()
+
+# =====================================================================
+# 🚀 [PHASE 07] PARTNER MEMBERSHIP & SUBSCRIPTION ENGINE (PAYOS EXCLUSIVE)
+# =====================================================================
+
+@app.get("/partner/premium/status", response_model=schemas.PartnerSubscriptionStatusResponse, tags=["Partner Membership"])
+def get_partner_premium_status(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Truy vấn thời gian thực trạng thái VIP của đối tác kèm số ngày còn lại"""
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cur.execute("SELECT is_premium, premium_tier, premium_until FROM users WHERE id = %s", (current_user.id,))
+        user = cur.fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail="Không tìm thấy thông tin đối tác")
+
+        is_premium = user.get("is_premium") or False
+        premium_tier = user.get("premium_tier") or "STANDARD"
+        premium_until = user.get("premium_until")
+        
+        days_remaining = 0
+        if is_premium and premium_until:
+            now_dt = datetime.now(timezone.utc)
+            if premium_until.tzinfo is None:
+                premium_until = premium_until.replace(tzinfo=timezone.utc)
+            diff = premium_until - now_dt
+            days_remaining = max(0, diff.days)
+            if days_remaining <= 0 and diff.total_seconds() <= 0:
+                # Đã hết hạn -> Tự động hạ cấp ngầm (Lazy Expiration)
+                cur.execute("UPDATE users SET is_premium = FALSE, premium_tier = 'STANDARD' WHERE id = %s", (current_user.id,))
+                conn.commit()
+                is_premium = False
+                premium_tier = "STANDARD"
+
+        return {
+            "is_premium": is_premium,
+            "premium_tier": premium_tier,
+            "premium_until": premium_until,
+            "days_remaining": days_remaining
+        }
+    finally:
+        cur.close()
+
+@app.post("/partner/premium/subscribe", tags=["Partner Membership"])
+def subscribe_partner_premium(payload: schemas.PartnerPremiumSubscribeRequest, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
+    """Khởi tạo đơn thanh toán mua gói Hội viên Đối tác qua PayOS VietQR"""
+    if current_user.role not in ["PARTNER_ADMIN", "PARTNER", "SUPER_ADMIN", "ADMIN"]:
+        raise HTTPException(status_code=403, detail="Chỉ tài khoản Cơ sở đối tác mới có quyền mua gói Hội viên!")
+
+    clean_tier = payload.plan_tier.strip().upper()
+    duration = int(payload.duration_months)
+
+    # 1. Bảng giá niêm yết chính thức thị trường Hà Nội
+    pricing_matrix = {
+        "PRO": {1: 599000.0, 3: 1599000.0, 12: 5999000.0},
+        "DIAMOND": {1: 1299000.0, 3: 3499000.0, 12: 9999000.0}
+    }
+
+    if clean_tier not in pricing_matrix or duration not in pricing_matrix[clean_tier]:
+        print(f"[DEBUG-SUB-ERR] Gói không hợp lệ: Tier={clean_tier} | Duration={duration}m")
+        raise HTTPException(status_code=400, detail="Gói hội viên hoặc chu kỳ thanh toán không hợp lệ!")
+
+    amount_vnd = pricing_matrix[clean_tier][duration]
+    user_hash = str(abs(hash(current_user.id)))[:4]
+    order_code = int(f"88{user_hash}{random.randint(1000, 9999)}")
+
+    cur = conn.cursor()
+    try:
+        print(f"[DEBUG-SUB-START] Đối tác {current_user.id} tạo đơn mua gói: {clean_tier} ({duration} tháng) - {amount_vnd:,.0f} VND | OrderCode={order_code}")
+
+        # 2. Lưu đơn thanh toán vào bảng chuyên trách partner_subscriptions
+        cur.execute("""
+            INSERT INTO partner_subscriptions (partner_id, plan_tier, duration_months, amount, order_code, payment_status)
+            VALUES (%s, %s, %s, %s, %s, 'UNPAID') RETURNING id
+        """, (current_user.id, clean_tier, duration, amount_vnd, order_code))
+        conn.commit()
+
+        # 3. Tạo link thanh toán PayOS
+        tier_label = "VIP Diamond" if clean_tier == "DIAMOND" else "Pro"
+        payment_data = PaymentData(
+            orderCode=order_code,
+            amount=int(amount_vnd),
+            description=f"Goi {tier_label} {duration}T",
+            returnUrl="https://ai-health-share-frontend.vercel.app",
+            cancelUrl="https://ai-health-share-frontend.vercel.app"
+        )
+        payment_link = payos_client.createPaymentLink(paymentData=payment_data)
+
+        return {
+            "status": "success",
+            "checkout_url": payment_link.checkoutUrl,
+            "in_app_data": {
+                "qr_code": getattr(payment_link, 'qrCode', None),
+                "account_number": getattr(payment_link, 'accountNumber', None),
+                "account_name": getattr(payment_link, 'accountName', None),
+                "amount": getattr(payment_link, 'amount', None),
+                "description": getattr(payment_link, 'description', None),
+                "order_code": order_code,
+                "plan_tier": clean_tier,
+                "duration_months": duration
+            }
+        }
+    except HTTPException:
+        conn.rollback()
+        raise
+    except Exception as e:
+        conn.rollback()
+        print(f"[DEBUG-SUB-EXCEPTION] Lỗi tạo link PayOS gói Premium: {e}")
+        raise HTTPException(status_code=500, detail="Hệ thống khởi tạo PayOS đang bận.")
+    finally:
+        cur.close()
 
 @app.get("/user/my-tiktok-feeds", tags=["User"])
 def get_user_videos(current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
@@ -2677,20 +2822,80 @@ def verify_appointment_payment(orderCode: int, current_user = Depends(verify_use
         payment_info = payos_client.getPaymentLinkInformation(orderCode)
         if payment_info.status != "PAID": return {"status": "pending", "message": "Chưa hoàn tất"}
 
+        # 🚀 1. KIỂM TRA ĐƠN NẠP ĐIỂM (POINT TOPUP) TỪ BẢNG CHUYÊN TRÁCH
+        cur.execute("SELECT * FROM point_topup_transactions WHERE order_code = %s", (orderCode,))
+        topup = cur.fetchone()
+        if topup:
+            if topup["payment_status"] == "PAID":
+                return {"status": "success", "message": "Đã nạp điểm thành công"}
+            elif topup["payment_status"] == "UNPAID":
+                points = int(topup["points_received"])
+                cur.execute("UPDATE users SET points_balance = points_balance + %s WHERE id = %s", (points, topup["user_id"]))
+                cur.execute("UPDATE point_topup_transactions SET payment_status = 'PAID', updated_at = NOW() WHERE id = %s", (topup["id"],))
+                conn.commit()
+                print(f"[DEBUG-VERIFY-TOPUP] Xác nhận nạp điểm thành công qua Polling: +{points:,.0f} điểm cho User #{topup['user_id']}")
+                return {"status": "success", "message": "Đã nạp điểm thành công"}
+
+        # 🚀 1.5. KIỂM TRA ĐƠN MUA GÓI HỘI VIÊN ĐỐI TÁC (PHASE 07)
+        cur.execute("SELECT * FROM partner_subscriptions WHERE order_code = %s", (orderCode,))
+        sub = cur.fetchone()
+        if sub:
+            if sub["payment_status"] == "PAID":
+                return {"status": "success", "message": "Gói hội viên đã kích hoạt thành công"}
+            elif sub["payment_status"] == "UNPAID":
+                p_id = sub["partner_id"]
+                p_tier = sub["plan_tier"]
+                p_months = sub["duration_months"]
+                
+                # Tính ngày hết hạn (Cộng dồn nếu gói cũ còn hạn)
+                cur.execute("SELECT premium_until, is_premium FROM users WHERE id = %s", (p_id,))
+                u_curr = cur.fetchone()
+                now_utc = datetime.now(timezone.utc)
+                
+                base_time = now_utc
+                if u_curr and u_curr.get("is_premium") and u_curr.get("premium_until"):
+                    old_until = u_curr["premium_until"]
+                    if old_until.tzinfo is None:
+                        old_until = old_until.replace(tzinfo=timezone.utc)
+                    if old_until > now_utc:
+                        base_time = old_until
+                
+                new_until = base_time + timedelta(days=p_months * 30)
+                
+                cur.execute("""
+                    UPDATE users 
+                    SET is_premium = TRUE, premium_tier = %s, premium_until = %s 
+                    WHERE id = %s
+                """, (p_tier, new_until, p_id))
+                
+                cur.execute("""
+                    UPDATE partner_subscriptions 
+                    SET payment_status = 'PAID', starts_at = %s, expires_at = %s, updated_at = NOW() 
+                    WHERE id = %s
+                """, (now_utc, new_until, sub["id"]))
+                
+                from notification_service import NotificationService
+                tier_vn = "Kim Cương (Diamond)" if p_tier == "DIAMOND" else "Pro Tăng Trưởng"
+                NotificationService.dispatch_event(
+                    conn,
+                    user_id=str(p_id),
+                    event_type="LEGACY",
+                    reference_id=str(sub["id"]),
+                    metadata={
+                        "category": "SYSTEM",
+                        "title": "🎉 Kích hoạt Gói VIP thành công",
+                        "message": f"Chúc mừng cơ sở đã nâng cấp thành công gói {tier_vn} thời hạn {p_months} tháng. Mọi đặc quyền đã được mở khóa."
+                    },
+                    sender_id=None
+                )
+                conn.commit()
+                print(f"[DEBUG-VERIFY-SUB] Kích hoạt thành công gói {p_tier} ({p_months}T) cho Đối tác #{p_id}")
+                return {"status": "success", "message": f"Kích hoạt thành công gói {p_tier}"}
+
+        # 🚀 2. KIỂM TRA ĐƠN ĐẶT LỊCH HẸN (BOOKING TRANSACTION)
         cur.execute("SELECT * FROM bookings_transactions WHERE order_code = %s", (orderCode,))
         booking = cur.fetchone()
         if not booking: raise HTTPException(status_code=404, detail="Không tìm thấy")
-        
-        # 🚀 BỌC THÉP NÂNG CẤP VERIFY: Xử lý trả về Polling cho Mobile khi quét đơn Nạp điểm (Phase 2)
-        if booking["payment_status"] == "TOPUP_PAID":
-            return {"status": "success", "message": "Đã nạp điểm thành công"}
-        if booking["payment_status"] == "TOPUP_UNPAID":
-            # 🚀 THUẬT TOÁN ĐỔI ĐIỂM: 1,000 VND = 1,000 Điểm (Tỷ lệ 1:1)
-            points = int(float(booking["total_amount"]))
-            cur.execute("UPDATE users SET points_balance = points_balance + %s WHERE id = %s", (points, booking["user_id"]))
-            cur.execute("UPDATE bookings_transactions SET payment_status = 'TOPUP_PAID' WHERE id = %s", (booking["id"],))
-            conn.commit()
-            return {"status": "success", "message": "Đã nạp điểm thành công"}
             
         if booking["payment_status"] == "PAID": return {"status": "success", "message": "Đã xác nhận"}
 
@@ -3041,31 +3246,87 @@ async def payos_webhook(request: Request, conn=Depends(get_db_connection)):
         if body.get("success") and body.get("code") == "00":
             data = body.get("data", {})
             orderCode = data.get("orderCode")
+            print(f"[DEBUG-PAYOS-WEBHOOK] Nhận tín hiệu thanh toán thành công cho OrderCode: {orderCode}")
             
+            # 🚀 1. KIỂM TRA ĐƠN NẠP TIỀN ĐỔI ĐIỂM (POINT TOPUP)
+            cur.execute("SELECT * FROM point_topup_transactions WHERE order_code = %s", (orderCode,))
+            topup = cur.fetchone()
+            if topup and topup["payment_status"] != "PAID":
+                points = int(topup["points_received"])
+                cur.execute("UPDATE users SET points_balance = points_balance + %s WHERE id = %s", (points, topup["user_id"]))
+                cur.execute("UPDATE point_topup_transactions SET payment_status = 'PAID', updated_at = NOW() WHERE id = %s", (topup["id"],))
+                
+                # Cấp phát thông báo Toast In-App
+                from notification_service import NotificationService
+                NotificationService.dispatch_event(
+                    conn, 
+                    user_id=topup["user_id"], 
+                    event_type="LEGACY", 
+                    reference_id=str(topup["id"]), 
+                    metadata={"category": "SYSTEM", "title": "Nạp điểm thành công", "message": f"Bạn vừa nạp thành công {points:,.0f} điểm vào ví."}, 
+                    sender_id=None
+                )
+                conn.commit()
+                print(f"[DEBUG-PAYOS-WEBHOOK] Webhook nạp điểm hoàn tất: +{points:,.0f} điểm cho User #{topup['user_id']}")
+                return {"success": True}
+
+            # 🚀 1.5. KIỂM TRA ĐƠN MUA GÓI HỘI VIÊN ĐỐI TÁC (PHASE 07)
+            cur.execute("SELECT * FROM partner_subscriptions WHERE order_code = %s", (orderCode,))
+            sub = cur.fetchone()
+            if sub and sub["payment_status"] != "PAID":
+                p_id = sub["partner_id"]
+                p_tier = sub["plan_tier"]
+                p_months = sub["duration_months"]
+                
+                cur.execute("SELECT premium_until, is_premium FROM users WHERE id = %s", (p_id,))
+                u_curr = cur.fetchone()
+                now_utc = datetime.now(timezone.utc)
+                
+                base_time = now_utc
+                if u_curr and u_curr.get("is_premium") and u_curr.get("premium_until"):
+                    old_until = u_curr["premium_until"]
+                    if old_until.tzinfo is None:
+                        old_until = old_until.replace(tzinfo=timezone.utc)
+                    if old_until > now_utc:
+                        base_time = old_until
+                
+                new_until = base_time + timedelta(days=p_months * 30)
+                
+                cur.execute("""
+                    UPDATE users 
+                    SET is_premium = TRUE, premium_tier = %s, premium_until = %s 
+                    WHERE id = %s
+                """, (p_tier, new_until, p_id))
+                
+                cur.execute("""
+                    UPDATE partner_subscriptions 
+                    SET payment_status = 'PAID', starts_at = %s, expires_at = %s, updated_at = NOW() 
+                    WHERE id = %s
+                """, (now_utc, new_until, sub["id"]))
+                
+                from notification_service import NotificationService
+                tier_vn = "Kim Cương (Diamond)" if p_tier == "DIAMOND" else "Pro Tăng Trưởng"
+                NotificationService.dispatch_event(
+                    conn,
+                    user_id=str(p_id),
+                    event_type="LEGACY",
+                    reference_id=str(sub["id"]),
+                    metadata={
+                        "category": "SYSTEM",
+                        "title": "🎉 Kích hoạt Gói VIP thành công",
+                        "message": f"Chúc mừng cơ sở đã nâng cấp thành công gói {tier_vn} thời hạn {p_months} tháng."
+                    },
+                    sender_id=None
+                )
+                conn.commit()
+                print(f"[DEBUG-PAYOS-WEBHOOK] Webhook kích hoạt gói {p_tier} hoàn tất cho Đối tác #{p_id}")
+                return {"success": True}
+
+            # 🚀 2. KIỂM TRA ĐƠN ĐẶT LỊCH HẸN (ESCROW BOOKING)
             cur.execute("SELECT * FROM bookings_transactions WHERE order_code = %s", (orderCode,))
             booking = cur.fetchone()
             
-            if booking and booking["payment_status"] not in ["PAID", "TOPUP_PAID"]:
-                if booking["payment_status"] == "TOPUP_UNPAID":
-                    # 🚀 THUẬT TOÁN ĐỔI ĐIỂM: 1,000 VND = 1,000 Điểm (Tỷ lệ 1:1)
-                    points = int(float(booking["total_amount"]))
-                    cur.execute("UPDATE users SET points_balance = points_balance + %s WHERE id = %s", (points, booking["user_id"]))
-                    cur.execute("UPDATE bookings_transactions SET payment_status = 'TOPUP_PAID' WHERE id = %s", (booking["id"],))
-                    
-                    # Cấp phát thông báo Toast In-App
-                    from notification_service import NotificationService
-                    NotificationService.dispatch_event(
-                        conn, 
-                        user_id=booking["user_id"], 
-                        event_type="LEGACY", 
-                        reference_id=str(booking["id"]), 
-                        metadata={"category": "SYSTEM", "title": "Nạp điểm thành công", "message": f"Bạn vừa nạp thành công {points:,.0f} điểm vào ví."}, 
-                        sender_id=None
-                    )
-                    
-                    conn.commit()
-                    return {"success": True}
-
+            if booking and booking["payment_status"] != "PAID":
                 cur.execute("UPDATE bookings_transactions SET payment_status = 'PAID' WHERE id = %s", (booking["id"],))
                 
                 # BỌC THÉP LOGIC VOUCHER CHO WEBHOOK
@@ -3964,12 +4225,13 @@ def topup_points(payload: schemas.PointTopupRequest, current_user = Depends(veri
         
         # 🚀 THUẬT TOÁN ĐỔI ĐIỂM: 1,000 VND = 1,000 Điểm (Tỷ lệ 1:1 theo thông báo mới nhất)
         points_to_receive = int(payload.amount_vnd)
+        print(f"[DEBUG-TOPUP-START] User {current_user.id} tạo đơn nạp điểm: {payload.amount_vnd:,.0f} VND -> {points_to_receive:,.0f} Điểm | OrderCode={order_code}")
         
-        # Lợi dụng bookings_transactions để track luồng Nạp điểm thay vì tạo bảng mới
-        cur.execute("""INSERT INTO bookings_transactions 
-                       (user_id, total_amount, payment_status, service_status, order_code)
-                       VALUES (%s, %s, 'TOPUP_UNPAID', 'PENDING', %s) RETURNING id""",
-                    (current_user.id, payload.amount_vnd, order_code))
+        # Lưu vào bảng chuyên trách point_topup_transactions
+        cur.execute("""INSERT INTO point_topup_transactions 
+                       (user_id, amount_vnd, points_received, payment_status, order_code)
+                       VALUES (%s, %s, %s, 'UNPAID', %s) RETURNING id""",
+                    (current_user.id, payload.amount_vnd, points_to_receive, order_code))
         conn.commit()
 
         payment_data = PaymentData(
@@ -4000,7 +4262,7 @@ def topup_points(payload: schemas.PointTopupRequest, current_user = Depends(veri
         raise
     except Exception as e:
         conn.rollback()
-        print(f"[ERROR-TOPUP] {e}")
+        print(f"[ERROR-TOPUP-EXCEPTION] Lỗi tạo liên kết PayOS nạp điểm: {e}")
         raise HTTPException(status_code=500, detail="Hệ thống khởi tạo PayOS đang bận.")
     finally: cur.close()
 

@@ -11,6 +11,7 @@ import '../../presentation/screens/promo/promo_screen.dart';
 import '../../presentation/screens/calendar/calendar_screen.dart';
 import '../../presentation/screens/profile/private_profile_screen.dart';
 import '../../presentation/screens/profile/user_wellness_profile_screen.dart';
+import '../../presentation/screens/profile/partner_membership_screen.dart'; // IMPORT MÀN HÌNH SHOW-OFF GÓI VIP
 import '../../presentation/screens/wallet_screen.dart'; // Bổ sung Import Ví điện tử
 import '../../presentation/screens/admin/admin_dashboard_screen.dart';
 import '../../presentation/screens/admin/moderator_dashboard_screen.dart';
@@ -171,6 +172,12 @@ final GoRouter appRouter = GoRouter(
         final currentContext = (state.extra as String?) ?? '';
         return PartnerAiContextScreen(currentContext: currentContext);
       },
+    ),
+    // 🚀 TUYẾN ĐƯỜNG GÓI HỘI VIÊN ĐỐI TÁC (PHASE 07 SHOW-OFF & CHECKOUT)
+    GoRoute(
+      path: '/partner/membership',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) => const PartnerMembershipScreen(),
     ),
   ],
 );

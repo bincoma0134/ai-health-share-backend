@@ -293,6 +293,17 @@ class WellnessLogCreate(BaseModel):
 class PointTopupRequest(BaseModel):
     amount_vnd: float
 
+# 🚀 PHASE 07: CẤU TRÚC ĐĂNG KÝ GÓI HỘI VIÊN ĐỐI TÁC (PARTNER PREMIUM)
+class PartnerPremiumSubscribeRequest(BaseModel):
+    plan_tier: str  # 'PRO' hoặc 'DIAMOND'
+    duration_months: int  # 1, 3, 12
+
+class PartnerSubscriptionStatusResponse(BaseModel):
+    is_premium: bool
+    premium_tier: str
+    premium_until: Optional[datetime] = None
+    days_remaining: int = 0
+
 class VIPVoucherBuyRequest(BaseModel):
     voucher_code: str
 

@@ -1379,6 +1379,115 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                         ),
                         const SizedBox(height: 16),
 
+                        // 🚀 [PHASE 07] BANNER THẺ ĐEN HỘI VIÊN ĐỐI TÁC (VIP BLACK CARD)
+                        () {
+                          final bool isPremium = widget.profile['is_premium'] == true;
+                          final String tier = (widget.profile['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+                          final bool isDiamond = tier == 'DIAMOND';
+
+                          return Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(bottom: 16),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: isPremium
+                                    ? (isDiamond
+                                        ? [const Color(0xFF3A0D15), const Color(0xFF6B1D2A), const Color(0xFF1E293B)]
+                                        : [const Color(0xFF064E3B), const Color(0xFF0F766E), const Color(0xFF1E293B)])
+                                    : [const Color(0xFF1E293B), const Color(0xFF0F172A)],
+                              ),
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(
+                                color: isPremium
+                                    ? (isDiamond ? const Color(0xFFFFD700) : const Color(0xFF34D399))
+                                    : Colors.white.withValues(alpha: 0.15),
+                                width: 1.2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: isPremium
+                                      ? (isDiamond ? const Color(0xFFFFD700).withValues(alpha: 0.25) : const Color(0xFF34D399).withValues(alpha: 0.25))
+                                      : Colors.black.withValues(alpha: 0.15),
+                                  blurRadius: 16,
+                                  offset: const Offset(0, 6),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    isPremium ? (isDiamond ? Icons.workspace_premium_rounded : Icons.auto_graph_rounded) : Icons.diamond_outlined,
+                                    color: isPremium ? (isDiamond ? const Color(0xFFFFD700) : const Color(0xFF34D399)) : Colors.amberAccent,
+                                    size: 24,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            isPremium ? (isDiamond ? 'VIP DIAMOND' : 'PARTNER PRO') : 'HỘI VIÊN TIÊU CHUẨN',
+                                            style: TextStyle(
+                                              color: isPremium ? (isDiamond ? const Color(0xFFFFD700) : const Color(0xFF34D399)) : Colors.white,
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w900,
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
+                                          if (isPremium) ...[
+                                            const SizedBox(width: 6),
+                                            const Icon(Icons.verified_rounded, color: Color(0xFFFFD700), size: 14),
+                                          ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        isPremium
+                                            ? 'Đang kích hoạt toàn bộ đặc quyền Top Map & AI 10k'
+                                            : 'Nâng cấp để mở khóa Top 1 Map & Giảm 33% phí sàn',
+                                        style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: isPremium ? Colors.white.withValues(alpha: 0.15) : const Color(0xFFFFD700),
+                                    foregroundColor: isPremium ? Colors.white : Colors.black87,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    elevation: 0,
+                                  ),
+                                  onPressed: () async {
+                                    final res = await context.push<bool>('/partner/membership');
+                                    if (res == true) {
+                                      widget.onRefresh();
+                                      _loadPartnerData();
+                                    }
+                                  },
+                                  child: Text(
+                                    isPremium ? 'Gia hạn' : 'Nâng cấp',
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }(),
+
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(

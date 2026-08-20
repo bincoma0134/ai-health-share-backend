@@ -235,4 +235,44 @@ class PartnerApiService {
       return [];
     }
   }
+
+  // ==========================================
+  // 🚀 [PHASE 07] GÓI HỘI VIÊN ĐỐI TÁC (PARTNER PREMIUM)
+  // ==========================================
+  static Future<Map<String, dynamic>?> subscribePremium({
+    required String planTier,
+    required int durationMonths,
+  }) async {
+    try {
+      print('[DEBUG-PARTNER-API] Bắt đầu gọi API mua gói: Tier=$planTier | Duration=$durationMonths tháng');
+      final res = await _dio.post('/partner/premium/subscribe', data: {
+        'plan_tier': planTier,
+        'duration_months': durationMonths,
+      });
+
+      if (res.statusCode == 200 && res.data['status'] == 'success') {
+        print('[DEBUG-PARTNER-API-SUCCESS] Tạo link PayOS thành công cho gói: $planTier');
+        return res.data;
+      }
+      return null;
+    } on DioException catch (e) {
+      final String msg = e.response?.data is Map ? (e.response?.data['detail'] ?? 'Lỗi tạo cổng thanh toán') : 'Lỗi kết nối';
+      print('[DEBUG-PARTNER-API-DIO-ERR] $msg');
+      throw Exception(msg);
+    } catch (e) {
+      print('[DEBUG-PARTNER-API-EXCEPTION] $e');
+      throw Exception('Không thể khởi tạo thanh toán gói hội viên');
+    }
+  }
+
+  static Future<Map<String, dynamic>?> fetchPremiumStatus() async {
+    try {
+      final res = await _dio.get('/partner/premium/status');
+      if (res.statusCode == 200) return res.data;
+      return null;
+    } catch (e) {
+      print('[DEBUG-PARTNER-API-FETCH-STATUS-ERR] $e');
+      return null;
+    }
+  }
 }

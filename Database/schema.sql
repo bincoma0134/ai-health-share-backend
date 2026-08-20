@@ -513,6 +513,27 @@ CREATE TABLE public.appointments (
 
 
 --
+-- Name: point_topup_transactions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.point_topup_transactions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    amount_vnd numeric NOT NULL,
+    points_received integer NOT NULL,
+    order_code bigint NOT NULL,
+    payment_status character varying(50) DEFAULT 'UNPAID'::character varying,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT point_topup_transactions_order_code_key UNIQUE (order_code),
+    CONSTRAINT point_topup_transactions_pkey PRIMARY KEY (id),
+    CONSTRAINT point_topup_transactions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_point_topup_order_code ON public.point_topup_transactions USING btree (order_code);
+CREATE INDEX idx_point_topup_user_id ON public.point_topup_transactions USING btree (user_id);
+
+--
 -- Name: bookings_transactions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -912,6 +933,30 @@ CREATE TABLE public.user_wellness_profiles (
 
 
 --
+-- Name: partner_subscriptions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.partner_subscriptions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    partner_id uuid NOT NULL,
+    plan_tier character varying(50) NOT NULL,
+    duration_months integer NOT NULL,
+    amount numeric NOT NULL,
+    order_code bigint NOT NULL,
+    payment_status character varying(50) DEFAULT 'UNPAID'::character varying,
+    starts_at timestamp with time zone,
+    expires_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT partner_subscriptions_order_code_key UNIQUE (order_code),
+    CONSTRAINT partner_subscriptions_pkey PRIMARY KEY (id),
+    CONSTRAINT partner_subscriptions_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES public.users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_partner_subscriptions_order_code ON public.partner_subscriptions USING btree (order_code);
+CREATE INDEX idx_partner_subscriptions_partner_id ON public.partner_subscriptions USING btree (partner_id);
+
+--
 -- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -944,6 +989,9 @@ CREATE TABLE public.users (
     partner_ai_context text,
     has_claimed_wellness_reward boolean DEFAULT false,
     points_balance numeric(15,2) DEFAULT 0.00 NOT NULL,
+    is_premium boolean DEFAULT false,
+    premium_tier character varying(50) DEFAULT 'STANDARD'::character varying,
+    premium_until timestamp with time zone,
     CONSTRAINT users_points_balance_check CHECK ((points_balance >= (0)::numeric))
 );
 
