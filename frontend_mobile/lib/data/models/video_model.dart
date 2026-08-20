@@ -17,6 +17,7 @@ class VideoModel {
   final String? feedType;
   final double? affiliateRate;
   final String? partnerUsername; // 🚀 Bổ sung biến hứng Username của đối tác liên kết
+  final Map<String, dynamic>? linkedPartner; // 🚀 PHASE 08: Lưu nguyên vẹn Metadata Đối tác liên kết
 
   VideoModel({
     required this.id,
@@ -37,16 +38,52 @@ class VideoModel {
     this.feedType,
     this.affiliateRate,
     this.partnerUsername,
+    this.linkedPartner,
   });
 
-  // Giải pháp 1: Getter trích xuất nhãn phân loại động từ dữ liệu thực tế (title) để tránh hardcode trên UI
+  // Getter trích xuất nhãn phân loại động từ title
   String get categoryTag {
     if (title.isNotEmpty) return title;
-    // Fallback an toàn nếu chuỗi title từ database trống
     return 'Xu hướng làm đẹp';
   }
 
+  // 🚀 GETTER HỖ TRỢ HIỂN THỊ VIỀN AVATAR & BADGE CHO TÁC GIẢ VIDEO
+  bool get isAuthorPremium {
+    return author['is_premium'] == true || author['is_premium'] == 'true';
+  }
+
+  String get authorTier {
+    return (author['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+  }
+
+  // 🚀 GETTER HỖ TRỢ HIỂN THỊ VIỀN AVATAR & BADGE CHO ĐỐI TÁC LIÊN KẾT
+  bool get isLinkedPartnerPremium {
+    if (linkedPartner == null) return false;
+    return linkedPartner!['is_premium'] == true || linkedPartner!['is_premium'] == 'true';
+  }
+
+  String get linkedPartnerTier {
+    if (linkedPartner == null) return 'STANDARD';
+    return (linkedPartner!['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+  }
+
   factory VideoModel.fromJson(Map<String, dynamic> json) {
+    // Giải nén an toàn linked_partner map
+    Map<String, dynamic>? linkedPartnerMap;
+    if (json['linked_partner'] is Map<String, dynamic>) {
+      linkedPartnerMap = json['linked_partner'];
+    } else if (json['linked_partner'] is Map) {
+      linkedPartnerMap = Map<String, dynamic>.from(json['linked_partner']);
+    }
+
+    // Giải nén an toàn author map
+    Map<String, dynamic> authorMap = {};
+    if (json['author'] is Map<String, dynamic>) {
+      authorMap = json['author'];
+    } else if (json['author'] is Map) {
+      authorMap = Map<String, dynamic>.from(json['author']);
+    }
+
     return VideoModel(
       id: json['id'] ?? '',
       authorId: json['author_id'] ?? '',
@@ -59,14 +96,14 @@ class VideoModel {
       commentsCount: json['comments_count'] ?? 0,
       isLiked: json['is_liked'] ?? false,
       isSaved: json['is_saved'] ?? false,
-      author: json['author'] is Map<String, dynamic> ? json['author'] : {},
+      author: authorMap,
       partnerId: json['partner_id'],
       serviceId: json['service_id'],
       voucherCode: json['voucher_code'],
       feedType: json['feed_type'],
       affiliateRate: json['affiliate_rate'] != null ? (json['affiliate_rate'] as num).toDouble() : null,
-      // 🚀 Giải nén an toàn object linked_partner do Backend trả về
-      partnerUsername: json['linked_partner'] != null ? json['linked_partner']['username'] : null,
+      partnerUsername: linkedPartnerMap != null ? linkedPartnerMap['username'] : null,
+      linkedPartner: linkedPartnerMap,
     );
   }
 }

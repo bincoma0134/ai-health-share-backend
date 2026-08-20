@@ -6,6 +6,7 @@ import '../../../core/network/api_client.dart';
 import '../../../data/models/partner_membership_model.dart';
 import '../../../data/services/partner_api_service.dart';
 import '../../widgets/app_toast.dart';
+import '../../widgets/shimmer_wrapper.dart';
 
 class PartnerMembershipScreen extends StatefulWidget {
   const PartnerMembershipScreen({super.key});
@@ -16,7 +17,7 @@ class PartnerMembershipScreen extends StatefulWidget {
 
 class _PartnerMembershipScreenState extends State<PartnerMembershipScreen> {
   final List<PartnerMembershipPlan> _plans = PartnerMembershipPlan.defaultPlans;
-  int _selectedPlanIndex = 1; // Mặc định focus vào VIP Diamond (Best Value)
+  int _selectedPlanIndex = 1; // Mặc định focus vào VIP Diamond
   int _selectedDurationMonths = 1;
   bool _isLoading = false;
 
@@ -87,7 +88,6 @@ class _PartnerMembershipScreenState extends State<PartnerMembershipScreen> {
       enableDrag: false,
       isDismissible: false,
       builder: (ctx) {
-        // Kích hoạt Polling kiểm tra trạng thái thanh toán ngầm mỗi 3 giây
         pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
           try {
             final checkRes = await ApiClient.instance.get(
@@ -104,7 +104,7 @@ class _PartnerMembershipScreenState extends State<PartnerMembershipScreen> {
                   isSuccess: true,
                   duration: const Duration(seconds: 4),
                 );
-                Navigator.pop(context, true); // Quay về Profile và kích hoạt Refresh
+                Navigator.pop(context, true);
               }
             }
           } catch (err) {
@@ -115,21 +115,28 @@ class _PartnerMembershipScreenState extends State<PartnerMembershipScreen> {
         return Container(
           height: MediaQuery.of(context).size.height * 0.88,
           decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            color: Color(0xFFFBFDFD),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(36)),
           ),
           child: Column(
             children: [
               const SizedBox(height: 12),
-              Container(width: 48, height: 5, decoration: BoxDecoration(color: const Color(0xFFE2ECEB), borderRadius: BorderRadius.circular(10))),
+              Container(width: 44, height: 5, decoration: BoxDecoration(color: const Color(0xFFD1E3E0), borderRadius: BorderRadius.circular(10))),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Thanh Toán VietQR PayOS', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1A3A35))),
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Thanh Toán VietQR', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Color(0xFF14302B), letterSpacing: -0.4)),
+                        SizedBox(height: 2),
+                        Text('Bảo chứng bởi cổng PayOS', style: TextStyle(fontSize: 12, color: Color(0xFF6B8782), fontWeight: FontWeight.w500)),
+                      ],
+                    ),
                     IconButton(
-                      icon: const Icon(Icons.close_rounded, color: Color(0xFF617D79)),
+                      icon: const Icon(Icons.close_rounded, color: Color(0xFF6B8782), size: 22),
                       onPressed: () {
                         pollingTimer?.cancel();
                         Navigator.pop(ctx);
@@ -138,18 +145,21 @@ class _PartnerMembershipScreenState extends State<PartnerMembershipScreen> {
                   ],
                 ),
               ),
-              const Divider(height: 1, color: Color(0xFFF0F4F3)),
+              const Divider(height: 1, color: Color(0xFFE8F2F0)),
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                   child: Column(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF7FBF9),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFFE2ECEB)),
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(28),
+                          border: Border.all(color: const Color(0xFFE2ECE9)),
+                          boxShadow: [
+                            BoxShadow(color: const Color(0xFF14302B).withValues(alpha: 0.04), blurRadius: 20, offset: const Offset(0, 8)),
+                          ],
                         ),
                         child: Column(
                           children: [
@@ -158,33 +168,52 @@ class _PartnerMembershipScreenState extends State<PartnerMembershipScreen> {
                                 data: qrData,
                                 version: QrVersions.auto,
                                 size: 200.0,
-                                eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Color(0xFF1A3A35)),
-                                dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Color(0xFF1A3A35)),
+                                eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Color(0xFF14302B)),
+                                dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Color(0xFF14302B)),
                               )
                             else
-                              const SizedBox(height: 200, child: Center(child: CircularProgressIndicator())),
-                            const SizedBox(height: 12),
-                            const Text('Quét mã qua bất kỳ App Ngân hàng (MB, VCB, Tech...)', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Color(0xFF617D79), fontWeight: FontWeight.w500)),
+                              const SizedBox(height: 200, child: Center(child: CircularProgressIndicator(color: Color(0xFF2E6F65)))),
+                            const SizedBox(height: 14),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              decoration: BoxDecoration(color: const Color(0xFFF0F7F5), borderRadius: BorderRadius.circular(12)),
+                              child: const Text('Hỗ trợ tất cả ứng dụng Ngân hàng & Ví điện tử', style: TextStyle(fontSize: 11.5, color: Color(0xFF42635D), fontWeight: FontWeight.w600)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: const Color(0xFFE8F2F0)),
+                        ),
+                        child: Column(
+                          children: [
+                            _buildPayDetailRow('Số tiền thanh toán', _formatCurrency(amount), isHighlight: true),
+                            const Divider(height: 12, color: Color(0xFFF4F9F8)),
+                            _buildPayDetailRow('Chủ tài khoản', accName),
+                            const Divider(height: 12, color: Color(0xFFF4F9F8)),
+                            _buildPayDetailRow('Số tài khoản', accNum),
+                            const Divider(height: 12, color: Color(0xFFF4F9F8)),
+                            _buildPayDetailRow('Nội dung chuyển khoản', desc, isHighlight: true),
                           ],
                         ),
                       ),
                       const SizedBox(height: 16),
-                      _buildPayDetailRow('Số tiền thanh toán', _formatCurrency(amount), isHighlight: true),
-                      _buildPayDetailRow('Chủ tài khoản', accName),
-                      _buildPayDetailRow('Số tài khoản', accNum),
-                      _buildPayDetailRow('Nội dung chuyển khoản', desc, isHighlight: true),
-                      const SizedBox(height: 16),
                       Container(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE3F2FD),
-                          borderRadius: BorderRadius.circular(14),
+                          color: const Color(0xFFE8F4F1),
+                          borderRadius: BorderRadius.circular(16),
                         ),
                         child: const Row(
                           children: [
-                            SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue)),
+                            SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2E6F65))),
                             SizedBox(width: 12),
-                            Expanded(child: Text('Đang tự động kiểm tra giao dịch... Hệ thống sẽ tự kích hoạt ngay khi nhận được tiền.', style: TextStyle(fontSize: 11.5, color: Color(0xFF1565C0), fontWeight: FontWeight.w600))),
+                            Expanded(child: Text('Đang tự động đối soát... Gói sẽ kích hoạt ngay khi chuyển khoản thành công.', style: TextStyle(fontSize: 12, color: Color(0xFF1E4D45), fontWeight: FontWeight.w600, height: 1.3))),
                           ],
                         ),
                       ),
@@ -200,72 +229,83 @@ class _PartnerMembershipScreenState extends State<PartnerMembershipScreen> {
   }
 
   Widget _buildPayDetailRow(String label, String value, {bool isHighlight = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF617D79), fontWeight: FontWeight.w500)),
-          Text(value, style: TextStyle(fontSize: 13.5, color: isHighlight ? const Color(0xFFE63946) : const Color(0xFF1A3A35), fontWeight: FontWeight.w800)),
-        ],
-      ),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF6B8782), fontWeight: FontWeight.w500)),
+        Text(value, style: TextStyle(fontSize: 13.5, color: isHighlight ? const Color(0xFFE63956) : const Color(0xFF14302B), fontWeight: FontWeight.w800)),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A), // Dark Luxury Background
+      backgroundColor: const Color(0xFFF6FAF8), // Apple Light Wellness Background
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF14302B), size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'Đặc Quyền Hội Viên',
-          style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
+          'Đặc Quyền Đối Tác',
+          style: TextStyle(color: Color(0xFF14302B), fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.3),
         ),
         centerTitle: true,
       ),
       body: Stack(
         children: [
-          // Background Glow Orbs
+          // Soft Ambient Glow Orbs
           Positioned(
-            top: -60,
-            right: -60,
+            top: -40,
+            right: -40,
             child: Container(
-              width: 240,
-              height: 240,
+              width: 220,
+              height: 220,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _currentPlan.accentColor.withValues(alpha: 0.25),
+                color: _currentPlan.accentColor.withValues(alpha: 0.12),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 200,
+            left: -60,
+            child: Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF80BF84).withValues(alpha: 0.1),
               ),
             ),
           ),
           SafeArea(
             child: Column(
               children: [
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 24),
+                  padding: EdgeInsets.symmetric(horizontal: 28),
                   child: Column(
                     children: [
                       Text(
-                        'Nâng Tầm Thương Hiệu',
-                        style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5),
+                        'Nâng Tầm Không Gian Sống',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Color(0xFF14302B), fontSize: 23, fontWeight: FontWeight.w900, letterSpacing: -0.6),
                       ),
                       SizedBox(height: 6),
                       Text(
-                        'Mở khóa công cụ AI 10.000 ký tự, định vị Top 1 và tối đa hóa doanh thu cho cơ sở của bạn.',
+                        'Mở khóa định vị Top 1 bản đồ, trợ lý AI học sâu và tối ưu hóa doanh thu bảo chứng.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13, height: 1.4),
+                        style: TextStyle(color: Color(0xFF6B8782), fontSize: 13, height: 1.45, fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
 
                 // Carousel Plan Cards
                 Expanded(
@@ -275,7 +315,6 @@ class _PartnerMembershipScreenState extends State<PartnerMembershipScreen> {
                     onPageChanged: (idx) {
                       setState(() {
                         _selectedPlanIndex = idx;
-                        // Reset về chu kỳ 1 tháng nếu gói mới không hỗ trợ chu kỳ hiện tại
                         if (!_plans[idx].pricingOptions.any((opt) => opt.durationMonths == _selectedDurationMonths)) {
                           _selectedDurationMonths = 1;
                         }
@@ -285,41 +324,46 @@ class _PartnerMembershipScreenState extends State<PartnerMembershipScreen> {
                       final plan = _plans[index];
                       final bool isSelected = _selectedPlanIndex == index;
                       return AnimatedScale(
-                        duration: const Duration(milliseconds: 300),
+                        duration: const Duration(milliseconds: 280),
                         scale: isSelected ? 1.0 : 0.94,
-                        child: _buildPlanCard(plan, isSelected),
+                        child: _buildAppleStylePlanCard(plan, isSelected),
                       );
                     },
                   ),
                 ),
 
-                // Chu kỳ thanh toán (Duration Selector)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                // iOS-Style Segmented Duration Selector
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE7EFEA),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                   child: Row(
                     children: _currentPlan.pricingOptions.map((opt) {
                       final bool isOptSelected = opt.durationMonths == _selectedDurationMonths;
                       return Expanded(
                         child: GestureDetector(
                           onTap: () => setState(() => _selectedDurationMonths = opt.durationMonths),
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
                             decoration: BoxDecoration(
-                              color: isOptSelected ? _currentPlan.accentColor : Colors.white.withValues(alpha: 0.08),
+                              color: isOptSelected ? Colors.white : Colors.transparent,
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: isOptSelected ? Colors.transparent : Colors.white.withValues(alpha: 0.15),
-                              ),
+                              boxShadow: isOptSelected
+                                  ? [BoxShadow(color: const Color(0xFF14302B).withValues(alpha: 0.08), blurRadius: 8, offset: const Offset(0, 2))]
+                                  : [],
                             ),
                             child: Column(
                               children: [
                                 Text(
                                   opt.label,
                                   style: TextStyle(
-                                    color: isOptSelected ? Colors.black : Colors.white,
+                                    color: isOptSelected ? const Color(0xFF14302B) : const Color(0xFF6B8782),
                                     fontSize: 13,
-                                    fontWeight: FontWeight.w800,
+                                    fontWeight: isOptSelected ? FontWeight.w800 : FontWeight.w600,
                                   ),
                                 ),
                                 if (opt.discountBadge != null) ...[
@@ -327,9 +371,9 @@ class _PartnerMembershipScreenState extends State<PartnerMembershipScreen> {
                                   Text(
                                     opt.discountBadge!,
                                     style: TextStyle(
-                                      color: isOptSelected ? const Color(0xFFB91C1C) : _currentPlan.accentColor,
+                                      color: isOptSelected ? const Color(0xFFE63956) : const Color(0xFF8A9F9B),
                                       fontSize: 9,
-                                      fontWeight: FontWeight.w900,
+                                      fontWeight: FontWeight.w800,
                                     ),
                                   ),
                                 ],
@@ -342,21 +386,29 @@ class _PartnerMembershipScreenState extends State<PartnerMembershipScreen> {
                   ),
                 ),
 
-                // Bottom Action Button
+                // 🚀 NÂNG CẤP BỌC THÉP: Đồng bộ màu Cyber Cyan cho Pro & Chống Overflow tuyệt đối
                 Padding(
-                  padding: const EdgeInsets.only(left: 24, right: 24, bottom: 20, top: 4),
+                  padding: const EdgeInsets.only(left: 20, right: 20, bottom: 20, top: 4),
                   child: Container(
                     width: double.infinity,
                     height: 56,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: _currentPlan.gradientColors,
+                        colors: _currentPlan.tier == MembershipTier.diamond
+                            ? const [Color(0xFFE63956), Color(0xFFB81534)] // Imperial Ruby Gradient
+                            : const [Color(0xFF00B4D8), Color(0xFF0077B6)], // Cyber Cyan Gradient đồng bộ với Pro Card
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(22),
                       boxShadow: [
                         BoxShadow(
-                          color: _currentPlan.accentColor.withValues(alpha: 0.4),
+                          color: (_currentPlan.tier == MembershipTier.diamond
+                                  ? const Color(0xFFE63956)
+                                  : const Color(0xFF00B4D8))
+                              .withValues(alpha: 0.38),
                           blurRadius: 20,
+                          spreadRadius: 1,
                           offset: const Offset(0, 8),
                         ),
                       ],
@@ -365,19 +417,38 @@ class _PartnerMembershipScreenState extends State<PartnerMembershipScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
                         shadowColor: Colors.transparent,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                       ),
                       onPressed: _isLoading ? null : _handleSubscribe,
                       child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)
+                          ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.2))
                           : Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                const Icon(Icons.bolt_rounded, color: Colors.white, size: 22),
+                                Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.25),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 16),
+                                ),
                                 const SizedBox(width: 8),
-                                Text(
-                                  'KÍCH HOẠT ${_currentPlan.title.toUpperCase()} • ${_formatCurrency(_currentPricing.priceVnd)}',
-                                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                                Flexible(
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      'KÍCH HOẠT ${_currentPlan.title.toUpperCase()} • ${_formatCurrency(_currentPricing.priceVnd)}',
+                                      maxLines: 1,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
@@ -392,75 +463,139 @@ class _PartnerMembershipScreenState extends State<PartnerMembershipScreen> {
     );
   }
 
-  Widget _buildPlanCard(PartnerMembershipPlan plan, bool isSelected) {
-    return Container(
-      padding: const EdgeInsets.all(24),
+  Widget _buildAppleStylePlanCard(PartnerMembershipPlan plan, bool isSelected) {
+    final bool isDiamond = plan.tier == MembershipTier.diamond;
+
+    Widget cardContent = Container(
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: plan.gradientColors,
-        ),
+        color: isDiamond ? const Color(0xFFFFF9FA) : const Color(0xFFFFFFFF),
         borderRadius: BorderRadius.circular(32),
         border: Border.all(
-          color: isSelected ? plan.accentColor : Colors.white.withValues(alpha: 0.15),
-          width: isSelected ? 2 : 1,
+          color: isSelected ? plan.accentColor.withValues(alpha: 0.7) : const Color(0xFFE2ECE9),
+          width: isSelected ? 2.0 : 1.0,
         ),
-        boxShadow: isSelected
-            ? [BoxShadow(color: plan.accentColor.withValues(alpha: 0.3), blurRadius: 24, offset: const Offset(0, 10))]
-            : [],
+        boxShadow: [
+          BoxShadow(
+            color: isSelected
+                ? plan.accentColor.withValues(alpha: 0.14)
+                : const Color(0xFF14302B).withValues(alpha: 0.04),
+            blurRadius: isSelected ? 24 : 12,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header Badge & Icon
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 decoration: BoxDecoration(
-                  color: plan.accentColor.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: plan.accentColor, width: 0.8),
+                  color: plan.accentColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: plan.accentColor.withValues(alpha: 0.35), width: 0.8),
                 ),
                 child: Text(
                   plan.badgeText,
-                  style: TextStyle(color: plan.accentColor, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                  style: TextStyle(
+                    color: plan.accentColor,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ),
-              Icon(plan.icon, color: plan.accentColor, size: 28),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: plan.accentColor.withValues(alpha: 0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(plan.icon, color: plan.accentColor, size: 20),
+              ),
             ],
           ),
-          const SizedBox(height: 16),
-          Text(plan.title, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-          const SizedBox(height: 4),
-          Text(plan.subtitle, style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 20),
-          const Divider(height: 1, color: Colors.white24),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+          Text(
+            plan.title,
+            style: const TextStyle(color: Color(0xFF14302B), fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            plan.subtitle,
+            style: const TextStyle(color: Color(0xFF6B8782), fontSize: 12, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 14),
+
+          // 🚀 TẤM LÓT FROSTED GLASSMORHPISM ĐỆM BÊN DƯỚI DANH SÁCH QUYỀN LỢI
           Expanded(
-            child: ListView(
-              physics: const BouncingScrollPhysics(),
-              children: plan.benefits.map((b) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.check_circle_rounded, color: plan.accentColor, size: 16),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        b,
-                        style: const TextStyle(color: Colors.white, fontSize: 12.5, height: 1.35, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ],
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.75),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: isDiamond ? const Color(0xFFFFE3E8) : const Color(0xFFE2EFEA),
+                  width: 1.0,
                 ),
-              )).toList(),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF14302B).withValues(alpha: 0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: ListView(
+                  physics: const BouncingScrollPhysics(),
+                  children: plan.benefits.map((b) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.only(top: 2),
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: plan.accentColor.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.check_rounded, color: plan.accentColor, size: 11),
+                        ),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
+                            b,
+                            style: const TextStyle(
+                              color: Color(0xFF2C4944),
+                              fontSize: 12,
+                              height: 1.35,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )).toList(),
+                ),
+              ),
             ),
           ),
         ],
       ),
     );
+
+    // 🚀 ÁP DỤNG SHIMMER CHO THẺ VIP DIAMOND ĐỂ THỂ HIỆN SỰ ĐẲNG CẤP VƯƠNG GIẢ
+    if (isDiamond && isSelected) {
+      return ShimmerWrapper(child: cardContent);
+    }
+
+    return cardContent;
   }
 }

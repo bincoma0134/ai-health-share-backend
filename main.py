@@ -460,6 +460,7 @@ def get_map_partners(conn=Depends(get_db_connection)):
         cur.execute("ALTER TABLE tiktok_feeds ADD COLUMN IF NOT EXISTS trim_end_percent NUMERIC DEFAULT 100.0")
         conn.commit()
 
+        # 🚀 PHASE 08: Đồng bộ Rank ưu tiên VIP DIAMOND -> PRO -> STANDARD và nạp kèm Tier Metadata
         query = """
             SELECT 
                 u.id, 
@@ -469,6 +470,8 @@ def get_map_partners(conn=Depends(get_db_connection)):
                 COALESCE(u.latitude, 21.028511) as latitude, 
                 COALESCE(u.longitude, 105.804817) as longitude,
                 ROUND((RANDOM() * 5.5 + 1.2)::numeric, 1) as distance,
+                COALESCE(u.is_premium, false) as is_premium,
+                COALESCE(u.premium_tier, 'STANDARD') as premium_tier,
                 CASE 
                     WHEN u.username ILIKE '%spa%' OR u.full_name ILIKE '%Spa%' THEN json_build_array('Spa & Clinic', 'Chăm sóc da')
                     WHEN u.username ILIKE '%lab%' OR u.full_name ILIKE '%Lab%' THEN json_build_array('Xét nghiệm', 'Chẩn đoán')
@@ -486,7 +489,13 @@ def get_map_partners(conn=Depends(get_db_connection)):
                 ) as services
             FROM users u
             WHERE u.role = 'PARTNER_ADMIN'
-            ORDER BY u.created_at DESC
+            ORDER BY 
+                CASE 
+                    WHEN u.is_premium = true AND u.premium_tier = 'DIAMOND' THEN 1
+                    WHEN u.is_premium = true AND u.premium_tier = 'PRO' THEN 2
+                    ELSE 3
+                END ASC,
+                u.created_at DESC
         """
         cur.execute(query)
         partners_data = cur.fetchall()
@@ -1378,12 +1387,12 @@ def create_community_post(post: schemas.CommunityPostCreate, current_user = Depe
 def get_tiktok_feeds(user_id: str = None, filter: str = None, limit: int = 50, conn=Depends(get_db_connection)):
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        # Hỗ trợ bộ lọc 'liked' để lấy đúng danh sách video người dùng đã thả tim
+        # 🚀 PHASE 08: Đính kèm is_premium và premium_tier cho cả Author và Linked Partner
         if filter == "liked" and user_id:
             cur.execute("""
                 SELECT v.*, 
-                       json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url, 'username', u.username, 'role', u.role) as author,
-                       CASE WHEN pu.id IS NOT NULL THEN json_build_object('id', pu.id, 'username', pu.username, 'full_name', pu.full_name) ELSE NULL END as linked_partner
+                       json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url, 'username', u.username, 'role', u.role, 'is_premium', COALESCE(u.is_premium, false), 'premium_tier', COALESCE(u.premium_tier, 'STANDARD')) as author,
+                       CASE WHEN pu.id IS NOT NULL THEN json_build_object('id', pu.id, 'username', pu.username, 'full_name', pu.full_name, 'is_premium', COALESCE(pu.is_premium, false), 'premium_tier', COALESCE(pu.premium_tier, 'STANDARD')) ELSE NULL END as linked_partner
                 FROM tiktok_feed_likes l
                 JOIN tiktok_feeds v ON l.video_id = v.id
                 JOIN users u ON v.author_id = u.id
@@ -1394,12 +1403,19 @@ def get_tiktok_feeds(user_id: str = None, filter: str = None, limit: int = 50, c
         else:
             cur.execute("""
                 SELECT v.*, 
-                       json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url, 'username', u.username, 'role', u.role) as author,
-                       CASE WHEN pu.id IS NOT NULL THEN json_build_object('id', pu.id, 'username', pu.username, 'full_name', pu.full_name) ELSE NULL END as linked_partner
+                       json_build_object('id', u.id, 'full_name', u.full_name, 'avatar_url', u.avatar_url, 'username', u.username, 'role', u.role, 'is_premium', COALESCE(u.is_premium, false), 'premium_tier', COALESCE(u.premium_tier, 'STANDARD')) as author,
+                       CASE WHEN pu.id IS NOT NULL THEN json_build_object('id', pu.id, 'username', pu.username, 'full_name', pu.full_name, 'is_premium', COALESCE(pu.is_premium, false), 'premium_tier', COALESCE(pu.premium_tier, 'STANDARD')) ELSE NULL END as linked_partner
                 FROM tiktok_feeds v 
                 JOIN users u ON v.author_id = u.id
                 LEFT JOIN users pu ON v.partner_id = pu.id
-                WHERE v.status = 'APPROVED' ORDER BY v.created_at DESC LIMIT %s
+                WHERE v.status = 'APPROVED' 
+                ORDER BY 
+                    CASE 
+                        WHEN u.is_premium = true AND u.premium_tier = 'DIAMOND' THEN 1
+                        WHEN u.is_premium = true AND u.premium_tier = 'PRO' THEN 2
+                        ELSE 3
+                    END ASC,
+                    v.created_at DESC LIMIT %s
             """, (limit,))
         videos = cur.fetchall()
         
@@ -1476,21 +1492,41 @@ groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 @app.put("/partner/ai-context", tags=["AI Support Chatbot"])
 def update_partner_ai_context(payload: schemas.PartnerAIContextUpdate, current_user = Depends(verify_user_token), conn=Depends(get_db_connection)):
-    """Lưu trữ Custom Context của đối tác vào database (Profile)"""
+    """Lưu trữ Custom Context của đối tác theo hạn mức Gói Hội Viên (Tier Quota)"""
     if current_user.role not in ["PARTNER", "PARTNER_ADMIN"]:
         raise HTTPException(status_code=403, detail="Chỉ Đối tác mới được quyền cài đặt ngữ cảnh AI!")
         
-    cur = conn.cursor()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
-        # Tự động Migration nếu bảng users chưa có cột này
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS partner_ai_context TEXT")
+        # 1. Truy vấn trạng thái gói VIP hiện tại của đối tác
+        cur.execute("SELECT is_premium, premium_tier, premium_until FROM users WHERE id = %s", (current_user.id,))
+        u = cur.fetchone()
         
-        # Cắt chuỗi tối đa 2000 ký tự để bảo vệ Token Limit của hệ thống
-        context_text = payload.partner_ai_context[:2000] if payload.partner_ai_context else ""
+        is_premium = u.get("is_premium") if u else False
+        tier = (u.get("premium_tier") or "STANDARD").upper() if u else "STANDARD"
+        
+        # 2. Phân bổ Quota ký tự theo cấp độ
+        max_chars = 2000
+        if is_premium:
+            if tier == "DIAMOND":
+                max_chars = 10000
+            elif tier == "PRO":
+                max_chars = 5000
+
+        raw_context = payload.partner_ai_context or ""
+        if len(raw_context) > max_chars:
+            print(f"[DEBUG-AI-CONTEXT-QUOTA] Đối tác {current_user.id} ({tier}) vượt hạn mức: {len(raw_context)} / {max_chars} ký tự")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Nội dung vượt quá giới hạn gói hiện tại ({len(raw_context):,}/{max_chars:,} ký tự). Hãy nâng cấp gói để mở rộng ngữ cảnh!"
+            )
+            
+        context_text = raw_context[:max_chars]
         
         cur.execute("UPDATE users SET partner_ai_context = %s WHERE id = %s", (context_text, current_user.id))
         conn.commit()
-        return {"status": "success", "message": "Đã cập nhật hệ thống định hướng AI thành công!"}
+        print(f"[DEBUG-AI-CONTEXT-SUCCESS] Cập nhật Context ({len(context_text)} ký tự) cho Partner #{current_user.id} [Tier={tier}]")
+        return {"status": "success", "message": f"Đã cập nhật định hướng AI thành công ({len(context_text)}/{max_chars} ký tự)!"}
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
@@ -1515,41 +1551,56 @@ def ai_support_chat(payload: schemas.AISupportChatRequest, current_user = Depend
             conv_id = str(conv['id'])
             cur.execute("UPDATE ai_support_conversation SET updated_at = NOW() WHERE id = %s", (conv_id,))
 
-        # 2. Rút trích AI Context (DB Hydration theo Data Mapping đã chốt)
+        # 2. Rút trích AI Context & Quyền Hạn Gói Hội Viên (DB Hydration)
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS partner_ai_context TEXT")
-        cur.execute("SELECT full_name, physical_address, phone, partner_ai_context FROM users WHERE id = %s", (payload.partner_id,))
+        cur.execute("SELECT full_name, physical_address, phone, partner_ai_context, is_premium, premium_tier FROM users WHERE id = %s", (payload.partner_id,))
         partner = cur.fetchone()
         if not partner: raise HTTPException(status_code=404, detail="Không tìm thấy thông tin cơ sở!")
 
-        cur.execute("SELECT service_name, price, description FROM services WHERE partner_id = %s AND status = 'APPROVED' AND is_deleted = false", (payload.partner_id,))
+        p_is_premium = partner.get("is_premium") or False
+        p_tier = (partner.get("premium_tier") or "STANDARD").upper()
+        
+        # Mở rộng số lượng dịch vụ & voucher nạp vào context cho tài khoản VIP
+        svc_limit = 25 if p_tier == "DIAMOND" else (15 if p_tier == "PRO" else 8)
+        vch_limit = 10 if p_tier == "DIAMOND" else (6 if p_tier == "PRO" else 3)
+
+        cur.execute("SELECT service_name, price, description FROM services WHERE partner_id = %s AND status = 'APPROVED' AND is_deleted = false ORDER BY created_at DESC LIMIT %s", (payload.partner_id, svc_limit))
         services = cur.fetchall()
 
-        cur.execute("SELECT code, discount_type, discount_value, min_order_value FROM vouchers WHERE issuer_id = %s AND issuer_type = 'PARTNER' AND status = 'APPROVED' AND valid_until > NOW()", (payload.partner_id,))
+        cur.execute("SELECT code, discount_type, discount_value, min_order_value FROM vouchers WHERE issuer_id = %s AND issuer_type = 'PARTNER' AND status = 'APPROVED' AND valid_until > NOW() ORDER BY is_vip DESC, created_at DESC LIMIT %s", (payload.partner_id, vch_limit))
         vouchers = cur.fetchall()
 
-        # 3. Trộn System Prompt
-        sys_prompt = f"Bạn là Trợ lý AI đại diện tư vấn 24/7 cho cơ sở y khoa/chăm sóc sức khỏe: {partner['full_name']}.\n"
-        sys_prompt += f"Địa chỉ: {partner.get('physical_address', 'Đang cập nhật')} | Hotline: {partner.get('phone', 'Đang cập nhật')}.\n\n"
+        # 3. Trộn System Prompt: Tích hợp Medical Guardrails Bọc Thép
+        tier_title = "Cơ Sở Bảo Chứng VIP Kim Cương" if p_tier == "DIAMOND" else ("Cơ Sở Đối Tác Pro" if p_tier == "PRO" else "Cơ Sở Đối Tác")
+        sys_prompt = f"Bạn là Trợ lý AI Concierge đại diện tư vấn 24/7 cho {tier_title}: {partner['full_name']}.\n"
+        sys_prompt += f"Địa chỉ: {partner.get('physical_address', 'Đang cập nhật')} | Hotline liên hệ: {partner.get('phone', 'Đang cập nhật')}.\n\n"
         
         if partner.get("partner_ai_context"):
-            sys_prompt += f"ĐỊNH HƯỚNG TƯ VẤN CỐT LÕI TỪ CHỦ CƠ SỞ:\n{partner['partner_ai_context']}\n\n"
+            sys_prompt += f"TÀI LIỆU CHUYÊN SÂU & ĐỊNH HƯỚNG TƯ VẤN CỐT LÕI TỪ CƠ SỞ:\n{partner['partner_ai_context']}\n\n"
             
-        sys_prompt += "CÁC GÓI DỊCH VỤ HIỆN CÓ CỦA CƠ SỞ:\n"
+        sys_prompt += "DANH MỤC DỊCH VỤ NIÊM YẾT CHÍNH THỨC CỦA CƠ SỞ:\n"
         if services:
-            for s in services[:10]: # Tối đa 10 dịch vụ để tránh tràn token nếu cở sở có quá nhiều
+            for s in services:
                 sys_prompt += f"- {s['service_name']} (Giá: {s['price']:,.0f}đ): {s.get('description', '')}\n"
         else:
             sys_prompt += "- Hiện chưa cập nhật danh sách dịch vụ công khai.\n"
 
         sys_prompt += "\nCÁC MÃ ƯU ĐÃI (VOUCHER) ĐANG KÍCH HOẠT:\n"
         if vouchers:
-            for v in vouchers[:5]:
+            for v in vouchers:
                 d_val = f"{v['discount_value']:,.0f}đ" if v['discount_type'] == 'FIXED_AMOUNT' else f"{v['discount_value']}%"
                 sys_prompt += f"- Mã [{v['code']}]: Giảm {d_val} cho đơn từ {v['min_order_value']:,.0f}đ.\n"
         else:
             sys_prompt += "- Hiện không có mã ưu đãi nào.\n"
 
-        sys_prompt += "\nQUY TẮC PHẢN HỒI:\n1. Trả lời ngắn gọn, thân thiện, xưng hô phù hợp với khách hàng.\n2. Dùng Markdown viết đậm, viết nghiêng trực quan. KHÔNG bịa đặt giá hoặc dịch vụ ngoài danh sách.\n3. Luôn khéo léo gợi ý khách hàng thực hiện Đặt lịch hẹn qua ứng dụng dựa trên nhu cầu của họ.\n4. Nếu khách hàng hỏi về vấn đề Đặt lịch, luôn nhắc họ có thể đặt lịch trực tiếp qua app VN Share - app của chúng ta.\n5. Nếu khách hàng hỏi bất kỳ vấn đề thực tế, điều kiện của cơ sở đều phải điều hướng khách hàng gọi cho số điện thoại của cơ sở, không được tùy ý trả lời"
+        sys_prompt += f"""
+NGUYÊN TẮC BỌC THÉP Y KHOA & TƯ VẤN (BẮT BUỘC TUÂN THỦ):
+1. KHƯỚC TỪ CHẨN ĐOÁN KHẲNG ĐỊNH: Tuyệt đối không khẳng định bệnh lý chắc chắn (Không dùng 'Bạn bị...', hãy dùng 'Theo kinh nghiệm chăm sóc tại {partner['full_name']}, triệu chứng này thường liên quan đến...').
+2. BẢO HỘ PHÁP LÝ: Mọi câu trả lời tư vấn về tình trạng thể chất/sức khỏe, hãy luôn nhắc khách hàng đặt lịch thăm khám trực tiếp tại cơ sở hoặc liên hệ Hotline {partner.get('phone', '')}.
+3. TÍNH XÁC THỰC THƯƠNG MẠI: Tuyệt đối KHÔNG tự bịa đặt giá cả hoặc gói dịch vụ ngoài danh sách niêm yết ở trên.
+4. ĐIỀU HƯỚNG ĐẶT LỊCH: Luôn khéo léo hướng dẫn khách bấm nút 'Đặt lịch hẹn' trực tiếp trên ứng dụng VN Share để giữ chỗ và áp dụng mã ưu đãi.
+5. VĂN PHONG: Nhẹ nhàng, lịch sự, chuẩn mực y đức, định dạng Markdown trực quan rõ ràng.
+"""
 
         # 4. Sliding Window (ĐÃ TRIỆT TIÊU: Loại bỏ nạp lịch sử cũ để tiết kiệm 90% Input Token)
         # Hệ thống chỉ nạp System Prompt và câu hỏi hiện tại (Zero-shot context)
@@ -2230,12 +2281,22 @@ def get_admin_dashboard_stats(current_user = Depends(verify_user_token), conn=De
         cur.execute("SELECT count(*) FROM withdrawal_requests WHERE status = 'PENDING'")
         pending_withdrawals = cur.fetchone()["count"]
 
-        # 5. Phân bổ User và Partner
+        # 5. Phân bổ User, Partner và Thống kê Cấp bậc Hội viên (Phase 08)
         cur.execute("SELECT count(*) FROM users WHERE role = 'USER'")
         total_users = cur.fetchone()["count"]
         
         cur.execute("SELECT count(*) FROM users WHERE role != 'USER'")
         total_partners = cur.fetchone()["count"]
+
+        # 🚀 PHASE 08: Đếm số lượng Partner theo từng Tier thực tế
+        cur.execute("SELECT count(*) FROM users WHERE role = 'PARTNER_ADMIN' AND (is_premium = FALSE OR is_premium IS NULL)")
+        standard_partners = cur.fetchone()["count"]
+
+        cur.execute("SELECT count(*) FROM users WHERE role = 'PARTNER_ADMIN' AND is_premium = TRUE AND premium_tier = 'PRO'")
+        pro_partners = cur.fetchone()["count"]
+
+        cur.execute("SELECT count(*) FROM users WHERE role = 'PARTNER_ADMIN' AND is_premium = TRUE AND premium_tier = 'DIAMOND'")
+        diamond_partners = cur.fetchone()["count"]
 
         # 6. Biểu đồ 7 ngày qua (Dùng hàm Sinh ngày của Postgres để biểu đồ không bị đứt quãng)
         cur.execute("""
@@ -2262,6 +2323,11 @@ def get_admin_dashboard_stats(current_user = Depends(verify_user_token), conn=De
                 "pending_withdrawals": pending_withdrawals,
                 "total_users": total_users,
                 "total_partners": total_partners,
+                "tier_breakdown": {
+                    "standard": standard_partners,
+                    "pro": pro_partners,
+                    "diamond": diamond_partners
+                },
                 "chart_data": chart_data
             }
         }
@@ -2442,11 +2508,12 @@ def get_my_appointments(current_user = Depends(verify_user_token), conn=Depends(
         cur.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS applied_user_voucher_id UUID")
         conn.commit()
         
+        # 🚀 PHASE 08: Trích xuất thêm is_premium và premium_tier của Partner trong lịch hẹn
         query = """
             SELECT a.*, 
                    json_build_object('service_name', s.service_name, 'price', s.price) as services,
                    json_build_object('full_name', u.full_name, 'phone', u.phone) as users,
-                   json_build_object('username', pu.username, 'physical_address', pu.physical_address) as partner,
+                   json_build_object('username', pu.username, 'physical_address', pu.physical_address, 'avatar_url', pu.avatar_url, 'is_premium', COALESCE(pu.is_premium, false), 'premium_tier', COALESCE(pu.premium_tier, 'STANDARD')) as partner,
                    json_build_object('issuer_type', v.issuer_type, 'discount_type', v.discount_type, 'discount_value', v.discount_value, 'max_discount_amount', v.max_discount_amount) as vouchers
             FROM appointments a
             LEFT JOIN services s ON a.service_id = s.id
@@ -3065,13 +3132,41 @@ def create_voucher(payload: schemas.VoucherCreate, current_user = Depends(verify
         issuer_type = "ADMIN" if current_user.role in ["SUPER_ADMIN", "ADMIN"] else "PARTNER"
         status = "APPROVED" if issuer_type == "ADMIN" else "PENDING"
         
-        # 🚀 BỌC THÉP PHASE 3: Kiểm tra tính toàn vẹn cho Voucher VIP
+        # 🚀 PHASE 08: Kiểm soát Quota phát hành VIP Voucher theo Gói Hội Viên của Partner
         if payload.is_vip:
             if not payload.point_price or payload.point_price <= 0:
                 raise HTTPException(status_code=400, detail="Voucher VIP bắt buộc phải có giá mua bằng điểm (> 0)!")
             if not payload.fixed_time_slot or not payload.fixed_time_slot.strip():
                 raise HTTPException(status_code=400, detail="Voucher VIP bắt buộc phải cấu hình khung giờ cố định (VD: 08:00 - 10:00)!")
-        
+            
+            # Đối tác phát hành VIP Voucher phải có gói hợp lệ
+            if issuer_type == "PARTNER":
+                cur.execute("SELECT is_premium, premium_tier FROM users WHERE id = %s", (current_user.id,))
+                p_info = cur.fetchone()
+                p_is_prem = p_info.get("is_premium") if p_info else False
+                p_tier = (p_info.get("premium_tier") or "STANDARD").upper() if p_info else "STANDARD"
+
+                if not p_is_prem or p_tier == "STANDARD":
+                    print(f"[DEBUG-VOUCHER-QUOTA-ERR] Đối tác Standard #{current_user.id} cố tạo Voucher VIP")
+                    raise HTTPException(
+                        status_code=403, 
+                        detail="Tính năng phát hành Voucher VIP chỉ dành cho Đối tác gói PRO hoặc VIP DIAMOND. Vui lòng nâng cấp gói!"
+                    )
+                
+                if p_tier == "PRO":
+                    # Đối tác PRO giới hạn 5 Voucher VIP / 7 ngày
+                    cur.execute("""
+                        SELECT COUNT(*) as weekly_count FROM vouchers 
+                        WHERE issuer_id = %s AND is_vip = TRUE AND created_at >= (NOW() - INTERVAL '7 days')
+                    """, (current_user.id,))
+                    v_count = cur.fetchone()["weekly_count"]
+                    if v_count >= 5:
+                        print(f"[DEBUG-VOUCHER-QUOTA-ERR] Đối tác Pro #{current_user.id} đã hết Quota tuần: {v_count}/5")
+                        raise HTTPException(
+                            status_code=400, 
+                            detail="Gói PRO đã đạt giới hạn phát hành 5 Voucher VIP/tuần. Hãy nâng cấp lên VIP DIAMOND để không giới hạn!"
+                        )
+
         print(f"[DEBUG-VOUCHER-CREATE] Khởi tạo Voucher: Code={clean_code} | VIP={payload.is_vip} | Issuer={issuer_type} | Status={status}")
 
         cur.execute("""

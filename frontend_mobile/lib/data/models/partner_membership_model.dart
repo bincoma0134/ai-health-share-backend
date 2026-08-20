@@ -44,16 +44,20 @@ class PartnerMembershipPlan {
       tier: MembershipTier.pro,
       title: 'Partner Pro',
       subtitle: 'Tối ưu nhận diện & Chốt lịch tự động',
-      badgeText: 'TĂNG TRƯỞNG',
-      gradientColors: [const Color(0xFF1B4D3E), const Color(0xFF2C6B56)],
-      accentColor: const Color(0xFF4EBA87),
-      icon: Icons.auto_graph_rounded,
+      badgeText: '💠 PRO PARTNER',
+      gradientColors: [
+        const Color(0xFF0A192F),
+        const Color(0xFF0D3B66),
+        const Color(0xFF005F73),
+      ],
+      accentColor: const Color(0xFF00E5FF), // Cyber Cyan Neon
+      icon: Icons.electric_bolt_rounded,
       benefits: [
         'AI Trợ lý học sâu: Ngữ cảnh 5.000 ký tự',
         'Phí sàn ưu đãi: Giảm còn 25% (Nhận 75%)',
         'Tối đa 2 chiến dịch VIP Voucher / tháng',
         'Video Dịch vụ Full HD 1080p 60fps (3 phút)',
-        'Huy hiệu PRO phát sáng trên Profile & Map',
+        'Huy hiệu 💠 PRO phát sáng trên Profile & Map',
       ],
       pricingOptions: const [
         MembershipPricingOption(durationMonths: 1, priceVnd: 599000, label: '1 Tháng'),
@@ -63,15 +67,19 @@ class PartnerMembershipPlan {
     ),
     PartnerMembershipPlan(
       tier: MembershipTier.diamond,
-      title: 'VIP Diamond',
+      title: 'DIAMOND PARTNER',
       subtitle: 'Vị thế dẫn đầu & Doanh thu tối đa',
-      badgeText: '👑 BEST VALUE',
-      gradientColors: [const Color(0xFF3A0D15), const Color(0xFF6B1D2A), const Color(0xFFD4AF37)],
-      accentColor: const Color(0xFFFFD700),
+      badgeText: '👑 DIAMOND PARTNER',
+      gradientColors: [
+        const Color(0xFF2A080C),
+        const Color(0xFF5E0B1B),
+        const Color(0xFF880E4F),
+      ],
+      accentColor: const Color(0xFFFF2A6D), // Imperial Ruby & Prismatic Flare
       icon: Icons.workspace_premium_rounded,
       benefits: [
         'Ghim TOP 1 Bản đồ tìm kiếm toàn Hà Nội',
-        'Khung viền Avatar phát sáng Ruby Gold 5 sao',
+        'Khung viền Avatar phát sáng Ruby 5 sao công khai',
         'AI Trợ lý không giới hạn (10.000 ký tự, LLM 70B)',
         'Phí sàn thấp nhất: Chỉ 20% (Nhận 80% ròng)',
         'Không giới hạn phát hành Voucher VIP Store',
