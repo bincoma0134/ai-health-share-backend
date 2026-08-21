@@ -1607,11 +1607,11 @@ NGUYÊN TẮC BỌC THÉP Y KHOA & TƯ VẤN (BẮT BUỘC TUÂN THỦ):
         messages = [{"role": "system", "content": sys_prompt}]
         messages.append({"role": "user", "content": payload.message})
 
-        # 5. Truyền sang LLM 70B của Groq
+        # 5. 🚀 NÂNG CẤP MODEL: Chuyển sang GPT-OSS-120B chuyên sâu tư vấn & y đức
         chat_completion = groq_client.chat.completions.create(
             messages=messages, 
-            model="llama-3.3-70b-versatile", # Ép cứng cấu hình gọi thẳng não 70B
-            temperature=0.3, # Giảm sáng tạo để thông tin y khoa chính xác
+            model="openai/gpt-oss-120b",
+            temperature=0.3,
             max_tokens=1024
         )
         bot_reply = chat_completion.choices[0].message.content
@@ -1740,9 +1740,10 @@ Quy tắc hỗ trợ:
             last_msg = payload.messages[-1]
             messages.append({"role": "user", "content": last_msg.content})
         
+        # 🚀 NÂNG CẤP MODEL: Chuyển sang Qwen 3.6 27B tối ưu tiếng Việt & tốc độ phản hồi
         chat_completion = groq_client.chat.completions.create(
             messages=messages, 
-            model="qwen/qwen3-32b", 
+            model="qwen/qwen3.6-27b", 
             temperature=0.6, 
             max_tokens=1024
         )
