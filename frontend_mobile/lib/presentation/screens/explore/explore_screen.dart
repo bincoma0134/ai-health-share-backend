@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/network/api_client.dart'; // Đảm bảo nạp ApiClient bọc thép
 import '../../../core/network/global_cache_engine.dart';
+import '../../../core/theme/partner_tier_theme.dart';
 import '../../../data/models/partner_map_model.dart'; // Nạp mô hình đối tác sạch 
 import '../../../data/services/explore_api_service.dart'; // Nạp lớp dịch vụ 
 import '../../widgets/app_toast.dart'; // Bổ sung import AppToast để xử lý lỗi biên dịch
@@ -14,6 +15,9 @@ import '../../widgets/auth_guard.dart';
 import '../../widgets/booking_bottom_sheet.dart'; // Nạp bảng cấu hình đặt lịch chuẩn 404-resolved
 import '../../widgets/mini_video_player.dart'; // Nạp trình phát video thực tế hệ thống
 import '../../widgets/notification_notifier.dart'; // 🚀 Bổ sung thư viện quản lý State thông báo
+import '../../widgets/partner_tier/partner_avatar_frame.dart';
+import '../../widgets/partner_tier/partner_tier_badge.dart';
+import '../../widgets/partner_tier/sparkle_overlay.dart';
 import '../../widgets/shimmer_wrapper.dart';
 
 class ExploreScreen extends StatefulWidget {
@@ -865,23 +869,45 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                partnerName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF5B9E5F)),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                serviceName,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87, height: 1.3),
-                              ),
-                            ],
+                          Builder(
+                            builder: (context) {
+                              final bool isPrem = userData['is_premium'] == true || userData['is_premium'] == 'true';
+                              final String tierStr = userData['premium_tier'] ?? 'STANDARD';
+                              final tierTheme = PartnerTierTheme.fromTier(isPrem, tierStr);
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          partnerName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 10, 
+                                            fontWeight: FontWeight.bold, 
+                                            color: isPrem ? tierTheme.primaryColor : const Color(0xFF5B9E5F),
+                                          ),
+                                        ),
+                                      ),
+                                      if (isPrem) ...[
+                                        const SizedBox(width: 4),
+                                        PartnerTierBadge(isPremium: isPrem, premiumTier: tierStr, isCompact: true),
+                                      ],
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    serviceName,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87, height: 1.3),
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1394,27 +1420,49 @@ class _ExploreScreenState extends State<ExploreScreen> with TickerProviderStateM
                             ),
                             Padding(
                               padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    partner.fullName.isNotEmpty ? partner.fullName : partner.username,
-                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.black87),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Row(
+                              child: Builder(
+                                builder: (context) {
+                                  final tierTheme = PartnerTierTheme.fromTier(partner.isPremium, partner.premiumTier);
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
-                                      const Text(" 4.9 ", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                                      Text("• ${partner.distance.toStringAsFixed(1)} km", style: const TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w500)),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              partner.fullName.isNotEmpty ? partner.fullName : partner.username,
+                                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.black87),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          if (partner.isPremium) ...[
+                                            const SizedBox(width: 4),
+                                            PartnerTierBadge(isPremium: partner.isPremium, premiumTier: partner.premiumTier, isCompact: true),
+                                          ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
+                                          const Text(" 4.9 ", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                          Text("• ${partner.distance.toStringAsFixed(1)} km", style: const TextStyle(fontSize: 12, color: Colors.black54, fontWeight: FontWeight.w500)),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      if (minPrice > 0)
+                                        Text(
+                                          "Từ ${_currencyFormat.format(minPrice)}", 
+                                          style: TextStyle(
+                                            fontSize: 12, 
+                                            color: partner.isPremium ? tierTheme.primaryColor : const Color(0xFF2E6F65), 
+                                            fontWeight: FontWeight.w800
+                                          ),
+                                        ),
                                     ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                  if (minPrice > 0)
-                                    Text("Từ ${_currencyFormat.format(minPrice)}", style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w800)),
-                                ],
+                                  );
+                                },
                               ),
                             )
                           ],

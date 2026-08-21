@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../../core/theme/partner_tier_theme.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../../data/services/voucher_api_service.dart';
 import '../../../data/services/wallet_api_service.dart';
 import '../../widgets/app_toast.dart';
+import '../../widgets/partner_tier/partner_avatar_frame.dart';
+import '../../widgets/partner_tier/partner_tier_badge.dart';
+import '../../widgets/partner_tier/sparkle_overlay.dart';
 import 'package:go_router/go_router.dart';
 
 class VipVoucherShopScreen extends StatefulWidget {
@@ -40,24 +44,28 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
     '20:00 - 22:00',
   ];
 
+  // 🚀 PHASE 08: Hero Spotlight mang tông màu Cyber Cyan & Imperial Ruby Wellness
   final List<Map<String, dynamic>> _spotlightBanners = [
     {
-      "badge": "ĐẶC QUYỀN SỐNG KHỎE",
-      "title": "VIP OASIS SPA\nGIẢM ĐẾN 50%",
-      "desc": "Dành riêng cho khung giờ vàng thư giãn phục hồi sinh lực.",
-      "colors": [const Color(0xFF0F2B26), const Color(0xFF1A3A35)]
+      "badge": "👑 ĐẶC QUYỀN VIP DIAMOND",
+      "title": "ĐẶT LỊCH KHUNG GIỜ VÀNG\nƯU ĐÃI LÊN ĐẾN 50%",
+      "desc": "Bảo chứng y tế 5 sao - Trải nghiệm liệu trình chuyên sâu cao cấp.",
+      "colors": [const Color(0xFFE63956), const Color(0xFFB81534)], // Imperial Ruby Gradient
+      "accent": const Color(0xFFFFD700),
     },
     {
-      "badge": "FLASH DEAL ĐIỂM",
-      "title": "CHĂM SÓC DA\nCHỈ TỪ 10.000 ĐIỂM",
-      "desc": "Liệu trình chuyên sâu tái tạo năng lượng mỗi ngày.",
-      "colors": [const Color(0xFF1E3A8A), const Color(0xFF172554)]
+      "badge": "💠 FLASH DEAL PRO",
+      "title": "CHĂM SÓC SỨC KHỎE\nCHỈ TỪ 10.000 ĐIỂM",
+      "desc": "Mở khóa suất khám ưu tiên tại các cơ sở đối tác uy tín.",
+      "colors": [const Color(0xFF00B4D8), const Color(0xFF0077B6)], // Cyber Cyan Gradient
+      "accent": const Color(0xFF00E5FF),
     },
     {
-      "badge": "QUYỀN NĂNG HỘI VIÊN",
-      "title": "SĂN MÃ VIP\nĐẶT LỊCH ƯU TIÊN",
-      "desc": "Không cần chờ đợi - Check-in mã QR 1 chạm tại quầy.",
-      "colors": [const Color(0xFF701A75), const Color(0xFF4A044E)]
+      "badge": "✦ ĐẶC QUYỀN BẢO CHỨNG",
+      "title": "ĐỔI ĐIỂM MỘT CHẠM\nCHECK-IN KHÔNG CHỜ ĐỢI",
+      "desc": "Quét mã QR 6 số tại quầy cơ sở để giải ngân an toàn Escrow.",
+      "colors": [const Color(0xFF14302B), const Color(0xFF2E6F65)],
+      "accent": const Color(0xFF80BF84),
     },
   ];
 
@@ -132,7 +140,7 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
     });
   }
 
-  // --- POPUP PREVIEW CHI TIẾT ---
+  // 🚀 PHASE 08: POPUP PREVIEW CHI TIẾT VOUCHER VIP ĐỒNG BỘ THEME CẤP BẬC
   void _showVoucherDetailsModal(VoucherModel voucher) {
     showDialog(
       context: context,
@@ -150,15 +158,26 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A3A35),
-                    borderRadius: BorderRadius.circular(8),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFE63956), Color(0xFFB81534)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFE63956).withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      )
+                    ],
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.stars_rounded, color: Color(0xFFFCD34D), size: 14),
+                      Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 13),
                       SizedBox(width: 4),
-                      Text('ĐẶC QUYỀN VIP', style: TextStyle(color: Color(0xFFFCD34D), fontSize: 10, fontWeight: FontWeight.w900)),
+                      Text('VIP PASS ĐẶC QUYỀN', style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w900, letterSpacing: 0.4)),
                     ],
                   ),
                 ),
@@ -168,48 +187,60 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
             Center(
               child: Text(
                 voucher.discountType == 'PERCENTAGE' ? 'Giảm ${voucher.discountValue.toInt()}%' : 'Giảm ${_currencyFormat.format(voucher.discountValue)}',
-                style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -0.5),
+                style: const TextStyle(color: Color(0xFF14302B), fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5),
               ),
             ),
             const SizedBox(height: 4),
             Center(
-              child: Text(
-                'Mã: [${voucher.code}]',
-                style: const TextStyle(color: Color(0xFF80BF84), fontSize: 12, fontWeight: FontWeight.w800, fontFamily: 'monospace'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF0F3),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE63956).withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  'MÃ: [${voucher.code}]',
+                  style: const TextStyle(color: Color(0xFFE63956), fontSize: 11.5, fontWeight: FontWeight.w900, fontFamily: 'monospace'),
+                ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: const Color(0xFFF4F7F6), borderRadius: BorderRadius.circular(16)),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF6FAF8), 
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE2ECE9)),
+              ),
               child: Column(
                 children: [
-                  _buildDetailRow('Cơ sở phát hành', voucher.partnerName ?? 'N/A'),
-                  const Divider(color: Colors.black12, height: 18),
-                  _buildDetailRow('Khung giờ cố định', voucher.fixedTimeSlot ?? 'N/A', valueColor: const Color(0xFF10B981)),
-                  const Divider(color: Colors.black12, height: 18),
-                  _buildDetailRow('Số lượng còn lại', '${voucher.totalQuantity - voucher.usedQuantity}/${voucher.totalQuantity} lượt'),
-                  const Divider(color: Colors.black12, height: 18),
+                  _buildDetailRow('Cơ sở phát hành', voucher.partnerName ?? 'Cơ sở bảo chứng VIP'),
+                  const Divider(color: Color(0xFFEAEFEF), height: 16),
+                  _buildDetailRow('Khung giờ áp dụng', voucher.fixedTimeSlot ?? 'N/A', valueColor: const Color(0xFFE63956)),
+                  const Divider(color: Color(0xFFEAEFEF), height: 16),
+                  _buildDetailRow('Số lượng còn lại', '${voucher.totalQuantity - voucher.usedQuantity}/${voucher.totalQuantity} suất'),
+                  const Divider(color: Color(0xFFEAEFEF), height: 16),
                   _buildDetailRow('Giá quy đổi', '${NumberFormat.decimalPattern('vi_VN').format(voucher.pointPrice)} Điểm', valueColor: const Color(0xFFD97706)),
                 ],
               ),
             ),
             if (voucher.description != null && voucher.description!.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Text(voucher.description!, style: const TextStyle(fontSize: 12, color: Colors.black54, fontStyle: FontStyle.italic)),
+              const SizedBox(height: 12),
+              Text(voucher.description!, style: const TextStyle(fontSize: 11.5, color: Color(0xFF6B8782), fontStyle: FontStyle.italic, height: 1.35)),
             ],
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             Row(
               children: [
                 Expanded(
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFF4F7F6),
-                      foregroundColor: const Color(0xFF1A3A35),
+                      backgroundColor: const Color(0xFFF0F4F2),
+                      foregroundColor: const Color(0xFF14302B),
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -225,19 +256,37 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1A3A35),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFE63956), Color(0xFFB81534)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFE63956).withValues(alpha: 0.35),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showCheckoutBottomSheet(voucher);
-                    },
-                    child: const Text('ĐỔI MÃ NGAY', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)),
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _showCheckoutBottomSheet(voucher);
+                      },
+                      child: const Text('ĐỔI MÃ NGAY', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.4)),
+                    ),
                   ),
                 ),
               ],
@@ -504,6 +553,67 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
           // 8. BENTO SPOTLIGHT: ĐỐI TÁC VIP CỦA TUẦN
           SliverToBoxAdapter(
             child: _buildFeaturedPartnerBentoCard(),
+          ),
+
+          // 🚀 PHASE 08: BANNER KÊU GỌI NÂNG CẤP ĐỐI TÁC HỘI VIÊN (APPLE WELLNESS STYLE)
+          SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFFE2ECE9)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF0F3),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.stars_rounded, color: Color(0xFFE63956), size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text(
+                          'Bạn là Cơ sở Đối tác?',
+                          style: TextStyle(color: Color(0xFF14302B), fontSize: 13, fontWeight: FontWeight.w900),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Nâng cấp Pro/Diamond để phát hành Voucher VIP độc quyền.',
+                          style: TextStyle(color: Color(0xFF6B8782), fontSize: 11, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF14302B),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () => context.push('/partner/membership'),
+                    child: const Text('Nâng cấp', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                  ),
+                ],
+              ),
+            ),
           ),
 
           // 9. LƯỚI KHÁM PHÁ TOÀN BỘ VOUCHER VIP (SliverGrid)
@@ -851,16 +961,25 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // 🚀 NÂNG CẤP: Header Thẻ Voucher Phối Màu Imperial Ruby Thượng Lưu
                     Container(
                       height: 85,
                       width: double.infinity,
                       decoration: const BoxDecoration(
-                        gradient: LinearGradient(colors: [Color(0xFF0F2B26), Color(0xFF1A3A35)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                        gradient: LinearGradient(
+                          colors: [Color(0xFFE63956), Color(0xFFB81534)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                         borderRadius: BorderRadius.vertical(top: Radius.circular(21)),
                       ),
                       child: Stack(
                         children: [
-                          Positioned(right: -10, top: -10, child: Icon(Icons.stars_rounded, size: 70, color: Colors.white.withValues(alpha: 0.04))),
+                          Positioned(
+                            right: -10, 
+                            top: -10, 
+                            child: Icon(Icons.workspace_premium_rounded, size: 70, color: Colors.white.withValues(alpha: 0.1)),
+                          ),
                           Padding(
                             padding: const EdgeInsets.all(12),
                             child: Column(
@@ -869,8 +988,14 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                               children: [
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
-                                  child: const Text('VIP PASS', style: TextStyle(color: Color(0xFFFCD34D), fontSize: 8, fontWeight: FontWeight.w900)),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.2), 
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'VIP PASS', 
+                                    style: TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.w900, letterSpacing: 0.4),
+                                  ),
                                 ),
                                 Text(
                                   v.discountType == 'PERCENTAGE' ? '-${v.discountValue.toInt()}%' : '-${_currencyFormat.format(v.discountValue)}',
@@ -892,13 +1017,33 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(v.partnerName ?? 'VIP Facility', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF1A3A35)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        v.partnerName ?? 'VIP Facility', 
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF14302B)), 
+                                        maxLines: 1, 
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const PartnerTierBadge(isPremium: true, premiumTier: 'DIAMOND', isCompact: true),
+                                  ],
+                                ),
                                 const SizedBox(height: 4),
                                 Row(
                                   children: [
                                     const Icon(Icons.access_time_rounded, size: 12, color: Color(0xFF10B981)),
                                     const SizedBox(width: 4),
-                                    Expanded(child: Text(v.fixedTimeSlot ?? '', style: const TextStyle(fontSize: 10, color: Color(0xFF10B981), fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                    Expanded(
+                                      child: Text(
+                                        v.fixedTimeSlot ?? '', 
+                                        style: const TextStyle(fontSize: 10, color: Color(0xFF10B981), fontWeight: FontWeight.bold), 
+                                        maxLines: 1, 
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ],
@@ -1148,97 +1293,127 @@ class _VipVoucherShopScreenState extends State<VipVoucherShopScreen> with Ticker
     );
   }
 
-  // --- 4. WIDGET BENTO SPOTLIGHT: ĐỐI TÁC VIP CỦA TUẦN ---
+  // --- 4. 🚀 PHASE 08: BENTO SPOTLIGHT ĐỐI TÁC VIP 5 SAO TUẦN NÀY ---
   Widget _buildFeaturedPartnerBentoCard() {
-    if (_vouchers.isEmpty) return const SizedBox.shrink(); // 🚀 Bọc thép: Tránh lỗi StateError khi mảng rỗng
+    if (_vouchers.isEmpty) return const SizedBox.shrink();
     final featuredVoucher = _vouchers.first;
 
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 6),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF0F2B26), Color(0xFF1A3A35)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [BoxShadow(color: const Color(0xFF0F2B26).withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 6))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: const Color(0xFFFCD34D).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
-                child: const Row(
-                  children: [
-                    Icon(Icons.verified_rounded, color: Color(0xFFFCD34D), size: 14),
-                    SizedBox(width: 4),
-                    Text('ĐỐI TÁC 5 SAO TUẦN NÀY', style: TextStyle(color: Color(0xFFFCD34D), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
-                  ],
-                ),
-              ),
-              const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
-            ],
+    return SparkleOverlay(
+      sparkleColor: const Color(0xFFFF80AB),
+      particleCount: 4,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF2A0812), Color(0xFF501020), Color(0xFF14302B)], 
+            begin: Alignment.topLeft, 
+            end: Alignment.bottomRight,
           ),
-          const SizedBox(height: 14),
-          Row(
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFFFF80AB).withValues(alpha: 0.4), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFE63956).withValues(alpha: 0.3), 
+              blurRadius: 18, 
+              offset: const Offset(0, 6)
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: const Color(0xFFFCD34D).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.verified_rounded, color: Color(0xFFFCD34D), size: 14),
+                      SizedBox(width: 4),
+                      Text('ĐỐI TÁC 5 SAO TUẦN NÀY', style: TextStyle(color: Color(0xFFFCD34D), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white38, size: 14),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
             children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundImage: NetworkImage('https://ui-avatars.com/api/?name=${Uri.encodeComponent(featuredVoucher.partnerName ?? "Partner")}&background=80BF84&color=fff'),
+              PartnerAvatarFrame(
+                avatarUrl: 'https://ui-avatars.com/api/?name=${Uri.encodeComponent(featuredVoucher.partnerName ?? "Partner")}&background=80BF84&color=fff',
+                size: 44,
+                isPremium: true,
+                premiumTier: 'DIAMOND',
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(featuredVoucher.partnerName ?? 'Cơ sở chuyên khoa VIP', style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            featuredVoucher.partnerName ?? 'Cơ sở chuyên khoa VIP', 
+                            style: const TextStyle(color: Colors.white, fontSize: 14.5, fontWeight: FontWeight.w900), 
+                            maxLines: 1, 
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const PartnerTierBadge(isPremium: true, premiumTier: 'DIAMOND', isCompact: true),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
                     const Text('Trải nghiệm y tế chuẩn 5 sao • Đánh giá 4.9★', style: TextStyle(color: Colors.white70, fontSize: 11)),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16)),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Mã VIP Độc Quyền:', style: TextStyle(color: Colors.white60, fontSize: 10)),
-                      const SizedBox(height: 2),
-                      Text(
-                        '[${featuredVoucher.code}] ${featuredVoucher.discountType == "PERCENTAGE" ? "Giảm ${featuredVoucher.discountValue.toInt()}%" : "Giảm ${_currencyFormat.format(featuredVoucher.discountValue)}"}',
-                        style: const TextStyle(color: Color(0xFFFCD34D), fontSize: 13, fontWeight: FontWeight.w900),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16)),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Mã VIP Độc Quyền:', style: TextStyle(color: Colors.white60, fontSize: 10)),
+                        const SizedBox(height: 2),
+                        Text(
+                          '[${featuredVoucher.code}] ${featuredVoucher.discountType == "PERCENTAGE" ? "Giảm ${featuredVoucher.discountValue.toInt()}%" : "Giảm ${_currencyFormat.format(featuredVoucher.discountValue)}"}',
+                          style: const TextStyle(color: Color(0xFFFCD34D), fontSize: 13, fontWeight: FontWeight.w900),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF80BF84),
-                    foregroundColor: const Color(0xFF0F2B26),
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: () => _showVoucherDetailsModal(featuredVoucher),
-                  child: const Text('Xem Deal', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
-                )
-              ],
-            ),
-          )
-        ],
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF80BF84),
+                      foregroundColor: const Color(0xFF0F2B26),
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () => _showVoucherDetailsModal(featuredVoucher),
+                    child: const Text('Xem Deal', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
+                  )
+                ],
+              ),
+            )
+          ],
+        ),
       ),
     );
   }

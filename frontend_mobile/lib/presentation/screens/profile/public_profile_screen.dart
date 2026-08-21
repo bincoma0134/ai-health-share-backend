@@ -6,8 +6,12 @@ import '../../../data/services/user_api_service.dart';
 import '../../widgets/mini_video_player.dart';
 import '../../widgets/app_toast.dart';
 import '../../../core/network/global_cache_engine.dart';
+import '../../../core/theme/partner_tier_theme.dart';
 import '../../widgets/booking_bottom_sheet.dart';
 import '../../widgets/auth_guard.dart';
+import '../../widgets/partner_tier/partner_avatar_frame.dart';
+import '../../widgets/partner_tier/partner_tier_badge.dart';
+import '../../widgets/partner_tier/sparkle_overlay.dart';
 import '../../widgets/shimmer_wrapper.dart';
 import '../../../data/models/video_model.dart';
 
@@ -151,11 +155,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     return NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(amount ?? 0);
   }
 
-  Color _getRoleColor(String role) {
+  // 🚀 PHASE 08: Trích xuất màu sắc động phân tầng theo Cấp Bậc Hội Viên Đối Tác
+  Color _getRoleColor(String role, {bool isPremium = false, String? premiumTier}) {
     if (role == 'MODERATOR') return const Color(0xFF8B5CF6); 
-    if (role == 'SUPER_ADMIN' || role == 'ADMIN') return Colors.amber;
-    if (role == 'PARTNER' || role == 'PARTNER_ADMIN') return Colors.blue;
+    if (role == 'SUPER_ADMIN' || role == 'ADMIN') return const Color(0xFFF59E0B);
     if (role == 'CREATOR') return const Color(0xFFFF7A8A);
+    if (role == 'PARTNER' || role == 'PARTNER_ADMIN') {
+      final tierTheme = PartnerTierTheme.fromTier(isPremium, premiumTier);
+      return tierTheme.primaryColor;
+    }
     return const Color(0xFF80BF84); 
   }
 
@@ -197,7 +205,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     final profile = _data!['profile'];
     final role = profile['role'] ?? 'USER';
     final isPartner = role == 'PARTNER' || role == 'PARTNER_ADMIN';
-    final primaryColor = _getRoleColor(role);
+    final bool isPartnerPremium = isPartner && (profile['is_premium'] == true || profile['is_premium'] == 'true');
+    final String partnerTier = profile['premium_tier'] ?? 'STANDARD';
+    final tierTheme = PartnerTierTheme.fromTier(isPartnerPremium, partnerTier);
+    final primaryColor = _getRoleColor(role, isPremium: isPartnerPremium, premiumTier: partnerTier);
     
     // 🚀 Lọc hiển thị: Chỉ gọi các video đã có nhãn được duyệt thành công theo logic Studio
     final videos = _fetchedVideos.where((v) {
@@ -248,35 +259,17 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                           ),
                         ),
                       ),
+                      // 🚀 PHASE 08: Bọc Avatar Public bằng PartnerAvatarFrame
                       Positioned(
                         bottom: 10,
                         left: 0,
                         right: 0,
                         child: Center(
-                          child: Container(
-                            width: 116, height: 116,
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white,
-                              boxShadow: [
-                                BoxShadow(color: primaryColor.withValues(alpha: 0.15), blurRadius: 32, offset: const Offset(0, 12)),
-                                BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 16, offset: const Offset(0, 4)),
-                              ],
-                            ),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                image: DecorationImage(
-                                  image: GlobalCacheProvider.create(
-                                    hasAvatar ? rawAvatar : fallbackAvatar,
-                                    maxWidth: 350, // 🚀 Tối ưu RAM: Kích thước hiển thị vừa đủ cho Profile
-                                    maxHeight: 350,
-                                  ), 
-                                  fit: BoxFit.cover
-                                ),
-                              ),
-                            ),
+                          child: PartnerAvatarFrame(
+                            avatarUrl: hasAvatar ? rawAvatar : fallbackAvatar,
+                            size: 114,
+                            isPremium: isPartner && (profile['is_premium'] == true || profile['is_premium'] == 'true'),
+                            premiumTier: profile['premium_tier'],
                           ),
                         ),
                       ),
@@ -322,43 +315,115 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   padding: const EdgeInsets.only(top: 16),
                   child: Column(
                     children: [
-                      // Tên & Huy hiệu xác thực
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Flexible(child: Text(profile['full_name'] ?? 'Vô danh', style: const TextStyle(color: Color(0xFF1E293B), fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -0.5, height: 1.1), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                          if (role != 'USER') ...[
-                            const SizedBox(width: 6),
-                            Icon(Icons.verified_rounded, color: primaryColor, size: 24),
-                          ]
-                        ],
-                      ),
-                      const SizedBox(height: 6),
+                      // 🚀 PHASE 08: Tên, Huy Hiệu & Ruy-băng Danh Dự Đối Tác
+                      Builder(
+                        builder: (context) {
+                          final bool isPrem = isPartner && (profile['is_premium'] == true || profile['is_premium'] == 'true');
+                          final String tierStr = profile['premium_tier'] ?? 'STANDARD';
+                          final tierTheme = PartnerTierTheme.fromTier(isPrem, tierStr);
+                          final bool isDiamond = isPrem && tierTheme.type == PartnerTierType.diamond;
 
-                      // Thẻ Xác thực Vai trò (Trust Badge động theo Role)
-                      if (role != 'USER')
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: primaryColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: primaryColor.withValues(alpha: 0.2), width: 0.5),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                          return Column(
                             children: [
-                              Icon(_getRoleIcon(role), size: 12, color: primaryColor),
-                              const SizedBox(width: 4),
-                              Text(
-                                role == 'SUPER_ADMIN' || role == 'ADMIN' ? 'Quản trị viên hệ thống' :
-                                role == 'MODERATOR' ? 'Kiểm duyệt viên' :
-                                role == 'CREATOR' ? 'Nhà sáng tạo nội dung' :
-                                'Đối tác Y tế Chính thức',
-                                style: TextStyle(color: primaryColor, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.2)
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      profile['full_name'] ?? 'Vô danh', 
+                                      style: const TextStyle(color: Color(0xFF1E293B), fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: -0.5, height: 1.1), 
+                                      maxLines: 1, 
+                                      overflow: TextOverflow.ellipsis
+                                    ),
+                                  ),
+                                  if (role != 'USER') ...[
+                                    const SizedBox(width: 6),
+                                    Icon(
+                                      Icons.verified_rounded, 
+                                      color: isPrem ? tierTheme.primaryColor : primaryColor, 
+                                      size: 22
+                                    ),
+                                  ],
+                                ],
                               ),
+                              const SizedBox(height: 6),
+
+                              // Ruy-băng Danh Dự hoặc Trust Badge động
+                              if (isDiamond)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(colors: tierTheme.gradientBorderColors),
+                                    borderRadius: BorderRadius.circular(20),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: tierTheme.primaryColor.withValues(alpha: 0.3),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.workspace_premium_rounded, size: 13, color: Colors.white),
+                                      SizedBox(width: 5),
+                                      Text(
+                                        '✦ TOP 1 BẢO CHỨNG Y TẾ 5 SAO',
+                                        style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else if (isPrem && tierTheme.type == PartnerTierType.pro)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+                                  decoration: BoxDecoration(
+                                    color: tierTheme.badgeBgColor,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: tierTheme.primaryColor.withValues(alpha: 0.4)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(tierTheme.icon, size: 12, color: tierTheme.primaryColor),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'CƠ SỞ ĐỐI TÁC PRO TĂNG TRƯỞNG',
+                                        style: TextStyle(color: tierTheme.textColor, fontSize: 9.5, fontWeight: FontWeight.w900, letterSpacing: 0.3),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else if (role != 'USER')
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: primaryColor.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: primaryColor.withValues(alpha: 0.2), width: 0.5),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(_getRoleIcon(role), size: 12, color: primaryColor),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        role == 'SUPER_ADMIN' || role == 'ADMIN' ? 'Quản trị viên hệ thống' :
+                                        role == 'MODERATOR' ? 'Kiểm duyệt viên' :
+                                        role == 'CREATOR' ? 'Nhà sáng tạo nội dung' :
+                                        'Đối tác Y tế Chính thức',
+                                        style: TextStyle(color: primaryColor, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.2),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                             ],
-                          ),
-                        ),
+                          );
+                        },
+                      ),
                       const SizedBox(height: 8),
                       
                       // Địa điểm
@@ -744,95 +809,222 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                       if (_activeTab == 'vouchers')
                         ...[
                           ..._fetchedVouchers.map((v) {
+                            final bool isVip = v['is_vip'] == true || v['is_vip'] == 'true';
+                            final String? fixedSlot = v['fixed_time_slot'];
+                            final String issuerType = (v['issuer_type'] ?? '').toString().toUpperCase();
+                            final bool isAdmin = issuerType == 'ADMIN';
+
+                            String expFormatted = 'Vô thời hạn';
+                            if (v['valid_until'] != null && v['valid_until'].toString().isNotEmpty) {
+                              try {
+                                final d = DateTime.parse(v['valid_until'].toString());
+                                expFormatted = DateFormat('dd/MM').format(d);
+                              } catch (_) {
+                                expFormatted = v['valid_until'].toString();
+                              }
+                            }
+
                             return Container(
-                              margin: const EdgeInsets.only(bottom: 16),
+                              margin: const EdgeInsets.only(bottom: 14),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: isVip ? const Color(0xFFFFFDFC) : Colors.white,
                                 borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: const Color(0xFFE5E7EB), width: 0.5),
+                                border: Border.all(
+                                  color: isVip 
+                                      ? const Color(0xFFE63956).withValues(alpha: 0.35) 
+                                      : const Color(0xFFE5E7EB), 
+                                  width: isVip ? 1.2 : 0.5,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (isVip ? const Color(0xFFE63956) : Colors.black)
+                                        .withValues(alpha: isVip ? 0.08 : 0.02),
+                                    blurRadius: isVip ? 12 : 6,
+                                    offset: const Offset(0, 4),
+                                  )
+                                ],
                               ),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 12,
-                                    height: 90,
-                                    decoration: BoxDecoration(
-                                      color: v['issuer_type'] == 'ADMIN' ? Colors.amber : primaryColor,
-                                      borderRadius: const BorderRadius.only(
-                                        topLeft: Radius.circular(20),
-                                        bottomLeft: Radius.circular(20),
+                              child: IntrinsicHeight(
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    // Dải màu chỉ báo bên trái tự động co giãn theo chiều cao nội dung
+                                    Container(
+                                      width: 8,
+                                      decoration: BoxDecoration(
+                                        gradient: isVip
+                                            ? const LinearGradient(
+                                                colors: [Color(0xFFE63956), Color(0xFFB81534)],
+                                                begin: Alignment.topCenter,
+                                                end: Alignment.bottomCenter,
+                                              )
+                                            : null,
+                                        color: isVip ? null : (isAdmin ? Colors.amber : primaryColor),
+                                        borderRadius: const BorderRadius.only(
+                                          topLeft: Radius.circular(20),
+                                          bottomLeft: Radius.circular(20),
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Flexible(
-                                                child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                  margin: const EdgeInsets.only(right: 8),
-                                                  decoration: BoxDecoration(
-                                                    color: (v['issuer_type'] == 'ADMIN' ? Colors.amber : primaryColor).withValues(alpha: 0.1),
-                                                    borderRadius: BorderRadius.circular(6),
-                                                  ),
-                                                  child: Text(
-                                                    v['issuer_type'] == 'ADMIN' ? 'TOÀN SÀN' : 'ĐỘC QUYỀN CƠ SỞ',
-                                                    style: TextStyle(
-                                                      color: v['issuer_type'] == 'ADMIN' ? Colors.amber[800] : primaryColor,
-                                                      fontSize: 9,
-                                                      fontWeight: FontWeight.w800,
+                                    Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Flexible(
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                    margin: const EdgeInsets.only(right: 6),
+                                                    decoration: BoxDecoration(
+                                                      color: isVip
+                                                          ? const Color(0xFFE63956).withValues(alpha: 0.12)
+                                                          : ((isAdmin ? Colors.amber : primaryColor).withValues(alpha: 0.1)),
+                                                      borderRadius: BorderRadius.circular(6),
+                                                      border: isVip 
+                                                          ? Border.all(color: const Color(0xFFE63956).withValues(alpha: 0.3), width: 0.6)
+                                                          : null,
                                                     ),
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
+                                                    child: Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        if (isVip) ...[
+                                                          const Icon(Icons.workspace_premium_rounded, size: 9, color: Color(0xFFE63956)),
+                                                          const SizedBox(width: 2),
+                                                        ],
+                                                        Flexible(
+                                                          child: Text(
+                                                            isVip 
+                                                                ? 'VIP PASS' 
+                                                                : (isAdmin ? 'TOÀN SÀN' : 'CƠ SỞ'),
+                                                            style: TextStyle(
+                                                              color: isVip 
+                                                                  ? const Color(0xFFE63956) 
+                                                                  : (isAdmin ? Colors.amber[800] : primaryColor),
+                                                              fontSize: 8,
+                                                              fontWeight: FontWeight.w900,
+                                                              letterSpacing: 0.2,
+                                                            ),
+                                                            maxLines: 1,
+                                                            overflow: TextOverflow.ellipsis,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
                                                   ),
                                                 ),
+                                                Text(
+                                                  'HSD: $expFormatted',
+                                                  style: const TextStyle(color: Colors.black45, fontSize: 9.5, fontWeight: FontWeight.w600),
+                                                  maxLines: 1,
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              v['discount_type'] == 'PERCENTAGE'
+                                                  ? 'Giảm ${v['discount_value']}%'
+                                                  : 'Giảm ${_formatCurrency(v['discount_value'])}',
+                                              style: TextStyle(
+                                                color: isVip ? const Color(0xFF14302B) : const Color(0xFF1E293B), 
+                                                fontSize: 14.5, 
+                                                fontWeight: FontWeight.w900, 
+                                                letterSpacing: -0.3,
                                               ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 2),
+                                            if (isVip && fixedSlot != null && fixedSlot.isNotEmpty)
                                               Text(
-                                                'HSD: ${v['valid_until']}',
-                                                style: const TextStyle(color: Colors.black45, fontSize: 10, fontWeight: FontWeight.w600),
+                                                'Khung giờ: $fixedSlot',
+                                                style: const TextStyle(color: Color(0xFFE63956), fontSize: 10, fontWeight: FontWeight.w700),
                                                 maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              )
+                                            else
+                                              Text(
+                                                'Đơn tối thiểu: ${_formatCurrency(v['min_order_value'])}',
+                                                style: const TextStyle(color: Colors.black54, fontSize: 10, fontWeight: FontWeight.w500),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 6),
-                                          Text(
-                                            v['discount_type'] == 'PERCENTAGE'
-                                                ? 'Giảm ${v['discount_value']}%'
-                                                : 'Giảm ${_formatCurrency(v['discount_value'])}',
-                                            style: const TextStyle(color: Color(0xFF1E293B), fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: -0.3),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            'Đơn tối thiểu: ${_formatCurrency(v['min_order_value'])}',
-                                            style: const TextStyle(color: Colors.black54, fontSize: 11, fontWeight: FontWeight.w500),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 16),
-                                    child: ElevatedButton(
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: v['issuer_type'] == 'ADMIN' ? Colors.amber : primaryColor,
-                                        foregroundColor: Colors.white,
-                                        elevation: 0,
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                    // Nút hành động co giãn an toàn
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                      child: Center(
+                                        child: isVip
+                                            ? Container(
+                                                decoration: BoxDecoration(
+                                                  gradient: const LinearGradient(
+                                                    colors: [Color(0xFFE63956), Color(0xFFB81534)],
+                                                    begin: Alignment.topLeft,
+                                                    end: Alignment.bottomRight,
+                                                  ),
+                                                  borderRadius: BorderRadius.circular(12),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: const Color(0xFFE63956).withValues(alpha: 0.3),
+                                                      blurRadius: 8,
+                                                      offset: const Offset(0, 3),
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: ElevatedButton(
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor: Colors.transparent,
+                                                    shadowColor: Colors.transparent,
+                                                    foregroundColor: Colors.white,
+                                                    elevation: 0,
+                                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                                    minimumSize: Size.zero,
+                                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                  ),
+                                                  onPressed: () {
+                                                    print('[DEBUG-VOUCHER] Điều hướng người dùng từ Public Profile sang Sàn VIP Voucher...');
+                                                    context.push('/vip-vouchers');
+                                                  },
+                                                  child: const Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.stars_rounded, color: Colors.white, size: 11),
+                                                      SizedBox(width: 3),
+                                                      Text(
+                                                        'SĂN MÃ', 
+                                                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.2)
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              )
+                                            : ElevatedButton(
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: isAdmin ? Colors.amber : primaryColor,
+                                                  foregroundColor: Colors.white,
+                                                  elevation: 0,
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                                  minimumSize: Size.zero,
+                                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                                ),
+                                                onPressed: () {
+                                                  AppToast.show(context: context, message: 'Lưu mã ưu đãi thành công!', isSuccess: true);
+                                                },
+                                                child: const Text('LƯU MÃ', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w900, letterSpacing: 0.2)),
+                                              ),
                                       ),
-                                      onPressed: () {
-                                        AppToast.show(context: context, message: 'Lưu mã ưu đãi thành công!', isSuccess: true);
-                                      },
-                                      child: const Text('LƯU MÃ', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.3)),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             );
                           }),
@@ -858,7 +1050,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             ],
           ),
 
-          // 5. BOTTOM DOCK (LIQUID GLASS CTA)
+          // 5. 🚀 BOTTOM DOCK (LIQUID GLASS CTA ÁP DỤNG THEME CẤP BẬC)
           if (isPartner)
             Positioned(
               bottom: 0, left: 0, right: 0,
@@ -867,48 +1059,77 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16).copyWith(bottom: MediaQuery.paddingOf(context).bottom > 0 ? MediaQuery.paddingOf(context).bottom : 16),
-                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.85), border: Border(top: BorderSide(color: Colors.black.withValues(alpha: 0.05)))),
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.9), border: Border(top: BorderSide(color: Colors.black.withValues(alpha: 0.05)))),
                     child: Row(
                       children: [
                         // Nút Action Chính (Đặt Lịch Ngay)
                         Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1E293B), foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                              padding: const EdgeInsets.symmetric(vertical: 18),
-                              elevation: 0
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: isPartnerPremium 
+                                    ? tierTheme.gradientBorderColors 
+                                    : const [Color(0xFF14302B), Color(0xFF234E46)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: (isPartnerPremium ? tierTheme.primaryColor : const Color(0xFF14302B)).withValues(alpha: 0.3),
+                                  blurRadius: 14,
+                                  offset: const Offset(0, 5),
+                                ),
+                              ],
                             ),
-                            onPressed: () {
-                              AuthGuard.run(context, action: () {
-                                // Nếu không chọn dịch vụ cụ thể, thiết lập payload tối giản cho cơ sở
-                                final targetUserId = profile['id'] ?? '';
-                                final Map<String, dynamic> defaultBookingContext = {
-                                  'id': targetUserId, // Dùng ID cơ sở làm ID mặc định
-                                  'price': 0.0,
-                                  'author_id': targetUserId,
-                                  'partner_id': targetUserId, // 🚀 Bổ sung định danh Đối tác cho Bottom Sheet
-                                  'title': 'Khám / Tư vấn tại Cơ sở',
-                                  'service_name': 'Khám / Tư vấn tại Cơ sở',
-                                  'image_url': profile['avatar_url'],
-                                };
-                                showModalBottomSheet(
-                                  context: context, 
-                                  isScrollControlled: true, 
-                                  backgroundColor: Colors.transparent, 
-                                  builder: (context) => BookingBottomSheet(video: defaultBookingContext)
-                                );
-                              });
-                            },
-                            child: const Text('ĐẶT LỊCH NGAY', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)),
-                          )
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                padding: const EdgeInsets.symmetric(vertical: 18),
+                                elevation: 0
+                              ),
+                              onPressed: () {
+                                AuthGuard.run(context, action: () {
+                                  final targetUserId = profile['id'] ?? '';
+                                  final Map<String, dynamic> defaultBookingContext = {
+                                    'id': targetUserId,
+                                    'price': 0.0,
+                                    'author_id': targetUserId,
+                                    'partner_id': targetUserId,
+                                    'title': 'Khám / Tư vấn tại Cơ sở',
+                                    'service_name': 'Khám / Tư vấn tại Cơ sở',
+                                    'image_url': profile['avatar_url'],
+                                  };
+                                  showModalBottomSheet(
+                                    context: context, 
+                                    isScrollControlled: true, 
+                                    backgroundColor: Colors.transparent, 
+                                    builder: (context) => BookingBottomSheet(video: defaultBookingContext)
+                                  );
+                                });
+                              },
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (isPartnerPremium) ...[
+                                    Icon(tierTheme.icon, size: 16, color: Colors.white),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  const Text('ĐẶT LỊCH NGAY', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 14),
                         // Nút nổi tư vấn loang sóng nước sinh động (Partner AI Ripple Chat)
                         Padding(
-                          padding: const EdgeInsets.only(right: 4, left: 4),
+                          padding: const EdgeInsets.only(right: 2, left: 2),
                           child: PartnerRippleAiButton(
-                            buttonColor: primaryColor,
+                            buttonColor: isPartnerPremium ? tierTheme.primaryColor : const Color(0xFF80BF84),
                             onTap: () {
                               AuthGuard.run(context, action: () {
                                 final partnerId = profile['id'];

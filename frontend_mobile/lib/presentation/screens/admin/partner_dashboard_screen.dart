@@ -1,8 +1,12 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../core/theme/partner_tier_theme.dart';
+import '../../../data/services/calendar_api_service.dart';
 import '../../../data/services/partner_api_service.dart';
 import '../../widgets/app_toast.dart';
-import 'dart:convert';
+import '../../widgets/partner_tier/partner_tier_badge.dart';
 
 class PartnerDashboardScreen extends StatefulWidget {
   const PartnerDashboardScreen({super.key});
@@ -15,6 +19,10 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
   bool _isLoading = true;
   String _activeTab = 'escrow'; // escrow | appointments | wallet | withdrawals
   
+  // 🚀 PHASE 08: State Quản Lý Cấp Bậc Đối Tác (Source of Truth)
+  bool _isPremium = false;
+  String _premiumTier = 'STANDARD';
+  
   List<dynamic> _bookings = [];
   List<dynamic> _appointments = [];
   List<dynamic> _withdrawals = [];
@@ -25,9 +33,11 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
   double _balance = 0;
   double _totalEarned = 0;
 
+  PartnerTierTheme get _tierTheme => PartnerTierTheme.fromTier(_isPremium, _premiumTier);
+
   // Forms
-  final Map<String, String> _checkInCodes = {};
-  final Map<String, Map<String, String>> _respondForms = {};
+  Map<String, String> _checkInCodes = {};
+  Map<String, Map<String, String>> _respondForms = {};
   final _bankCtrl = TextEditingController();
   final _accNumCtrl = TextEditingController();
   final _accNameCtrl = TextEditingController();
@@ -48,23 +58,33 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
 
   Future<void> _loadAllData() async {
     setState(() => _isLoading = true);
-    final results = await Future.wait([
-      PartnerApiService.fetchBookings(),
-      PartnerApiService.fetchAppointments(),
-      PartnerApiService.fetchWithdrawals(),
-      PartnerApiService.fetchVouchers(),
-      PartnerApiService.fetchAffiliateQueue(),
-      PartnerApiService.fetchAffiliateMetrics(),
-    ]);
+    try {
+      print('[DEBUG-PARTNER-WORKSPACE] Bắt đầu đồng bộ dữ liệu quản trị cơ sở...');
+      final results = await Future.wait([
+        PartnerApiService.fetchBookings(),
+        PartnerApiService.fetchAppointments(),
+        PartnerApiService.fetchWithdrawals(),
+        PartnerApiService.fetchVouchers(),
+        PartnerApiService.fetchAffiliateQueue(),
+        PartnerApiService.fetchAffiliateMetrics(),
+        CalendarApiService.fetchUserProfile(),
+      ]);
 
-    if (mounted) {
-      setState(() {
-        _bookings = results[0];
-        _appointments = results[1];
-        _withdrawals = results[2];
-        _vouchers = results[3];
-        _affiliateQueue = results[4];
-        _affiliateMetrics = results[5];
+      if (mounted) {
+        setState(() {
+          _bookings = (results[0] as List<dynamic>?) ?? [];
+          _appointments = (results[1] as List<dynamic>?) ?? [];
+          _withdrawals = (results[2] as List<dynamic>?) ?? [];
+          _vouchers = (results[3] as List<dynamic>?) ?? [];
+          _affiliateQueue = (results[4] as List<dynamic>?) ?? [];
+          _affiliateMetrics = (results[5] as List<dynamic>?) ?? [];
+
+          final profile = results[6] as Map<String, dynamic>?;
+          if (profile != null) {
+            _isPremium = profile['is_premium'] == true || profile['is_premium'] == 'true';
+            _premiumTier = (profile['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+            print('[DEBUG-PARTNER-WORKSPACE-TIER] Tier: $_premiumTier | IsPremium: $_isPremium | PrimaryColor: ${_tierTheme.primaryColor}');
+          }
 
         // Tính toán ví y hệt Web
         double earned = 0;
@@ -80,6 +100,12 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         _balance = (earned - withdrawn) > 0 ? (earned - withdrawn) : 0;
         _isLoading = false;
       });
+    }
+    } catch (e) {
+      print('[ERROR-PARTNER-WORKSPACE] Lỗi tải dữ liệu workspace: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -225,9 +251,24 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         leading: BackButton(color: _textMain),
         title: Row(
           children: [
-            Icon(Icons.shield_rounded, color: _bizPrimary, size: 22),
+            Icon(
+              _isPremium ? _tierTheme.icon : Icons.shield_rounded, 
+              color: _isPremium ? _tierTheme.primaryColor : _bizPrimary, 
+              size: 22
+            ),
             const SizedBox(width: 8),
-            Text('Partner Workspace', style: TextStyle(color: _textMain, fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+            Flexible(
+              child: Text(
+                'Partner Workspace', 
+                style: TextStyle(color: _textMain, fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -0.5),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (_isPremium) ...[
+              const SizedBox(width: 8),
+              PartnerTierBadge(isPremium: _isPremium, premiumTier: _premiumTier, isCompact: true),
+            ],
           ],
         ),
         actions: [IconButton(icon: Icon(Icons.refresh_rounded, color: _textMain), onPressed: _loadAllData)],
@@ -316,7 +357,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
               color: Colors.white, 
               borderRadius: BorderRadius.circular(24), 
               border: Border.all(color: _borderColor),
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,7 +410,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
               ],
             ),
           );
-        })
+        }).toList()
       ],
     );
   }
@@ -382,7 +423,6 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
 
     return Column(
       children: pendingAppts.map((appt) {
-        final form = _respondForms[appt['id']] ?? {};
         return Container(
           margin: const EdgeInsets.only(bottom: 24),
           padding: const EdgeInsets.all(20),
@@ -390,7 +430,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             color: Colors.white, 
             borderRadius: BorderRadius.circular(24), 
             border: Border.all(color: _borderColor),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -475,7 +515,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
       children: [
         Container(
           width: double.infinity, padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2C554D)]), borderRadius: BorderRadius.circular(32), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 10))]),
+          decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFF1A3A35), Color(0xFF2C554D)]), borderRadius: BorderRadius.circular(32), boxShadow: [BoxShadow(color: const Color(0xFF1A3A35).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))]),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -489,7 +529,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         
         Container(
           padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(32), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -555,7 +595,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
           padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -637,42 +677,122 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 🚀 CÔNG TẮC CHUYỂN ĐỔI VIP VOUCHER (PHASE 3)
+                        // 🚀 PHASE 08: CÔNG TẮC PHÁT HÀNH VOUCHER VIP KÈM QUẢN TRỊ HẠN MỨC CẤP BẬC
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           decoration: BoxDecoration(
-                            color: isVip ? const Color(0xFF1A3A35) : Colors.white,
+                            color: isVip 
+                                ? const Color(0xFF1A3A35) 
+                                : (!_isPremium ? const Color(0xFFF8FAFC) : Colors.white),
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: isVip ? const Color(0xFF1A3A35) : _borderColor),
+                            border: Border.all(
+                              color: isVip 
+                                  ? const Color(0xFF1A3A35) 
+                                  : (!_isPremium ? const Color(0xFFE2E8F0) : _borderColor),
+                            ),
                           ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Icon(Icons.stars_rounded, color: isVip ? const Color(0xFFFCD34D) : _textSub, size: 22),
-                                  const SizedBox(width: 10),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Phát hành Voucher VIP',
-                                        style: TextStyle(color: isVip ? Colors.white : _textMain, fontSize: 13, fontWeight: FontWeight.w800),
-                                      ),
-                                      Text(
-                                        'Bán bằng Điểm nạp & Khung giờ cố định',
-                                        style: TextStyle(color: isVip ? Colors.white70 : _textSub, fontSize: 11),
-                                      ),
-                                    ],
+                                  Expanded(
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          !_isPremium ? Icons.lock_outline_rounded : Icons.stars_rounded, 
+                                          color: isVip 
+                                              ? const Color(0xFFFCD34D) 
+                                              : (!_isPremium ? Colors.grey : _tierTheme.primaryColor), 
+                                          size: 22
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Text(
+                                                    'Phát hành Voucher VIP',
+                                                    style: TextStyle(
+                                                      color: isVip 
+                                                          ? Colors.white 
+                                                          : (!_isPremium ? Colors.grey.shade700 : _textMain), 
+                                                      fontSize: 13, 
+                                                      fontWeight: FontWeight.w800
+                                                    ),
+                                                  ),
+                                                  if (!_isPremium) ...[
+                                                    const SizedBox(width: 6),
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(0xFFFEF3C7), 
+                                                        borderRadius: BorderRadius.circular(4)
+                                                      ),
+                                                      child: const Text(
+                                                        'PRO / DIAMOND', 
+                                                        style: TextStyle(color: Color(0xFFD97706), fontSize: 8, fontWeight: FontWeight.w900)
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ],
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                !_isPremium 
+                                                    ? 'Mở khóa đặc quyền khi nâng cấp gói đối tác'
+                                                    : (_premiumTier == 'PRO' 
+                                                        ? 'Hạn mức: Tối đa 5 mã VIP/tuần' 
+                                                        : 'Đặc quyền VIP Diamond: Không giới hạn'),
+                                                style: TextStyle(
+                                                  color: isVip 
+                                                      ? Colors.white70 
+                                                      : (!_isPremium ? Colors.grey : _tierTheme.primaryColor), 
+                                                  fontSize: 11,
+                                                  fontWeight: isVip ? FontWeight.normal : FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Switch(
+                                    value: isVip,
+                                    activeThumbColor: const Color(0xFF48C9B0),
+                                    activeTrackColor: Colors.white24,
+                                    onChanged: !_isPremium ? null : (val) {
+                                      setModalState(() => isVip = val);
+                                    },
                                   ),
                                 ],
                               ),
-                              Switch(
-                                value: isVip,
-                                activeThumbColor: const Color(0xFF48C9B0),
-                                activeTrackColor: Colors.white24,
-                                onChanged: (val) => setModalState(() => isVip = val),
-                              ),
+                              if (!_isPremium) ...[
+                                const SizedBox(height: 10),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 34,
+                                  child: TextButton.icon(
+                                    style: TextButton.styleFrom(
+                                      backgroundColor: const Color(0xFFFFF0F3),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                    icon: const Icon(Icons.workspace_premium_rounded, size: 14, color: Color(0xFFE63956)),
+                                    label: const Text(
+                                      'Nâng cấp gói Đối tác ngay', 
+                                      style: TextStyle(color: Color(0xFFE63956), fontSize: 11, fontWeight: FontWeight.w800)
+                                    ),
+                                    onPressed: () {
+                                      Navigator.pop(context);
+                                      context.push('/partner/membership');
+                                    },
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -687,7 +807,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                                 onTap: () => setModalState(() => type = 'PERCENTAGE'),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(vertical: 14),
-                                  decoration: BoxDecoration(color: type == 'PERCENTAGE' ? _bizPrimary.withValues(alpha: 0.1) : Colors.white, border: Border.all(color: type == 'PERCENTAGE' ? _bizPrimary : _borderColor), borderRadius: BorderRadius.circular(14)),
+                                  decoration: BoxDecoration(color: type == 'PERCENTAGE' ? _bizPrimary.withOpacity(0.1) : Colors.white, border: Border.all(color: type == 'PERCENTAGE' ? _bizPrimary : _borderColor), borderRadius: BorderRadius.circular(14)),
                                   alignment: Alignment.center,
                                   child: Text('Phần trăm (%)', style: TextStyle(color: type == 'PERCENTAGE' ? _bizPrimary : _textSub, fontWeight: FontWeight.bold, fontSize: 13)),
                                 ),
@@ -699,7 +819,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                                 onTap: () => setModalState(() => type = 'FIXED_AMOUNT'),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(vertical: 14),
-                                  decoration: BoxDecoration(color: type == 'FIXED_AMOUNT' ? _bizPrimary.withValues(alpha: 0.1) : Colors.white, border: Border.all(color: type == 'FIXED_AMOUNT' ? _bizPrimary : _borderColor), borderRadius: BorderRadius.circular(14)),
+                                  decoration: BoxDecoration(color: type == 'FIXED_AMOUNT' ? _bizPrimary.withOpacity(0.1) : Colors.white, border: Border.all(color: type == 'FIXED_AMOUNT' ? _bizPrimary : _borderColor), borderRadius: BorderRadius.circular(14)),
                                   alignment: Alignment.center,
                                   child: Text('Tiền mặt (VNĐ)', style: TextStyle(color: type == 'FIXED_AMOUNT' ? _bizPrimary : _textSub, fontWeight: FontWeight.bold, fontSize: 13)),
                                 ),
@@ -904,7 +1024,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 color: Colors.white, 
                 borderRadius: BorderRadius.circular(24), 
                 border: Border.all(color: isVip ? const Color(0xFF1A3A35) : _borderColor, width: isVip ? 1.5 : 1.0), 
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]
               ),
               child: Row(
                 children: [
@@ -958,7 +1078,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 ],
               ),
             );
-          }),
+          }).toList(),
       ],
     );
   }
@@ -1027,7 +1147,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: _borderColor),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1049,7 +1169,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: isToday 
-                          ? [_bizPrimary, _bizPrimary.withValues(alpha: 0.5)] 
+                          ? [_bizPrimary, _bizPrimary.withOpacity(0.5)] 
                           : [Colors.blue.shade200, Colors.blue.shade50]
                       ),
                       borderRadius: BorderRadius.circular(6),
@@ -1102,7 +1222,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 )
               ],
             ),
-          )),
+          )).toList(),
       ],
     );
   }
@@ -1111,9 +1231,9 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
     return Container(
       height: 90,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: color.withOpacity(0.08),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        border: Border.all(color: color.withOpacity(0.2)),
       ),
       child: Stack(
         children: [
@@ -1121,7 +1241,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
           Positioned(
             right: -8,
             bottom: -8,
-            child: Icon(icon, size: 54, color: color.withValues(alpha: 0.15)),
+            child: Icon(icon, size: 54, color: color.withOpacity(0.15)),
           ),
           Padding(
             padding: const EdgeInsets.all(14),
@@ -1224,7 +1344,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: _borderColor),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))],
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1301,7 +1421,7 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
                 )
               ],
             ),
-          )),
+          )).toList(),
       ],
     );
   }
@@ -1329,13 +1449,13 @@ class _PartnerDashboardScreenState extends State<PartnerDashboardScreen> {
   Widget _buildMetricCard(String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), border: Border.all(color: _borderColor), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
             child: Icon(icon, color: color, size: 22),
           ),
           const SizedBox(height: 16),

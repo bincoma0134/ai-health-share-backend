@@ -8,6 +8,7 @@ import '../../../data/models/video_model.dart';
 import '../../../data/services/feed_api_service.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/global_cache_engine.dart';
+import '../../../core/theme/partner_tier_theme.dart';
 import '../../widgets/feed_video_player.dart';
 import '../../widgets/auth_bottom_sheet.dart';
 import '../../widgets/booking_bottom_sheet.dart';
@@ -16,6 +17,9 @@ import '../../widgets/app_toast.dart'; // Tích hợp thông báo đặc sắc c
 import '../../widgets/auth_guard.dart';
 import '../../widgets/notification_notifier.dart'; // 🚀 Bổ sung thư viện quản lý State thông báo
 import '../../widgets/animated_premium_like_button.dart'; // Tích hợp nút thả tim hệ hạt động
+import '../../widgets/partner_tier/partner_avatar_frame.dart';
+import '../../widgets/partner_tier/partner_tier_badge.dart';
+import '../../widgets/partner_tier/sparkle_overlay.dart';
 import 'package:flutter/services.dart'; // 🚀 Bổ sung HapticFeedback để tạo rung vi chạm
 import 'package:visibility_detector/visibility_detector.dart'; // Giải quyết dứt điểm lỗi phát nhạc dưới nền
 import '../../../core/manager/audio_focus_manager.dart';
@@ -469,133 +473,155 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                 ),
               ),
 
+              // 🚀 PHASE 08: KHỐI THÔNG TIN TÁC GIẢ & THẺ ĐẶT LỊCH ĐỒNG BỘ THEME CẤP BẬC
               Positioned(
-                bottom: 110, left: 16, right: 80, // Định vị trên đỉnh thanh Navigation Hub (90px + 20px Spacing) để tránh đè lấp
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Tên hiển thị Đối tác/Creator (Đã đổi vị trí lên trên và format màu sắc thương hiệu)
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        // Sửa lỗi 404: Truyền 'username' thay vì 'id' để khớp với GoRouter
-                        final String targetUsername = video.author['username'].toString(); 
-                        context.push('/public-profile/$targetUsername');
-                      },
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              video.author['full_name'] ?? video.author['username'] ?? 'Người dùng', 
-                              style: const TextStyle(color: Color(0xFF80BF84), fontWeight: FontWeight.w900, fontSize: 12, shadows: [Shadow(color: Colors.black87, blurRadius: 4, offset: Offset(1, 1))]),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis, // Tự động cắt thành "..." nếu Tên quá dài
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Padding(
-                              padding: const EdgeInsets.only(bottom: 1),
-                              child: Text(
-                                '@${video.author['username'] ?? 'user'}', 
-                                style: const TextStyle(color: Color(0xFF80BF84), fontWeight: FontWeight.w600, fontSize: 10, shadows: [Shadow(color: Colors.black87, blurRadius: 4, offset: Offset(1, 1))]),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis, // Bảo vệ cả Username không bị tràn
+                bottom: 110, left: 16, right: 80,
+                child: Builder(
+                  builder: (context) {
+                    final bool isPrem = video.isAuthorPremium || video.isLinkedPartnerPremium;
+                    final String tier = video.isAuthorPremium ? video.authorTier : video.linkedPartnerTier;
+                    final tierTheme = PartnerTierTheme.fromTier(isPrem, tier);
+                    final Color highlightColor = isPrem ? tierTheme.primaryColor : const Color(0xFF80BF84);
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Tên hiển thị Tác Giả / Đối Tác
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            final String targetUsername = video.author['username'].toString(); 
+                            context.push('/public-profile/$targetUsername');
+                          },
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  video.author['full_name'] ?? video.author['username'] ?? 'Người dùng', 
+                                  style: TextStyle(
+                                    color: highlightColor, 
+                                    fontWeight: FontWeight.w900, 
+                                    fontSize: 13, 
+                                    shadows: const [Shadow(color: Colors.black87, blurRadius: 4, offset: Offset(1, 1))]
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 6),
+                              if (isPrem) ...[
+                                PartnerTierBadge(isPremium: isPrem, premiumTier: tier, isCompact: true),
+                                const SizedBox(width: 6),
+                              ],
+                              Flexible(
+                                child: Text(
+                                  '@${video.author['username'] ?? 'user'}', 
+                                  style: TextStyle(
+                                    color: highlightColor.withValues(alpha: 0.85), 
+                                    fontWeight: FontWeight.w600, 
+                                    fontSize: 10.5, 
+                                    shadows: const [Shadow(color: Colors.black87, blurRadius: 4, offset: Offset(1, 1))]
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    // Tiêu đề video (Đã đổi vị trí xuống dưới và format tinh tế, rõ ràng)
-                    Text(
-                      video.title.isNotEmpty ? video.title : video.categoryTag,
-                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: -0.2, shadows: [Shadow(color: Colors.black87, blurRadius: 6, offset: Offset(1, 1))]),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    // 🚀 THẺ ĐẶT LỊCH & NÚT INFO CƠ SỞ: Dùng Wrap để chống tràn màn hình (Overflow) và tối ưu không gian hiển thị
-                    if (video.price > 0 || (video.partnerId != null && video.partnerId!.isNotEmpty)) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8, // Khoảng cách ngang giữa 2 nút
-                        runSpacing: 8, // Khoảng cách dọc nếu rớt dòng (bảo vệ màn hình kích thước hẹp)
-                        children: [
-                          // Nút 1: ĐẶT LỊCH (Màu xanh CTA chủ đạo)
-                          if (video.price > 0)
-                            GestureDetector(
-                              onTap: () => _handleAuthGuard(() => _showBookingBottomSheet(video)),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(16),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF80BF84).withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.4), width: 1),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.calendar_month_rounded, color: Colors.white, size: 14),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          '${NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(video.price)} • ĐẶT LỊCH',
-                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.3),
+                        ),
+                        const SizedBox(height: 8),
+                        // Tiêu đề video
+                        Text(
+                          video.title.isNotEmpty ? video.title : video.categoryTag,
+                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: -0.2, shadows: [Shadow(color: Colors.black87, blurRadius: 6, offset: Offset(1, 1))]),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        // Thẻ Đặt Lịch & Nút Tìm Hiểu Cơ Sở
+                        if (video.price > 0 || (video.partnerId != null && video.partnerId!.isNotEmpty)) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              // Nút 1: ĐẶT LỊCH (Đổi màu Gradient theo Cấp Bậc)
+                              if (video.price > 0)
+                                GestureDetector(
+                                  onTap: () => _handleAuthGuard(() => _showBookingBottomSheet(video)),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: BackdropFilter(
+                                      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: highlightColor.withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(color: highlightColor.withValues(alpha: 0.5), width: 1),
                                         ),
-                                      ],
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              isPrem ? tierTheme.icon : Icons.calendar_month_rounded, 
+                                              color: Colors.white, 
+                                              size: 14
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              '${NumberFormat.currency(locale: 'vi_VN', symbol: 'đ').format(video.price)} • ĐẶT LỊCH',
+                                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.3),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ),
-                          
-                          // Nút 2: TÌM HIỂU CƠ SỞ (Kính mờ Xám/Trắng bảo vệ sắc thái Primary)
-                          if (video.partnerId != null && video.partnerId!.isNotEmpty)
-                            GestureDetector(
-                              onTap: () {
-                                HapticFeedback.selectionClick(); // Rung phản hồi nhẹ
-                                // 🚀 ĐỊNH TUYẾN BẤT ĐỐI XỨNG CHUẨN XÁC
-                                final String targetUsername = video.partnerUsername ?? video.author['username'].toString();
-                                context.push('/public-profile/$targetUsername');
-                              },
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(16),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.15), // Nâng nhẹ opacity để chữ dễ đọc hơn trên nền phức tạp
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: Colors.white.withValues(alpha: 0.35), width: 1),
-                                    ),
-                                    child: const Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.storefront_rounded, color: Colors.white, size: 14),
-                                        SizedBox(width: 6),
-                                        Text(
-                                          'TÌM HIỂU CƠ SỞ',
-                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.2),
+                              
+                              // Nút 2: TÌM HIỂU CƠ SỞ (Kính mờ viền trắng)
+                              if (video.partnerId != null && video.partnerId!.isNotEmpty)
+                                GestureDetector(
+                                  onTap: () {
+                                    HapticFeedback.selectionClick();
+                                    final String targetUsername = video.partnerUsername ?? video.author['username'].toString();
+                                    context.push('/public-profile/$targetUsername');
+                                  },
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: BackdropFilter(
+                                      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(color: Colors.white.withValues(alpha: 0.35), width: 1),
                                         ),
-                                      ],
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.storefront_rounded, color: Colors.white, size: 14),
+                                            SizedBox(width: 6),
+                                            Text(
+                                              'TÌM HIỂU CƠ SỞ',
+                                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.2),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ),
+                            ],
+                          ),
                         ],
-                      ),
-                    ],
-                    const SizedBox(height: 5),
-                    // Caption thông minh: Tự động tính toán số dòng và hiển thị nút "Xem thêm"
-                    ExpandableCaption(text: video.content),
-                  ],
+                        const SizedBox(height: 5),
+                        ExpandableCaption(text: video.content),
+                      ],
+                    );
+                  },
                 ),
               ),
 
@@ -608,111 +634,100 @@ class _TikTokFeedsScreenState extends State<TikTokFeedsScreen> with AutomaticKee
                   mainAxisAlignment: MainAxisAlignment.end,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    // 1. Cụm Avatar Tác Giả Pixel-Perfect (Tách luồng sự kiện Avatar vs Nút Follow)
-                    SizedBox(
-                      width: 50,
-                      height: 60,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        alignment: Alignment.topCenter,
-                        children: [
-                          // Vùng bấm 1: Chạm vào Avatar điều hướng sang trang Public Profile cá nhân
-                          GestureDetector(
-                            onTap: () {
-                              final String targetUsername = video.author['username'].toString();
-                              context.push('/public-profile/$targetUsername');
-                            },
-                            child: Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 1.5),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.4),
-                                    blurRadius: 6,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: CircleAvatar(
-                                backgroundColor: const Color(0xFF161616),
-                                backgroundImage: GlobalCacheProvider.create(
-                                  video.author['avatar_url'] ?? 'https://via.placeholder.com/150',
-                                  maxWidth: 150, // 🚀 Tối ưu RAM: Ép giải mã ở kích thước nhỏ
-                                  maxHeight: 150,
-                                ),
-                              ),
-                            ),
-                          ),
-                          // Vùng bấm 2: Chạm chính xác vào nút dấu "+" với Quản lý trạng thái và Hoạt họa mượt mà
-                          if (!_followedCreatorIds.contains(video.authorId))
-                            Positioned(
-                              bottom: -2,
-                              child: GestureDetector(
-                                onTap: () async {
-                                  await _handleAuthGuard(() async {
-                                    final targetId = video.authorId;
-                                    final String creatorName = video.author['full_name'] ?? video.author['username'] ?? 'Đối tác';
-                                    
-                                    // 1. Cập nhật Optimistic UI: Đưa vào danh sách đã theo dõi để đổi trạng thái tức thì
-                                    setState(() {
-                                      _followedCreatorIds.add(targetId);
-                                    });
+                    // 1. 🚀 PHASE 08: Cụm Avatar Bọc Khung Viền Phát Sáng Phân Tầng (PartnerAvatarFrame)
+                    Builder(
+                      builder: (context) {
+                        final bool isPrem = video.isAuthorPremium || video.isLinkedPartnerPremium;
+                        final String tier = video.isAuthorPremium ? video.authorTier : video.linkedPartnerTier;
+                        final tierTheme = PartnerTierTheme.fromTier(isPrem, tier);
 
-                                    // 2. Kích hoạt thông báo AppToast kính mờ đặc sắc từ trên đỉnh màn hình
-                                    AppToast.show(
-                                      context: context,
-                                      message: 'Đã theo dõi thành công chuyên gia $creatorName',
-                                      isSuccess: true,
-                                    );
-
-                                    try {
-                                      // 3. Chạy ngầm lệnh gọi API đồng bộ lên cơ sở dữ liệu hệ thống
-                                      await ApiClient.instance.post('/user/follow/$targetId');
-                                    } catch (e) {
-                                      // Hoàn tác (Rollback) thầm lặng nếu API xảy ra lỗi kết nối
-                                      setState(() {
-                                        _followedCreatorIds.remove(targetId);
-                                      });
-                                      AppToast.show(
-                                        context: context,
-                                        message: 'Kết nối máy chủ thất bại. Vui lòng thử lại!',
-                                        isSuccess: false,
-                                      );
-                                    }
-                                  });
+                        return SizedBox(
+                          width: 52,
+                          height: 64,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            alignment: Alignment.topCenter,
+                            children: [
+                              // Vùng bấm 1: Chạm vào Avatar điều hướng sang Public Profile
+                              PartnerAvatarFrame(
+                                avatarUrl: video.author['avatar_url'],
+                                size: 48,
+                                isPremium: isPrem,
+                                premiumTier: tier,
+                                onTap: () {
+                                  final String targetUsername = video.author['username'].toString();
+                                  context.push('/public-profile/$targetUsername');
                                 },
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 300),
-                                  curve: Curves.easeOutBack,
-                                  width: 21,
-                                  height: 21,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF80BF84),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 1.5),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.25),
-                                        blurRadius: 3,
-                                        offset: const Offset(0, 1),
+                              ),
+                              // Vùng bấm 2: Nút Follow dấu "+"
+                              if (!_followedCreatorIds.contains(video.authorId))
+                                Positioned(
+                                  bottom: 0,
+                                  child: GestureDetector(
+                                    onTap: () async {
+                                      await _handleAuthGuard(() async {
+                                        final targetId = video.authorId;
+                                        final String creatorName = video.author['full_name'] ?? video.author['username'] ?? 'Đối tác';
+                                        
+                                        setState(() {
+                                          _followedCreatorIds.add(targetId);
+                                        });
+
+                                        AppToast.show(
+                                          context: context,
+                                          message: 'Đã theo dõi thành công chuyên gia $creatorName',
+                                          isSuccess: true,
+                                        );
+
+                                        try {
+                                          await ApiClient.instance.post('/user/follow/$targetId');
+                                        } catch (e) {
+                                          setState(() {
+                                            _followedCreatorIds.remove(targetId);
+                                          });
+                                          AppToast.show(
+                                            context: context,
+                                            message: 'Kết nối máy chủ thất bại. Vui lòng thử lại!',
+                                            isSuccess: false,
+                                          );
+                                        }
+                                      });
+                                    },
+                                    child: AnimatedContainer(
+                                      duration: const Duration(milliseconds: 300),
+                                      curve: Curves.easeOutBack,
+                                      width: 20,
+                                      height: 20,
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: isPrem 
+                                              ? tierTheme.gradientBorderColors 
+                                              : const [Color(0xFF80BF84), Color(0xFF48C9B0)],
+                                        ),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.white, width: 1.5),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: (isPrem ? tierTheme.primaryColor : const Color(0xFF80BF84)).withValues(alpha: 0.35),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 1),
+                                          ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
-                                  child: const Center(
-                                    child: Icon(
-                                      Icons.add, 
-                                      color: Colors.white, 
-                                      size: 13,
+                                      child: const Center(
+                                        child: Icon(
+                                          Icons.add, 
+                                          color: Colors.white, 
+                                          size: 12,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ),
-                        ],
-                      ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 10), // Spacing nén chặt lại theo chuẩn UI hiện đại
                     

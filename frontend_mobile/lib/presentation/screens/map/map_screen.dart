@@ -5,12 +5,16 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/network/api_client.dart'; // Trục kết nối mạng lõi
+import '../../../core/theme/partner_tier_theme.dart';
 import '../../widgets/booking_bottom_sheet.dart';
 import '../../../data/models/partner_map_model.dart';
 import '../../../data/services/map_api_service.dart';
 import '../../../core/network/global_cache_engine.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/auth_guard.dart';
+import '../../widgets/partner_tier/partner_avatar_frame.dart';
+import '../../widgets/partner_tier/partner_tier_badge.dart';
+import '../../widgets/partner_tier/sparkle_overlay.dart';
 import '../../widgets/shimmer_wrapper.dart';
 import '../../widgets/notification_notifier.dart'; // 🚀 Bổ sung thư viện quản lý State thông báo
 
@@ -271,40 +275,80 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
                                   ),
                                 ),
 
-                              // Vẽ các Marker của Đối tác phòng khám
+                              // 🚀 PHASE 08: Marker Bản Đồ Phân Tầng Thông Minh (Ruby Diamond / Cyber Cyan)
                               ..._filteredPartners.map((partner) {
                                 final isSelected = _selectedPartner?.id == partner.id;
-                                return Marker(
-                                  point: LatLng(partner.latitude, partner.longitude),
-                                  width: isSelected ? 52 : 42,
-                                  height: isSelected ? 52 : 42,
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      _selectPartnerFromMarker(partner);
-                                    },
-                                    onDoubleTap: () {
-                                      // 🚀 ĐỘC QUYỀN LUXURY: Double Tap vào Ghim trên bản đồ để phi thẳng vào Hồ sơ công khai
-                                      context.push('/public-profile/${partner.username}');
-                                    },
-                                    child: Container(
+                                final tierTheme = PartnerTierTheme.fromTier(partner.isPremium, partner.premiumTier);
+                                final bool isDiamond = partner.isPremium && tierTheme.type == PartnerTierType.diamond;
+                                final bool isPro = partner.isPremium && tierTheme.type == PartnerTierType.pro;
+
+                                final double baseSize = isDiamond ? 50.0 : (isPro ? 46.0 : 42.0);
+                                final double markerSize = isSelected ? baseSize + 10.0 : baseSize;
+
+                                Widget markerWidget = GestureDetector(
+                                  onTap: () {
+                                    _selectPartnerFromMarker(partner);
+                                  },
+                                  onDoubleTap: () {
+                                    context.push('/public-profile/${partner.username}');
+                                  },
+                                  child: Container(
+                                    padding: EdgeInsets.all(isDiamond ? 2.5 : (isPro ? 2.0 : 1.5)),
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      border: Border.all(color: isSelected ? const Color(0xFF4C8D50) : Colors.white, width: isSelected ? 3.5 : 2),
-                                      boxShadow: [BoxShadow(color: isSelected ? const Color(0xFF80BF84).withValues(alpha: 0.6) : Colors.black26, blurRadius: isSelected ? 12 : 6)],
+                                      gradient: LinearGradient(
+                                        colors: partner.isPremium 
+                                            ? tierTheme.gradientBorderColors 
+                                            : [isSelected ? const Color(0xFF4C8D50) : Colors.white, isSelected ? const Color(0xFF80BF84) : Colors.white],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: partner.isPremium 
+                                              ? tierTheme.accentGlowColor.withValues(alpha: isSelected ? 0.6 : 0.35)
+                                              : (isSelected ? const Color(0xFF80BF84).withValues(alpha: 0.6) : Colors.black26),
+                                          blurRadius: isSelected ? 16 : (partner.isPremium ? 10 : 6),
+                                          spreadRadius: isDiamond ? 1.5 : (isSelected ? 2 : 0),
+                                        )
+                                      ],
                                     ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(100),
-                                      child: GlobalCacheImage(
-                                        imageUrl: partner.avatarUrl.isNotEmpty ? partner.avatarUrl : "https://ui-avatars.com/api/?name=${partner.username}&background=80BF84&color=fff",
-                                        fit: BoxFit.cover,
-                                        memCacheWidth: 150, // 🚀 Tối ưu RAM cho Marker Đối tác
-                                        memCacheHeight: 150,
+                                    child: Container(
+                                      decoration: const BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      padding: const EdgeInsets.all(1.5),
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(100),
+                                        child: GlobalCacheImage(
+                                          imageUrl: partner.avatarUrl.isNotEmpty 
+                                              ? partner.avatarUrl 
+                                              : "https://ui-avatars.com/api/?name=${partner.username}&background=80BF84&color=fff",
+                                          fit: BoxFit.cover,
+                                          memCacheWidth: 150,
+                                          memCacheHeight: 150,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              );
-                            }),
+                                );
+
+                                if (isDiamond) {
+                                  markerWidget = SparkleOverlay(
+                                    sparkleColor: tierTheme.accentGlowColor,
+                                    particleCount: 3,
+                                    child: markerWidget,
+                                  );
+                                }
+
+                                return Marker(
+                                  point: LatLng(partner.latitude, partner.longitude),
+                                  width: markerSize,
+                                  height: markerSize,
+                                  child: markerWidget,
+                                );
+                              }),
                           ],
                         ),
                       ],
@@ -746,9 +790,28 @@ class _MapScreenState extends State<MapScreen> with AutomaticKeepAliveClientMixi
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('@${partner.username}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text('@${partner.username}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ),
+                            if (partner.isPremium) ...[
+                              const SizedBox(width: 4),
+                              PartnerTierBadge(isPremium: partner.isPremium, premiumTier: partner.premiumTier, isCompact: true),
+                            ],
+                          ],
+                        ),
                         const SizedBox(height: 2),
-                        Text(primaryTag, style: const TextStyle(color: Color(0xFF4C8D50), fontSize: 9, fontWeight: FontWeight.w700)),
+                        Text(
+                          primaryTag, 
+                          style: TextStyle(
+                            color: partner.isPremium 
+                                ? PartnerTierTheme.fromTier(partner.isPremium, partner.premiumTier).primaryColor 
+                                : const Color(0xFF4C8D50), 
+                            fontSize: 9, 
+                            fontWeight: FontWeight.w700
+                          )
+                        ),
                       ],
                     ),
                   )

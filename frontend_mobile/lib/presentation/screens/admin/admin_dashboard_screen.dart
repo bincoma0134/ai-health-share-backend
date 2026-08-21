@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import '../../../core/theme/partner_tier_theme.dart';
 import '../../../data/services/admin_api_service.dart';
+import '../../widgets/partner_tier/partner_avatar_frame.dart';
+import '../../widgets/partner_tier/partner_tier_badge.dart';
 import '../../widgets/shimmer_wrapper.dart';
 import '../../widgets/app_toast.dart';
 
@@ -313,7 +316,90 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ],
         ),
 
-        const SizedBox(height: 32),
+        // 🚀 PHASE 08: Khối Thống Kê Phân Bổ 3 Cấp Bậc Đối Tác Sàn
+        const SizedBox(height: 20),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0F172A).withValues(alpha: 0.02),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              )
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.workspace_premium_rounded, size: 16, color: Color(0xFFE63956)),
+                      SizedBox(width: 8),
+                      Text(
+                        'PHÂN BỔ CẤP BẬC ĐỐI TÁC',
+                        style: TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    'Tổng: ${_partners.where((p) => (p['role'] ?? '').toString().contains('PARTNER')).length} cơ sở',
+                    style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10.5, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Builder(
+                builder: (context) {
+                  int standardCount = 0;
+                  int proCount = 0;
+                  int diamondCount = 0;
+
+                  for (var p in _partners) {
+                    final String r = (p['role'] ?? '').toString();
+                    if (!r.contains('PARTNER')) continue;
+                    
+                    final isPrem = p['is_premium'] == true || p['is_premium'] == 'true';
+                    final tier = (p['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+                    
+                    if (isPrem && tier == 'DIAMOND') {
+                      diamondCount++;
+                    } else if (isPrem && tier == 'PRO') {
+                      proCount++;
+                    } else {
+                      standardCount++;
+                    }
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _buildTierStatPill('Standard', '$standardCount', const Color(0xFF64748B), const Color(0xFFF1F5F9)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildTierStatPill('Pro', '$proCount', const Color(0xFF0077B6), const Color(0xFFE0F7FA)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildTierStatPill('VIP Diamond', '$diamondCount', const Color(0xFFE63956), const Color(0xFFFFF0F3)),
+                      ),
+                    ],
+                  );
+                }
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 28),
         const Text('HIỆU SUẤT TĂNG TRƯỞNG (7 NGÀY)', style: TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1)),
         const SizedBox(height: 16),
         
@@ -436,10 +522,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   // ==========================================
-  // TAB 3: ĐỐI TÁC (TỐI ƯU HIỆU NĂNG DANH SÁCH)
+  // TAB 3: ĐỐI TÁC & PHÂN TẦNG CẤP BẬC
   // ==========================================
   Widget _buildPartnersTab() {
-    final filteredPartners = _partners.where((p) => _partnerFilter == 'ALL' || p['role'] == _partnerFilter).toList();
+    final filteredPartners = _partners.where((p) {
+      if (_partnerFilter == 'ALL') return true;
+      if (_partnerFilter == 'DIAMOND') {
+        return (p['is_premium'] == true || p['is_premium'] == 'true') && (p['premium_tier'] ?? '').toString().toUpperCase() == 'DIAMOND';
+      }
+      if (_partnerFilter == 'PRO') {
+        return (p['is_premium'] == true || p['is_premium'] == 'true') && (p['premium_tier'] ?? '').toString().toUpperCase() == 'PRO';
+      }
+      if (_partnerFilter == 'STANDARD') {
+        final isPrem = p['is_premium'] == true || p['is_premium'] == 'true';
+        final isPartnerRole = (p['role'] ?? '').toString().contains('PARTNER');
+        return isPartnerRole && !isPrem;
+      }
+      return p['role'] == _partnerFilter;
+    }).toList();
+
+    final List<Map<String, String>> filterChips = [
+      {'key': 'ALL', 'label': 'Tất cả'},
+      {'key': 'DIAMOND', 'label': '👑 Diamond'},
+      {'key': 'PRO', 'label': '💠 Pro'},
+      {'key': 'STANDARD', 'label': 'Standard'},
+      {'key': 'CREATOR', 'label': 'Creator'},
+      {'key': 'MODERATOR', 'label': 'Moderator'},
+    ];
 
     return Column(
       children: [
@@ -448,17 +557,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              children: ['ALL', 'PARTNER_ADMIN', 'CREATOR', 'MODERATOR'].map((filter) {
-                final isActive = _partnerFilter == filter;
+              children: filterChips.map((f) {
+                final isActive = _partnerFilter == f['key'];
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
-                    label: Text(filter == 'ALL' ? 'Tất cả' : filter.replaceAll('_ADMIN', ''), style: TextStyle(color: isActive ? Colors.white : const Color(0xFF475569), fontWeight: FontWeight.w700, fontSize: 11)),
+                    label: Text(
+                      f['label']!,
+                      style: TextStyle(
+                        color: isActive ? Colors.white : const Color(0xFF475569), 
+                        fontWeight: FontWeight.w700, 
+                        fontSize: 11
+                      ),
+                    ),
                     selected: isActive,
-                    onSelected: (_) => setState(() => _partnerFilter = filter),
+                    onSelected: (_) => setState(() => _partnerFilter = f['key']!),
                     selectedColor: const Color(0xFF0F172A),
                     backgroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100), side: BorderSide(color: isActive ? Colors.transparent : const Color(0xFFE2E8F0))),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(100), 
+                      side: BorderSide(color: isActive ? Colors.transparent : const Color(0xFFE2E8F0))
+                    ),
                     showCheckmark: false,
                   ),
                 );
@@ -470,34 +589,100 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
         Expanded(
           child: filteredPartners.isEmpty
-            ? ListView(physics: const AlwaysScrollableScrollPhysics(), children: const [Padding(padding: EdgeInsets.only(top: 60), child: Center(child: Text('Không có tài khoản nào được tìm thấy.', style: TextStyle(color: Color(0xFF94A3B8)))))])
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(), 
+                children: const [
+                  Padding(
+                    padding: EdgeInsets.only(top: 60), 
+                    child: Center(
+                      child: Text('Không có tài khoản nào phù hợp.', style: TextStyle(color: Color(0xFF94A3B8)))
+                    )
+                  )
+                ]
+              )
             : ListView.builder(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.symmetric(horizontal: 16).copyWith(bottom: 60),
                 itemCount: filteredPartners.length,
                 itemBuilder: (context, index) {
                   final p = filteredPartners[index];
+                  final bool isPartnerPrem = p['is_premium'] == true || p['is_premium'] == 'true';
+                  final String partnerTier = (p['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+                  final bool isPartnerRole = (p['role'] ?? '').toString().contains('PARTNER');
+
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFE2E8F0))),
+                    decoration: BoxDecoration(
+                      color: Colors.white, 
+                      borderRadius: BorderRadius.circular(18), 
+                      border: Border.all(
+                        color: (isPartnerRole && isPartnerPrem)
+                            ? PartnerTierTheme.fromTier(true, partnerTier).primaryColor.withValues(alpha: 0.35)
+                            : const Color(0xFFE2E8F0),
+                        width: (isPartnerRole && isPartnerPrem) ? 1.2 : 1.0,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (isPartnerRole && isPartnerPrem
+                              ? PartnerTierTheme.fromTier(true, partnerTier).primaryColor
+                              : Colors.black).withValues(alpha: isPartnerPrem ? 0.04 : 0.01),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        )
+                      ],
+                    ),
                     child: Row(
                       children: [
-                        CircleAvatar(radius: 24, backgroundImage: p['avatar_url'] != null ? NetworkImage(p['avatar_url']) : null, backgroundColor: const Color(0xFFF1F5F9), child: p['avatar_url'] == null ? Text(p['full_name']?.substring(0,1) ?? 'U', style: const TextStyle(color: Color(0xFF475569))) : null),
+                        if (isPartnerRole)
+                          PartnerAvatarFrame(
+                            avatarUrl: p['avatar_url']?.toString(),
+                            size: 44,
+                            isPremium: isPartnerPrem,
+                            premiumTier: partnerTier,
+                          )
+                        else
+                          CircleAvatar(
+                            radius: 22, 
+                            backgroundImage: p['avatar_url'] != null ? NetworkImage(p['avatar_url']) : null, 
+                            backgroundColor: const Color(0xFFF1F5F9), 
+                            child: p['avatar_url'] == null 
+                                ? Text(p['full_name']?.substring(0, 1) ?? 'U', style: const TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.bold)) 
+                                : null
+                          ),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(p['full_name'] ?? 'Vô danh', style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w800, fontSize: 14)),
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      p['full_name'] ?? 'Vô danh', 
+                                      style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w800, fontSize: 14),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (isPartnerRole && isPartnerPrem) ...[
+                                    const SizedBox(width: 6),
+                                    PartnerTierBadge(isPremium: true, premiumTier: partnerTier, isCompact: true),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 2),
                               Text(p['email'] ?? '', style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w500)),
                             ],
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(8)),
-                          child: Text(p['role'].replaceAll('_ADMIN', ''), style: const TextStyle(color: Color(0xFF475569), fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                          child: Text(
+                            (p['role'] ?? '').toString().replaceAll('_ADMIN', ''), 
+                            style: const TextStyle(color: Color(0xFF475569), fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5)
+                          ),
                         ),
                       ],
                     ),
@@ -636,6 +821,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
       child: Text(status, style: TextStyle(color: text, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+    );
+  }
+
+  Widget _buildTierStatPill(String tierLabel, String count, Color textColor, Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: textColor.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            count,
+            style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.w900, height: 1.1),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            tierLabel,
+            style: TextStyle(color: textColor.withValues(alpha: 0.8), fontSize: 10, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
     );
   }
 }

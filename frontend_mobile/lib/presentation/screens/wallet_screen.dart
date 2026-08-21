@@ -452,7 +452,7 @@ class _WalletScreenState extends State<WalletScreen> {
                                               style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5, fontSize: 12),
                                             ),
                                             onPressed: () {
-                                              Navigator.push(context, MaterialPageRoute(builder: (_) => const VipVoucherShopScreen()));
+                                              context.push('/vip-vouchers');
                                             },
                                           ),
                                         ),

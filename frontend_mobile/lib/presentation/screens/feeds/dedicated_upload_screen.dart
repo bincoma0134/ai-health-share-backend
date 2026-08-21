@@ -13,11 +13,15 @@ import 'package:video_player/video_player.dart'; // Giải quyết lỗi: Undefi
 
 import '../../../core/manager/audio_focus_manager.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/theme/partner_tier_theme.dart';
 import '../../../data/services/partner_api_service.dart';
 import '../../../data/services/user_api_service.dart'; // 🚀 MỚI: Cổng truyền stream nhị phân lên Cloud Storage
 import '../../widgets/app_toast.dart';
 import '../../widgets/feed_video_player.dart'; // 🚀 HOTFIX: Thêm import để định nghĩa lớp điều khiển tĩnh FeedVideoPool
 import '../../widgets/mini_video_player.dart';
+import '../../widgets/partner_tier/partner_tier_badge.dart';
+import '../../widgets/partner_tier/sparkle_overlay.dart';
+import '../../widgets/partner_tier/shimmer_glow_wrapper.dart';
 
 
 class DedicatedUploadScreen extends StatefulWidget {
@@ -92,6 +96,12 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
   String _userRole = "USER"; // Sẽ tự động nạp động từ luồng trạng thái tài khoản hệ thống
   String _partnerPublishMode = "TIKTOK_FEED"; // 'TIKTOK_FEED' hoặc 'SERVICE_VIDEO'
   
+  // 🚀 PHASE 08: Trạng thái gói hội viên để mở khóa thời lượng Video 10 phút 4K
+  bool _isPremiumPartner = false;
+  String _partnerTier = "STANDARD";
+  int _maxAllowedVideoSeconds = 180; // Mặc định 3 phút (180s)
+  double _maxAllowedFileSizeMB = 500.0;
+
   final bool _isSubmitting = false;
   bool _isLoadingRole = true; // 🛡️ GÁC CỔNG TRẠNG THÁI: Ngăn chặn giao diện vẽ vội vã khi chưa nạp xong quyền
 
@@ -109,12 +119,39 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
     _userRole = widget.userRole.trim().toUpperCase();
     _isLoadingRole = false;
     
-    // Nếu là Partner, chủ động tiền tải dữ liệu thương mại của cơ sở để sẵn sàng cho tab 2
+    // Nếu là Partner, chủ động tiền tải dữ liệu thương mại và trạng thái gói VIP
     if (_userRole == "PARTNER_ADMIN" || _userRole == "PARTNER") {
       _loadPartnerMetadata();
+      _fetchPartnerTierForUpload();
     } else if (_userRole == "CREATOR") {
       // 🚀 Luồng nạp dữ liệu Affiliate tự động cho Creator
       _loadCreatorAffiliateData();
+    }
+  }
+
+  // 🚀 PHASE 08: Xác thực đặc quyền Upload Video theo Tier của Partner
+  Future<void> _fetchPartnerTierForUpload() async {
+    try {
+      final status = await PartnerApiService.fetchPremiumStatus();
+      if (status != null && mounted) {
+        setState(() {
+          _isPremiumPartner = status['is_premium'] == true;
+          _partnerTier = (status['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+          
+          if (_isPremiumPartner) {
+            if (_partnerTier == 'DIAMOND') {
+              _maxAllowedVideoSeconds = 600; // 10 phút cho VIP Diamond
+              _maxAllowedFileSizeMB = 1500.0; // 1.5GB cho Video 4K gốc
+            } else if (_partnerTier == 'PRO') {
+              _maxAllowedVideoSeconds = 180; // 3 phút 1080p cho Pro
+              _maxAllowedFileSizeMB = 800.0;
+            }
+          }
+          print('[DEBUG-UPLOAD-TIER] Partner Tier: $_partnerTier | Max Duration: $_maxAllowedVideoSeconds giây | Max Size: $_maxAllowedFileSizeMB MB');
+        });
+      }
+    } catch (e) {
+      debugPrint('[DEBUG-UPLOAD-TIER-ERR] $e');
     }
   }
 
@@ -423,12 +460,13 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
 
           debugPrint("[PERF_LOG] 2. Quét File.lengthSync() sau: ${perfLog.elapsedMilliseconds}ms (Kích thước: ${fileSizeInMB.toStringAsFixed(2)}MB)");
 
-          if (fileSizeInMB > 500) {
+          // 🚀 PHASE 08: Áp dụng hạn mức dung lượng động theo Cấp bậc hội viên
+          if (fileSizeInMB > _maxAllowedFileSizeMB) {
             setState(() => _isLockingAction = false);
             if (!mounted) return;
             AppToast.show(
               context: context,
-              message: "Từ chối: Dung lượng file đạt ${fileSizeInMB.toInt()}MB (Vượt giới hạn 500MB)!",
+              message: "Từ chối: Dung lượng file ${fileSizeInMB.toInt()}MB (Vượt giới hạn ${_maxAllowedFileSizeMB.toInt()}MB của gói hiện tại)!",
               isSuccess: false,
             );
             return;
@@ -448,12 +486,14 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
           debugPrint("[PERF_LOG] 3. Native Decode initialize() sau: ${perfLog.elapsedMilliseconds}ms (Thời lượng: $durationInSeconds giây)");
           perfLog.stop();
 
-          if (durationInSeconds > 180) {
+          // 🚀 PHASE 08: Áp dụng hạn mức thời lượng video động (10 phút cho Diamond / 3 phút cho Pro & User)
+          if (durationInSeconds > _maxAllowedVideoSeconds) {
             setState(() => _isLockingAction = false);
             if (!mounted) return;
+            final int maxMinutes = (_maxAllowedVideoSeconds / 60).round();
             AppToast.show(
               context: context,
-              message: "Từ chối: Video dài ${durationInSeconds.toInt()} giây (Vượt giới hạn 3 phút)!",
+              message: "Từ chối: Video dài ${durationInSeconds.toInt()} giây (Vượt giới hạn $maxMinutes phút của gói hiện tại)!",
               isSuccess: false,
             );
             return;
@@ -785,23 +825,80 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                                 textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 16),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF80BF84).withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.3)),
-                                ),
-                                child: const Text(
-                                  "Lưu ý: Chỉ chọn video < 3 phút & < 500MB.\n(File quá lớn hệ điều hành sẽ tốn rất nhiều thời gian xử lý)",
-                                  style: TextStyle(
-                                    color: Color(0xFF1A3A35),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.4,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
+                              // 🚀 NÂNG CẤP: Banner Đặc Quyền Thượng Lưu Nhẹ Nhàng (Apple Wellness Glass)
+                              Builder(
+                                builder: (context) {
+                                  final tierTheme = PartnerTierTheme.fromTier(_isPremiumPartner, _partnerTier);
+                                  final bool isDiamond = _partnerTier == 'DIAMOND';
+
+                                  Widget bannerWidget = Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: _isPremiumPartner ? tierTheme.badgeBgColor : Colors.white,
+                                      borderRadius: BorderRadius.circular(18),
+                                      border: Border.all(
+                                        color: _isPremiumPartner 
+                                            ? tierTheme.primaryColor.withValues(alpha: 0.35) 
+                                            : const Color(0xFFE2ECE9),
+                                        width: 1.0,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: (_isPremiumPartner ? tierTheme.primaryColor : const Color(0xFF14302B)).withValues(alpha: 0.04),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              _isPremiumPartner ? tierTheme.icon : Icons.info_outline_rounded,
+                                              size: 15,
+                                              color: _isPremiumPartner ? tierTheme.primaryColor : const Color(0xFF14302B),
+                                            ),
+                                            const SizedBox(width: 7),
+                                            Text(
+                                              _isPremiumPartner
+                                                  ? (isDiamond ? 'ĐẶC QUYỀN VIP: VIDEO 4K 10 PHÚT' : 'ĐẶC QUYỀN PRO: VIDEO 1080P 3 PHÚT')
+                                                  : 'HẠN MỨC: VIDEO < 3 PHÚT & < 500MB',
+                                              style: TextStyle(
+                                                color: _isPremiumPartner ? tierTheme.textColor : const Color(0xFF14302B),
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                                letterSpacing: 0.3,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          _isPremiumPartner && isDiamond
+                                              ? "Tối đa 10 phút, chất lượng 4K 60fps siêu nét (Dung lượng < 1.5GB)"
+                                              : "Chuẩn nén tối ưu băng thông, đảm bảo trải nghiệm người xem mượt mà.",
+                                          style: const TextStyle(
+                                            color: Color(0xFF6B8782),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
+                                    ),
+                                  );
+
+                                  if (isDiamond) {
+                                    return SparkleOverlay(
+                                      sparkleColor: tierTheme.accentGlowColor,
+                                      particleCount: 4,
+                                      child: bannerWidget,
+                                    );
+                                  }
+                                  return bannerWidget;
+                                },
                               ),
                             ],
                           ),
@@ -810,53 +907,75 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
           ),
         ),
 
-        // 2. ĐỈNH MÀN HÌNH CHUYỂN SANG GLASS LAYOUT SÁNG SANG TRỌNG
+        // 2. 🚀 ĐỈNH MÀN HÌNH APPLE WELLNESS GLASS (ĐÍNH KÈM PARTNER TIER BADGE)
         Positioned(
           top: statusBarPadding + 12,
           left: 16,
           right: 16,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                icon: const Icon(Icons.close_rounded, color: Color(0xFF1A3A35), size: 26),
-                onPressed: () async {
-                  final shouldPop = await _onWillPop();
-                  if (shouldPop && mounted) context.pop();
-                },
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFE2ECEB), width: 1),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4))
-                  ],
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.verified_rounded, color: Color(0xFF80BF84), size: 16),
-                    SizedBox(width: 6),
-                    Text(
-                      "Chế độ Sáng tạo nội dung",
-                      style: TextStyle(color: Color(0xFF1A3A35), fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.2),
-                    ),
-                  ],
-                ),
-              ),
-              Row(
+          child: Builder(
+            builder: (context) {
+              final tierTheme = PartnerTierTheme.fromTier(_isPremiumPartner, _partnerTier);
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFF1A3A35), shape: BoxShape.circle)),
-                  const SizedBox(width: 4),
-                  Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFFB0C4C1), shape: BoxShape.circle)),
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    icon: const Icon(Icons.close_rounded, color: Color(0xFF14302B), size: 24),
+                    onPressed: () async {
+                      final shouldPop = await _onWillPop();
+                      if (shouldPop && mounted) context.pop();
+                    },
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: _isPremiumPartner ? tierTheme.primaryColor.withValues(alpha: 0.3) : const Color(0xFFE2ECE9),
+                        width: 1.0,
+                      ),
+                      boxShadow: [
+                        BoxShadow(color: const Color(0xFF14302B).withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _isPremiumPartner ? tierTheme.icon : Icons.verified_rounded, 
+                          color: _isPremiumPartner ? tierTheme.primaryColor : const Color(0xFF80BF84), 
+                          size: 15
+                        ),
+                        const SizedBox(width: 6),
+                        const Text(
+                          "Studio Sáng Tạo",
+                          style: TextStyle(color: Color(0xFF14302B), fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: 0.2),
+                        ),
+                        if (_isPremiumPartner) ...[
+                          const SizedBox(width: 6),
+                          PartnerTierBadge(isPremium: _isPremiumPartner, premiumTier: _partnerTier, isCompact: true),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 6, height: 6, 
+                        decoration: BoxDecoration(
+                          color: _isPremiumPartner ? tierTheme.primaryColor : const Color(0xFF14302B), 
+                          shape: BoxShape.circle
+                        )
+                      ),
+                      const SizedBox(width: 4),
+                      Container(width: 6, height: 6, decoration: const BoxDecoration(color: Color(0xFFD1E3E0), shape: BoxShape.circle)),
+                    ],
+                  ),
                 ],
-              ),
-            ],
+              );
+            },
           ),
         ),
 
@@ -1050,39 +1169,68 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                         ),
                       ),
 
-                      // Trung tâm: Nút chính
-                      GestureDetector(
-                        onTap: () {
-                          if (_uploadedVideoUrl.isNotEmpty) {
-                            _nextStep();
-                          } else {
-                            if (!_isLockingAction) _pickVideoFromGallery();
-                          }
-                        },
-                        child: Container(
-                          width: 78, height: 78,
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: const Color(0xFF80BF84).withValues(alpha: 0.4), width: 4),
-                          ),
-                          child: Container(
+                      // 🚀 NÂNG CẤP: Nút tròn trung tâm phát sáng theo Theme Cấp bậc (Đảm bảo độ nhạy thao tác chạm 100%)
+                      Builder(
+                        builder: (context) {
+                          final tierTheme = PartnerTierTheme.fromTier(_isPremiumPartner, _partnerTier);
+                          final Color activeColor = _isPremiumPartner ? tierTheme.primaryColor : const Color(0xFF80BF84);
+
+                          Widget buttonVisual = Container(
+                            width: 78, height: 78,
+                            padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: _uploadedVideoUrl.isNotEmpty 
-                                  ? const Color(0xFF80BF84)
-                                  : const Color(0xFF1A3A35),
-                              boxShadow: [
-                                BoxShadow(color: const Color(0xFF1A3A35).withValues(alpha: 0.15), blurRadius: 10, offset: const Offset(0, 4))
-                              ],
+                              border: Border.all(
+                                color: activeColor.withValues(alpha: 0.35), 
+                                width: 3.5
+                              ),
                             ),
-                            child: Icon(
-                              _uploadedVideoUrl.isNotEmpty ? Icons.arrow_forward_rounded : Icons.video_library_rounded,
-                              color: Colors.white,
-                              size: 26,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  colors: _uploadedVideoUrl.isNotEmpty
+                                      ? (_isPremiumPartner ? tierTheme.gradientBorderColors : const [Color(0xFF80BF84), Color(0xFF48C9B0)])
+                                      : const [Color(0xFF14302B), Color(0xFF234E46)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: activeColor.withValues(alpha: 0.3), 
+                                    blurRadius: 14, 
+                                    offset: const Offset(0, 6)
+                                  )
+                                ],
+                              ),
+                              child: Icon(
+                                _uploadedVideoUrl.isNotEmpty ? Icons.arrow_forward_rounded : Icons.video_library_rounded,
+                                color: Colors.white,
+                                size: 26,
+                              ),
                             ),
-                          ),
-                        ),
+                          );
+
+                          if (_isPremiumPartner && _partnerTier == 'DIAMOND') {
+                            buttonVisual = SparkleOverlay(
+                              sparkleColor: tierTheme.accentGlowColor,
+                              particleCount: 4,
+                              child: buttonVisual,
+                            );
+                          }
+
+                          return GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              if (_uploadedVideoUrl.isNotEmpty) {
+                                _nextStep();
+                              } else {
+                                if (!_isLockingAction) _pickVideoFromGallery();
+                              }
+                            },
+                            child: buttonVisual,
+                          );
+                        },
                       ),
 
                       // Vệ tinh Phải
@@ -2002,23 +2150,61 @@ class _DedicatedUploadScreenState extends State<DedicatedUploadScreen> with Tick
                 ),
               ),
               const SizedBox(width: 12),
+              // 🚀 NÂNG CẤP: Nút Đăng Bài Bước 2 Áp Dụng Theme & Quầng Sáng Tinh Tế
               Expanded(
                 flex: 7,
-                child: SizedBox(
-                  height: 52,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1A3A35),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      disabledBackgroundColor: const Color(0xFFD1D1D6),
-                    ),
-                    onPressed: _isSubmitting ? null : _handlePublish,
-                    child: _isSubmitting
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text("ĐĂNG BÀI CHỜ DUYỆT", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                  ),
+                child: Builder(
+                  builder: (context) {
+                    final tierTheme = PartnerTierTheme.fromTier(_isPremiumPartner, _partnerTier);
+
+                    return Container(
+                      height: 52,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: _isPremiumPartner
+                              ? tierTheme.gradientBorderColors
+                              : const [Color(0xFF14302B), Color(0xFF234E46)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (_isPremiumPartner ? tierTheme.primaryColor : const Color(0xFF14302B))
+                                .withValues(alpha: 0.25),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          disabledBackgroundColor: Colors.transparent,
+                        ),
+                        onPressed: _isSubmitting ? null : _handlePublish,
+                        child: _isSubmitting
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (_isPremiumPartner) ...[
+                                    Icon(tierTheme.icon, color: Colors.white, size: 16),
+                                    const SizedBox(width: 6),
+                                  ],
+                                  const Text(
+                                    "ĐĂNG BÀI CHỜ DUYỆT", 
+                                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, letterSpacing: 0.4),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ],

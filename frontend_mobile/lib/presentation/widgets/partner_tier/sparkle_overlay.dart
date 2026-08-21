@@ -61,19 +61,22 @@ class _SparkleOverlayState extends State<SparkleOverlay> with SingleTickerProvid
       children: [
         widget.child,
         Positioned.fill(
-          child: RepaintBoundary(
-            child: AnimatedBuilder(
-              animation: _controller,
-              builder: (context, _) {
-                return CustomPaint(
-                  painter: _SparklePainter(
-                    progress: _controller.value,
-                    sparkleColor: widget.sparkleColor,
-                    count: widget.particleCount,
-                    random: _random,
-                  ),
-                );
-              },
+          child: IgnorePointer( // 🚀 SỬA LỖI: Cho phép xuyên thấu cử chỉ chạm trực tiếp xuống nút bấm bên dưới
+            ignoring: true,
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _controller,
+                builder: (context, _) {
+                  return CustomPaint(
+                    painter: _SparklePainter(
+                      progress: _controller.value,
+                      sparkleColor: widget.sparkleColor,
+                      count: widget.particleCount,
+                      random: _random,
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ),

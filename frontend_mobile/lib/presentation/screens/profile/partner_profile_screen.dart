@@ -11,11 +11,15 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/global_cache_engine.dart';
+import '../../../core/theme/partner_tier_theme.dart';
 import '../../../data/models/video_model.dart';
 import '../../../data/services/partner_api_service.dart';
 import '../../../data/services/user_api_service.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/mini_video_player.dart';
+import '../../widgets/partner_tier/partner_avatar_frame.dart';
+import '../../widgets/partner_tier/partner_tier_badge.dart';
+import '../../widgets/partner_tier/sparkle_overlay.dart';
 import '../../widgets/shimmer_wrapper.dart';
 
 class PartnerProfileScreen extends StatefulWidget {
@@ -58,8 +62,13 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
 
   final ImagePicker _picker = ImagePicker();
 
-  final Color _bizPrimary = Colors.blue;
-  final Color _bizSecondary = Colors.cyan;
+  // 🚀 PHASE 08: Getter trích xuất Theme Nhận Diện Cấp Bậc Đối Tác
+  bool get _isPremium => widget.profile['is_premium'] == true || widget.profile['is_premium'] == 'true';
+  String get _premiumTier => (widget.profile['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+  PartnerTierTheme get _tierTheme => PartnerTierTheme.fromTier(_isPremium, _premiumTier);
+
+  Color get _bizPrimary => _isPremium ? _tierTheme.primaryColor : const Color(0xFF2E6F65);
+  Color get _bizSecondary => _isPremium ? _tierTheme.secondaryColor : const Color(0xFF80BF84);
 
   @override
   void initState() {
@@ -1138,15 +1147,15 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7FBF9),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFFE3F2FD),
-              Color(0xFFF7FBF9),
+              _isPremium ? _tierTheme.badgeBgColor : const Color(0xFFE8F4F0),
+              const Color(0xFFF7FBF9),
             ],
-            stops: [0.0, 0.45],
+            stops: const [0.0, 0.45],
           ),
         ),
         child: CustomScrollView(
@@ -1229,49 +1238,73 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                             ),
                           ),
                         ),
+                        // 🚀 PHASE 08: Bọc Avatar bằng PartnerAvatarFrame phát sáng thông minh
                         Positioned(
-                          top: 84,
+                          top: 80,
                           child: Stack(
                             alignment: Alignment.bottomCenter,
                             clipBehavior: Clip.none,
                             children: [
-                              Container(
-                                width: 116, height: 116,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 4),
-                                  boxShadow: [BoxShadow(color: _bizPrimary.withValues(alpha: 0.25), blurRadius: 20, offset: const Offset(0, 8))],
-                                  image: DecorationImage(image: GlobalCacheProvider.create(avatarUrl, maxWidth: 300, maxHeight: 300), fit: BoxFit.cover),
+                              PartnerAvatarFrame(
+                                avatarUrl: avatarUrl,
+                                size: 114,
+                                isPremium: widget.profile['is_premium'] == true,
+                                premiumTier: widget.profile['premium_tier'],
+                                onTap: () => _showImageOptions(hasAvatar ? rawAvatar : null, 'avatar'),
+                              ),
+                              Positioned(
+                                bottom: -10,
+                                child: Builder(
+                                  builder: (context) {
+                                    final bool isPrem = widget.profile['is_premium'] == true;
+                                    final String tierStr = widget.profile['premium_tier'] ?? 'STANDARD';
+                                    final tierTheme = PartnerTierTheme.fromTier(isPrem, tierStr);
+
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: isPrem 
+                                              ? tierTheme.gradientBorderColors 
+                                              : const [Color(0xFF14302B), Color(0xFF234E46)],
+                                        ),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(color: Colors.white, width: 2),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: (isPrem ? tierTheme.primaryColor : const Color(0xFF14302B)).withValues(alpha: 0.35),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 3),
+                                          )
+                                        ],
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(tierTheme.icon, color: Colors.white, size: 10),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            isPrem ? (tierTheme.type == PartnerTierType.diamond ? 'VIP DIAMOND' : 'PRO PARTNER') : 'DOANH NGHIỆP',
+                                            style: const TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.w900, letterSpacing: 0.5),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
                               Positioned(
-                                bottom: -12,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(colors: [_bizSecondary, _bizPrimary]),
-                                    borderRadius: BorderRadius.circular(14),
-                                    border: Border.all(color: Colors.white, width: 2),
-                                    boxShadow: [BoxShadow(color: _bizPrimary.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4))],
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.business_center_rounded, color: Colors.white, size: 10),
-                                      SizedBox(width: 4),
-                                      Text('BUSINESS', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 0.6)),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                right: 2, bottom: 4,
+                                right: 0, bottom: 4,
                                 child: GestureDetector(
                                   onTap: () => _showImageOptions(hasAvatar ? rawAvatar : null, 'avatar'),
                                   child: Container(
                                     padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)]),
-                                    child: Icon(Icons.camera_alt_rounded, size: 13, color: _bizSecondary),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4)],
+                                    ),
+                                    child: const Icon(Icons.camera_alt_rounded, size: 13, color: Color(0xFF14302B)),
                                   ),
                                 ),
                               ),
@@ -1287,17 +1320,52 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Column(
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(widget.profile['full_name'] ?? 'Doanh nghiệp', style: const TextStyle(color: Color(0xFF1A3A35), fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-                            const SizedBox(width: 6),
-                            Icon(Icons.verified_rounded, color: _bizPrimary, size: 18),
-                          ],
+                        Builder(
+                          builder: (context) {
+                            final bool isPrem = widget.profile['is_premium'] == true;
+                            final String tierStr = widget.profile['premium_tier'] ?? 'STANDARD';
+                            final tierTheme = PartnerTierTheme.fromTier(isPrem, tierStr);
+
+                            return Column(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        widget.profile['full_name'] ?? 'Doanh nghiệp',
+                                        style: const TextStyle(color: Color(0xFF14302B), fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Icon(
+                                      Icons.verified_rounded, 
+                                      color: isPrem ? tierTheme.primaryColor : const Color(0xFF80BF84), 
+                                      size: 20
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      '@${widget.profile['username'] ?? 'username'}',
+                                      style: const TextStyle(color: Color(0xFF6B8782), fontSize: 13, fontWeight: FontWeight.w500),
+                                    ),
+                                    if (isPrem) ...[
+                                      const SizedBox(width: 8),
+                                      PartnerTierBadge(isPremium: isPrem, premiumTier: tierStr, isCompact: true),
+                                    ],
+                                  ],
+                                ),
+                              ],
+                            );
+                          },
                         ),
-                        const SizedBox(height: 4),
-                        Text('@${widget.profile['username'] ?? 'username'}', style: const TextStyle(color: Color(0xFF617D79), fontSize: 13, fontWeight: FontWeight.w500)),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
 
                         () {
                           final int totalBookings = widget.profile['bookings_count'] ?? 0;
@@ -1488,12 +1556,23 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                           );
                         }(),
 
+                        // 🚀 NÂNG CẤP: Thanh tiến trình EXP đổi màu theo Theme Cấp bậc
                         Container(
-                          padding: const EdgeInsets.all(14),
+                          padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFFE2ECEB), width: 1),
+                            border: Border.all(
+                              color: _isPremium ? _tierTheme.primaryColor.withValues(alpha: 0.25) : const Color(0xFFE2ECEB), 
+                              width: 1
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (_isPremium ? _tierTheme.primaryColor : const Color(0xFF1A3A35)).withValues(alpha: 0.03),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
                           child: Column(
                             children: [
@@ -1504,7 +1583,14 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                                     children: [
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                        decoration: BoxDecoration(color: _bizPrimary, borderRadius: BorderRadius.circular(8)),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: _isPremium 
+                                                ? _tierTheme.gradientBorderColors 
+                                                : const [Color(0xFF14302B), Color(0xFF234E46)],
+                                          ),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
                                         child: Text('LV $userLevel', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
                                       ),
                                       const SizedBox(width: 8),
@@ -1519,7 +1605,7 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                                 borderRadius: BorderRadius.circular(4),
                                 child: LinearProgressIndicator(
                                   value: expPercent,
-                                  backgroundColor: const Color(0xFFE3F2FD),
+                                  backgroundColor: _isPremium ? _tierTheme.badgeBgColor : const Color(0xFFE8F4F0),
                                   valueColor: AlwaysStoppedAnimation<Color>(_bizPrimary),
                                   minHeight: 6,
                                 ),
@@ -1651,16 +1737,30 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
 
                         _buildDynamicTabBody(widget.profile),
                         
+                        // 🚀 NÂNG CẤP: Nút Xem Hồ Sơ Công Khai Đồng Bộ Theme
                         Container(
                           width: double.infinity,
                           margin: const EdgeInsets.only(top: 24, bottom: 130),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: _bizPrimary.withValues(alpha: 0.12),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFE3F2FD),
+                              backgroundColor: _isPremium ? _tierTheme.badgeBgColor : const Color(0xFFE8F4F0),
                               foregroundColor: _bizPrimary,
                               elevation: 0,
                               padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: BorderSide(color: _bizPrimary.withValues(alpha: 0.35), width: 1.0),
+                              ),
                             ),
                             onPressed: () {
                               final username = widget.profile['username'];
@@ -1668,7 +1768,14 @@ class _PartnerProfileScreenState extends State<PartnerProfileScreen> {
                                 context.push('/public-profile/$username');
                               }
                             },
-                            child: const Text('Xem hồ sơ hiển thị công khai', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.remove_red_eye_rounded, size: 16, color: _bizPrimary),
+                                const SizedBox(width: 8),
+                                const Text('Xem hồ sơ hiển thị công khai', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                              ],
+                            ),
                           ),
                         ),
                       ],

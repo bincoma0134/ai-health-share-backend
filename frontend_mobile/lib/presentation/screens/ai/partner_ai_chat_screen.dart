@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/theme/partner_tier_theme.dart';
+import '../../../data/services/user_api_service.dart';
 import '../../widgets/app_toast.dart';
+import '../../widgets/partner_tier/partner_avatar_frame.dart';
+import '../../widgets/partner_tier/partner_tier_badge.dart';
 
 class PartnerAIChatScreen extends StatefulWidget {
   final String partnerId;
@@ -35,14 +39,59 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
   int _suggestionStep = 0;
   bool _showSuggestions = true;
 
-  // Khai báo màu xanh thương hiệu độc quyền của Partner làm chủ đạo
-  final Color _partnerColor = const Color(0xFF80BF84);
-  final Color _darkBgColor = const Color(0xFF1A3A35);
+  // 🚀 PHASE 08: Quản lý Theme Phân Tầng Động cho AI Concierge
+  bool _isPremiumPartner = false;
+  String _partnerTier = 'STANDARD';
+  String? _partnerAvatarUrl;
+
+  PartnerTierTheme get _tierTheme => PartnerTierTheme.fromTier(_isPremiumPartner, _partnerTier);
+  Color get _partnerColor => _isPremiumPartner ? _tierTheme.primaryColor : const Color(0xFF80BF84);
+  Color get _darkBgColor => const Color(0xFF14302B);
 
   @override
   void initState() {
     super.initState();
+    _loadPartnerInfo();
     _loadChatHistory();
+  }
+
+  Future<void> _loadPartnerInfo() async {
+    try {
+      print('[DEBUG-AI-CHAT] Bắt đầu nạp thông tin Partner: ${widget.partnerId}');
+      
+      // 1. Thử gọi API lấy danh sách dịch vụ của đối tác (luôn hỗ trợ UUID)
+      final svcRes = await ApiClient.instance.get('/services?user_id=${widget.partnerId}');
+      if (svcRes.statusCode == 200 && svcRes.data != null && mounted) {
+        final list = svcRes.data is List ? svcRes.data : (svcRes.data['data'] ?? []);
+        if (list.isNotEmpty && list[0]['users'] != null) {
+          final u = list[0]['users'];
+          setState(() {
+            _isPremiumPartner = u['is_premium'] == true || u['is_premium'] == 'true';
+            _partnerTier = (u['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+            _partnerAvatarUrl = u['avatar_url']?.toString();
+          });
+          print('[DEBUG-AI-CHAT-SUCCESS] Đã nạp Tier từ Services: $_partnerTier | IsPremium: $_isPremiumPartner | PrimaryColor: ${_tierTheme.primaryColor}');
+          return;
+        }
+      }
+
+      // 2. Fallback: Thử gọi endpoint public profile
+      final res = await ApiClient.instance.get('/user/public/${widget.partnerId}');
+      if (res.statusCode == 200 && res.data != null && mounted) {
+        final profileData = res.data['data']?['profile'] ?? res.data['profile'];
+        if (profileData != null) {
+          setState(() {
+            _isPremiumPartner = profileData['is_premium'] == true || profileData['is_premium'] == 'true';
+            _partnerTier = (profileData['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+            _partnerAvatarUrl = profileData['avatar_url']?.toString();
+          });
+          print('[DEBUG-AI-CHAT-SUCCESS] Đã nạp Tier từ Public Profile: $_partnerTier | IsPremium: $_isPremiumPartner');
+          return;
+        }
+      }
+    } catch (e) {
+      print('[DEBUG-AI-CHAT-ERR] Lỗi khi nạp thông tin cấp bậc đối tác: $e');
+    }
   }
 
   // 🔄 LOGIC: Tải toàn bộ lịch sử chat cũ của cặp User - Partner này từ Backend
@@ -132,33 +181,41 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FA), // Premium Light Background
+      backgroundColor: _isPremiumPartner ? _tierTheme.badgeBgColor : const Color(0xFFF4F7FA),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        shadowColor: Colors.black.withValues(alpha: 0.05),
+        shadowColor: (_isPremiumPartner ? _tierTheme.primaryColor : Colors.black).withValues(alpha: 0.08),
+        shape: Border(
+          bottom: BorderSide(
+            color: _isPremiumPartner ? _tierTheme.primaryColor.withValues(alpha: 0.25) : const Color(0xFFE2ECE9),
+            width: 1.0,
+          ),
+        ),
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios_new_rounded, color: _darkBgColor, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
+        // 🚀 PHASE 08: Header Concierge Thượng Lưu với PartnerAvatarFrame Phát Sáng
         title: Row(
           children: [
             Stack(
               children: [
-                CircleAvatar(
-                  backgroundColor: _partnerColor.withValues(alpha: 0.15),
-                  radius: 20,
-                  child: Icon(Icons.support_agent_rounded, color: _partnerColor, size: 22),
+                PartnerAvatarFrame(
+                  avatarUrl: _partnerAvatarUrl,
+                  size: 38,
+                  isPremium: _isPremiumPartner,
+                  premiumTier: _partnerTier,
                 ),
                 Positioned(
                   right: 0,
                   bottom: 0,
                   child: Container(
-                    width: 12,
-                    height: 12,
+                    width: 11,
+                    height: 11,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF10B981), // Trạng thái Online
+                      color: const Color(0xFF10B981), // Online Pulse
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 2),
                     ),
@@ -171,19 +228,40 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    widget.partnerName ?? 'Trợ lý AI Cơ Sở',
-                    style: TextStyle(color: _darkBgColor, fontSize: 16, fontWeight: FontWeight.w900),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
                   Row(
                     children: [
-                      const Icon(Icons.auto_awesome, color: Colors.amber, size: 12),
+                      Flexible(
+                        child: Text(
+                          widget.partnerName ?? 'Trợ lý AI Cơ Sở',
+                          style: TextStyle(color: _darkBgColor, fontSize: 15, fontWeight: FontWeight.w900, letterSpacing: -0.3),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (_isPremiumPartner) ...[
+                        const SizedBox(width: 6),
+                        PartnerTierBadge(isPremium: _isPremiumPartner, premiumTier: _partnerTier, isCompact: true),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Icon(
+                        _isPremiumPartner ? Icons.verified_rounded : Icons.auto_awesome, 
+                        color: _partnerColor, 
+                        size: 11
+                      ),
                       const SizedBox(width: 4),
                       Text(
-                        'Tư vấn tự động 24/7',
-                        style: TextStyle(color: Colors.grey.shade600, fontSize: 11, fontWeight: FontWeight.bold),
+                        _isPremiumPartner 
+                            ? (_partnerTier == 'DIAMOND' ? 'VIP 24/7 AI Concierge' : 'Pro AI Assistant') 
+                            : 'Trợ lý tư vấn y tế 24/7',
+                        style: TextStyle(
+                          color: _isPremiumPartner ? _tierTheme.textColor : Colors.grey.shade600, 
+                          fontSize: 11, 
+                          fontWeight: FontWeight.w700
+                        ),
                       ),
                     ],
                   ),
@@ -404,27 +482,30 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
+                // 🚀 NÂNG CẤP: Nút Gửi Tin Nhắn Phát Sáng Đồng Bộ Theme
                 GestureDetector(
                   onTap: _sendMessage,
                   child: Container(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(13),
                     margin: const EdgeInsets.only(bottom: 2, right: 2),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [_partnerColor, const Color(0xFF63A067)],
+                        colors: _isPremiumPartner 
+                            ? _tierTheme.gradientBorderColors 
+                            : const [Color(0xFF80BF84), Color(0xFF48C9B0)],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: _partnerColor.withValues(alpha: 0.4),
+                          color: _partnerColor.withValues(alpha: 0.35),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         )
                       ],
                     ),
-                    child: const Icon(Icons.send_rounded, color: Colors.white, size: 22),
+                    child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
                   ),
                 ),
               ],
@@ -446,17 +527,24 @@ class _PartnerAIChatScreenState extends State<PartnerAIChatScreen> {
         decoration: BoxDecoration(
           color: isMe ? _partnerColor : Colors.white,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(isMe ? 16 : 0),
-            bottomRight: Radius.circular(isMe ? 0 : 16),
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(isMe ? 18 : 2),
+            bottomRight: Radius.circular(isMe ? 2 : 18),
           ),
-          border: isMe ? null : Border.all(color: const Color(0xFFE2ECEB), width: 1),
+          border: isMe 
+              ? null 
+              : Border.all(
+                  color: _isPremiumPartner 
+                      ? _tierTheme.primaryColor.withValues(alpha: 0.2) 
+                      : const Color(0xFFE2ECEB), 
+                  width: 1.0
+                ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isMe ? 0.06 : 0.02),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
+              color: (_isPremiumPartner ? _tierTheme.primaryColor : Colors.black).withValues(alpha: isMe ? 0.2 : 0.03),
+              blurRadius: isMe ? 8 : 4,
+              offset: const Offset(0, 3),
             )
           ],
         ),

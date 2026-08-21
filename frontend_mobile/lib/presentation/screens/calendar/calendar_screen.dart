@@ -8,12 +8,14 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/theme/partner_tier_theme.dart';
 import '../../../data/models/appointment_model.dart';
 import '../../../data/services/calendar_api_service.dart';
 import '../../widgets/app_toast.dart';
 import '../../widgets/auth_bottom_sheet.dart';
 import '../../widgets/auth_guard.dart';
 import '../../widgets/notification_notifier.dart'; // 🚀 Bổ sung thư viện quản lý State thông báo
+import '../../widgets/partner_tier/partner_tier_badge.dart';
 import '../../widgets/shimmer_wrapper.dart';
 
 class CalendarScreen extends StatefulWidget {
@@ -28,6 +30,8 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
   bool _isLoading = true;
   
   String _userRole = 'USER';
+  bool _isPartnerPremium = false; // 🚀 PHASE 08: Trạng thái VIP của tài khoản đăng nhập
+  String _partnerTier = 'STANDARD';
   String _searchQuery = ''; // Kính lúp tìm kiếm local dữ liệu lịch hẹn
   bool _isSearching = false; // 🚀 Biến trạng thái bật/tắt thanh tìm kiếm Inline chuẩn UX
   String? _avatarUrl; // 🚀 Lưu trữ URL ảnh đại diện động bóc tách từ API hệ thống
@@ -181,8 +185,11 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
         setState(() {
           if (profile != null) {
             _userRole = profile['role'] ?? 'USER';
+            _isPartnerPremium = profile['is_premium'] == true || profile['is_premium'] == 'true';
+            _partnerTier = (profile['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
             _avatarUrl = profile['avatar_url']; // Đấu nối chính xác trường dữ liệu từ API
             _customerFullName = profile['full_name'] ?? '';
+            print('[DEBUG-CALENDAR] Role: $_userRole | IsPremium: $_isPartnerPremium | Tier: $_partnerTier');
           }
           _appointments = data;
           _isLoading = false;
@@ -503,6 +510,8 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
   }
 
   Widget _buildMetricItemCard(String title, String value, Color color, VoidCallback onTap) {
+    final tierTheme = PartnerTierTheme.fromTier(_isPartnerPremium, _partnerTier);
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -512,10 +521,16 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFF4F7F6), width: 1.5),
+          border: Border.all(
+            color: _isPartnerPremium 
+                ? tierTheme.primaryColor.withValues(alpha: 0.3) 
+                : const Color(0xFFF4F7F6), 
+            width: _isPartnerPremium ? 1.2 : 1.5,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.02),
+              color: (_isPartnerPremium ? tierTheme.primaryColor : Colors.black)
+                  .withValues(alpha: _isPartnerPremium ? 0.06 : 0.02),
               blurRadius: 8,
               offset: const Offset(0, 4),
             )
@@ -601,36 +616,61 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // KPI Thẻ lơ lửng Doanh thu tổng hợp 7 ngày qua
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF4C8D50), Color(0xFF80BF84)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: const Color(0xFF4C8D50).withValues(alpha: 0.2), blurRadius: 15, offset: const Offset(0, 8))],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('TỔNG DOANH THU (7 NGÀY QUA)', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                const SizedBox(height: 6),
-                Text(_formatPrice(weeklyRevValue), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
-                const SizedBox(height: 12),
-                Builder(
-                  builder: (context) {
-                    final double aovValue = (m['aov'] ?? 0.0).toDouble();
-                    return Row(
+          // 🚀 PHASE 08: KPI Thẻ Doanh Thu Đổi Màu Theo Cấp Bậc Đối Tác
+          Builder(
+            builder: (context) {
+              final tierTheme = PartnerTierTheme.fromTier(_isPartnerPremium, _partnerTier);
+
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: _isPartnerPremium
+                        ? tierTheme.gradientBorderColors
+                        : const [Color(0xFF2E6F65), Color(0xFF80BF84)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (_isPartnerPremium ? tierTheme.primaryColor : const Color(0xFF2E6F65)).withValues(alpha: 0.25),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    )
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('AOV: ${_formatPrice(aovValue)}', style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 11, fontWeight: FontWeight.bold)),
-                        Text('Đã xong: ${m['totalCompleted']} đơn phục vụ', style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 11, fontWeight: FontWeight.bold)),
+                        const Text('TỔNG DOANH THU (7 NGÀY QUA)', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                        if (_isPartnerPremium)
+                          PartnerTierBadge(isPremium: _isPartnerPremium, premiumTier: _partnerTier, isCompact: true),
                       ],
-                    );
-                  }
-                )
-              ],
-            ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(_formatPrice(weeklyRevValue), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                    const SizedBox(height: 12),
+                    Builder(
+                      builder: (context) {
+                        final double aovValue = (m['aov'] ?? 0.0).toDouble();
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('AOV: ${_formatPrice(aovValue)}', style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 11, fontWeight: FontWeight.bold)),
+                            Text('Đã xong: ${m['totalCompleted']} đơn phục vụ', style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 11, fontWeight: FontWeight.bold)),
+                          ],
+                        );
+                      }
+                    )
+                  ],
+                ),
+              );
+            },
           ),
           const SizedBox(height: 20),
 
@@ -1411,25 +1451,41 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                 } catch (_) {}
               }
 
+              final bool isPartnerPrem = appt.partnerInfo['is_premium'] == true || appt.partnerInfo['is_premium'] == 'true';
+              final String pTier = (appt.partnerInfo['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+              final itemTierTheme = PartnerTierTheme.fromTier(isPartnerPrem, pTier);
+
               return Container(
                 margin: const EdgeInsets.only(bottom: 14),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: (!_isMyClient && isPartnerPrem) 
+                        ? itemTierTheme.primaryColor.withValues(alpha: 0.35) 
+                        : Colors.transparent,
+                    width: (!_isMyClient && isPartnerPrem) ? 1.2 : 0.0,
+                  ),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 12, offset: const Offset(0, 4))
+                    BoxShadow(
+                      color: (!_isMyClient && isPartnerPrem ? itemTierTheme.primaryColor : Colors.black)
+                          .withValues(alpha: (!_isMyClient && isPartnerPrem) ? 0.08 : 0.02), 
+                      blurRadius: 12, 
+                      offset: const Offset(0, 4)
+                    )
                   ],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Dải màu indicator mượt mà bên lề trái thay thế viền thô cũ
-                      Container(width: 5, height: 110, color: themeColor),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
+                  child: IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Dải màu indicator mượt mà bên lề trái tự động phủ 100% chiều cao
+                        Container(width: 5, color: themeColor),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -1483,15 +1539,42 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                                 ],
                               ),
                               const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  const Icon(Icons.person_outline_rounded, color: Colors.black26, size: 14),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    _isMyClient ? 'Khách: ${appt.customerName}' : 'Cơ sở: ${appt.partnerInfo['full_name'] ?? "VN Share"}',
-                                    style: const TextStyle(color: Colors.black45, fontSize: 12),
-                                  ),
-                                ],
+                              Builder(
+                                builder: (context) {
+                                  final bool isPrem = appt.partnerInfo['is_premium'] == true || appt.partnerInfo['is_premium'] == 'true';
+                                  final String pTier = (appt.partnerInfo['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+
+                                  return Row(
+                                    children: [
+                                      Icon(
+                                        _isMyClient ? Icons.person_outline_rounded : Icons.storefront_rounded, 
+                                        color: isPrem && !_isMyClient 
+                                            ? PartnerTierTheme.fromTier(isPrem, pTier).primaryColor 
+                                            : Colors.black26, 
+                                        size: 14
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text(
+                                          _isMyClient ? 'Khách: ${appt.customerName}' : 'Cơ sở: ${appt.partnerInfo['full_name'] ?? "VN Share"}',
+                                          style: TextStyle(
+                                            color: isPrem && !_isMyClient 
+                                                ? const Color(0xFF14302B) 
+                                                : Colors.black54, 
+                                            fontSize: 12,
+                                            fontWeight: isPrem && !_isMyClient ? FontWeight.w700 : FontWeight.normal,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (!_isMyClient && isPrem) ...[
+                                        const SizedBox(width: 6),
+                                        PartnerTierBadge(isPremium: isPrem, premiumTier: pTier, isCompact: true),
+                                      ],
+                                    ],
+                                  );
+                                },
                               ),
                               
                               // 🚀 NÂNG CẤP PHASE 1: Hiển thị thêm thông tin Khung giờ mong muốn & Số khách (Dành cho Partner dễ duyệt lịch)
@@ -1706,6 +1789,7 @@ class _CalendarScreenState extends State<CalendarScreen> with WidgetsBindingObse
                         ),
                       ),
                     ],
+                  ),
                   ),
                 ),
               );

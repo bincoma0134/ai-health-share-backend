@@ -2,8 +2,10 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/network/api_client.dart';
+import '../../core/theme/partner_tier_theme.dart';
 import 'auth_guard.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/partner_tier/partner_tier_badge.dart';
 import 'shimmer_wrapper.dart';
 
 class BookingBottomSheet extends StatefulWidget {
@@ -95,6 +97,53 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     return total < 0 ? 0 : total;
   }
 
+  // 🚀 PHASE 08: Trích xuất thông tin cấp bậc đối tác từ Video Model / Context và State động
+  bool _fetchedPartnerPremium = false;
+  String _fetchedPartnerTier = 'STANDARD';
+
+  bool get _isPartnerPremium {
+    if (_fetchedPartnerPremium) return true;
+    if (widget.video is Map) {
+      final v = widget.video as Map;
+      if (v['is_premium'] == true || v['is_premium'] == 'true' || v['is_premium'] == 1) return true;
+      if (v['author'] is Map && (v['author']['is_premium'] == true || v['author']['is_premium'] == 'true')) return true;
+      if (v['linked_partner'] is Map && (v['linked_partner']['is_premium'] == true || v['linked_partner']['is_premium'] == 'true')) return true;
+      if (v['users'] is Map && (v['users']['is_premium'] == true || v['users']['is_premium'] == 'true')) return true;
+    } else {
+      try {
+        if (widget.video.isAuthorPremium == true || widget.video.isLinkedPartnerPremium == true) return true;
+      } catch (_) {}
+    }
+    return false;
+  }
+
+  String get _partnerTier {
+    if (_fetchedPartnerTier != 'STANDARD') return _fetchedPartnerTier;
+    if (widget.video is Map) {
+      final v = widget.video as Map;
+      if (v['premium_tier'] != null && v['premium_tier'].toString().toUpperCase() != 'STANDARD') {
+        return v['premium_tier'].toString().toUpperCase();
+      }
+      if (v['author'] is Map && v['author']['premium_tier'] != null) {
+        return v['author']['premium_tier'].toString().toUpperCase();
+      }
+      if (v['linked_partner'] is Map && v['linked_partner']['premium_tier'] != null) {
+        return v['linked_partner']['premium_tier'].toString().toUpperCase();
+      }
+      if (v['users'] is Map && v['users']['premium_tier'] != null) {
+        return v['users']['premium_tier'].toString().toUpperCase();
+      }
+    } else {
+      try {
+        final t = widget.video.authorTier ?? widget.video.linkedPartnerTier;
+        if (t != null && t.toString().toUpperCase() != 'STANDARD') return t.toString().toUpperCase();
+      } catch (_) {}
+    }
+    return 'STANDARD';
+  }
+
+  PartnerTierTheme get _tierTheme => PartnerTierTheme.fromTier(_isPartnerPremium, _partnerTier);
+
   @override
   void initState() {
     super.initState();
@@ -149,9 +198,10 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     _selectedServiceName = names.length > 1 ? 'Combo: ${names.join(', ')}' : (names.isNotEmpty ? names.first : 'Dịch vụ');
   }
 
-  // 🚀 TẢI NGẦM DANH SÁCH DỊCH VỤ TỪ PARTNER ID LIÊN KẾT
+  // 🚀 TẢI NGẦM DANH SÁCH DỊCH VỤ VÀ METADATA TIER CỦA ĐỐI TÁC
   Future<void> _fetchPartnerServices() async {
     try {
+      print('[DEBUG-BOOKING-SHEET] Bắt đầu tải dịch vụ & Tier cho Partner: $_partnerId');
       final res = await ApiClient.instance.get('/services?user_id=$_partnerId');
       if (mounted && res.data != null) {
         setState(() {
@@ -161,6 +211,14 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             _partnerServices = res.data['data'];
           }
           
+          // Trích xuất metadata cấp bậc từ mảng dịch vụ trả về
+          if (_partnerServices.isNotEmpty && _partnerServices[0]['users'] != null) {
+            final u = _partnerServices[0]['users'];
+            _fetchedPartnerPremium = u['is_premium'] == true || u['is_premium'] == 'true';
+            _fetchedPartnerTier = (u['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+            print('[DEBUG-BOOKING-SHEET-SUCCESS] Đã đồng bộ Tier: $_fetchedPartnerTier | IsPremium: $_fetchedPartnerPremium');
+          }
+
           // Chốt chặn Fail-safe: Đồng bộ lại tên dịch vụ mặc định nếu tìm thấy trong list trả về
           if (_selectedServiceIds.isNotEmpty && _selectedServiceName == 'Dịch vụ niêm yết') {
             final match = _partnerServices.firstWhere((s) => s['id'] == _selectedServiceIds.first, orElse: () => null);
@@ -169,8 +227,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
           _calculatePriceAndCapacity();
         });
       }
-    } catch (_) {
-      // Im lặng nếu lỗi mạng, giữ nguyên giá trị mặc định lúc khởi tạo
+    } catch (e) {
+      print('[DEBUG-BOOKING-SHEET-ERR] Lỗi tải dịch vụ: $e');
     } finally {
       if (mounted) setState(() => _isLoadingServices = false);
     }
@@ -353,15 +411,19 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
     if (isVip && fixedSlot != null && fixedSlot.isNotEmpty) {
       try {
-        // Parse "HH:mm - HH:mm" or "HH:mm"
-        final startTimeStr = fixedSlot.split('-').first.trim();
+        // 🚀 BỌC THÉP PARSER: Hỗ trợ "HH:mm - HH:mm", "HH:mm", "HHhMM"
+        final startTimeStr = fixedSlot.split('-').first.trim().replaceAll('h', ':');
         final parts = startTimeStr.split(':');
-        _preferredTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+        final int hour = int.parse(parts[0].trim());
+        final int minute = parts.length > 1 && parts[1].trim().isNotEmpty ? int.parse(parts[1].trim()) : 0;
+        
+        _preferredTime = TimeOfDay(hour: hour, minute: minute);
         _isTimeLocked = true;
         _isAppliedVoucherVip = true;
         _appliedVoucherFixedSlot = fixedSlot;
+        print('[DEBUG-APPLY-VOUCHER-SUCCESS] Đã khóa khung giờ VIP: ${_preferredTime!.format(context)}');
       } catch (e) {
-        print('[DEBUG-APPLY-VOUCHER] Lỗi parse khung giờ VIP: $e');
+        print('[DEBUG-APPLY-VOUCHER] Lỗi parse khung giờ VIP ($fixedSlot): $e');
         _isTimeLocked = false;
         _isAppliedVoucherVip = false;
         _appliedVoucherFixedSlot = null;
@@ -911,22 +973,22 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
               top: 16
             ),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.88), // Đạt tỷ lệ tương phản chuẩn mực trên nền sáng Glassmorphism
+              color: _isPartnerPremium ? _tierTheme.badgeBgColor : Colors.white.withValues(alpha: 0.92),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.6),
-                width: 1.5,
+                color: _isPartnerPremium ? _tierTheme.primaryColor.withValues(alpha: 0.4) : Colors.white.withValues(alpha: 0.8),
+                width: _isPartnerPremium ? 2.0 : 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.15), 
+                  color: Colors.black.withValues(alpha: 0.12), 
                   blurRadius: 30, 
                   offset: const Offset(0, -10)
                 ),
                 BoxShadow(
-                  color: const Color(0xFF80BF84).withValues(alpha: 0.08), 
-                  blurRadius: 15, 
-                  offset: const Offset(0, -2)
+                  color: (_isPartnerPremium ? _tierTheme.primaryColor : const Color(0xFF80BF84)).withValues(alpha: 0.15), 
+                  blurRadius: 20, 
+                  offset: const Offset(0, -4)
                 ),
               ],
             ),
@@ -940,20 +1002,55 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                   children: [
                 Center(child: Container(width: 48, height: 5, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)))),
                 
+                // 🚀 PHASE 08: Header Đặt Lịch Bảo Chứng theo Cấp Bậc Cơ Sở
                 Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(color: const Color(0xFF80BF84).withValues(alpha: 0.2), shape: BoxShape.circle),
-                      child: const Icon(Icons.eco_rounded, color: Color(0xFF5B9E5F), size: 22),
+                      decoration: BoxDecoration(
+                        color: _isPartnerPremium ? _tierTheme.badgeBgColor : const Color(0xFF80BF84).withValues(alpha: 0.15), 
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: _isPartnerPremium ? _tierTheme.primaryColor.withValues(alpha: 0.35) : Colors.transparent,
+                          width: 1.0,
+                        ),
+                      ),
+                      child: Icon(
+                        _isPartnerPremium ? _tierTheme.icon : Icons.eco_rounded, 
+                        color: _isPartnerPremium ? _tierTheme.primaryColor : const Color(0xFF5B9E5F), 
+                        size: 20
+                      ),
                     ),
                     const SizedBox(width: 12),
-                    const Text('Đặt lịch tư vấn', style: TextStyle(color: Colors.black87, fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: -0.5)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Text(
+                                'Đặt lịch tư vấn', 
+                                style: TextStyle(color: Color(0xFF14302B), fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: -0.4)
+                              ),
+                              if (_isPartnerPremium) ...[
+                                const SizedBox(width: 8),
+                                PartnerTierBadge(isPremium: _isPartnerPremium, premiumTier: _partnerTier, isCompact: true),
+                              ],
+                            ],
+                          ),
+                          if (_isPartnerPremium)
+                            Text(
+                              _partnerTier == 'DIAMOND' ? '✦ Cơ sở dịch vụ bảo chứng VIP 5 sao' : 'Cơ sở đối tác tăng trưởng Pro',
+                              style: TextStyle(color: _tierTheme.textColor, fontSize: 11, fontWeight: FontWeight.w700),
+                            ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
-                const Text('Thông tin của bạn sẽ được bảo mật an toàn tuyệt đối.', style: TextStyle(color: Colors.black54, fontSize: 13, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 24),
+                const Text('Thông tin của bạn được bảo mật tuyệt đối và đối soát qua cổng Escrow an toàn.', style: TextStyle(color: Color(0xFF6B8782), fontSize: 12.5, fontWeight: FontWeight.w500, height: 1.4)),
+                const SizedBox(height: 20),
                 
                 _buildSoftInput(_nameCtrl, 'Họ và tên của bạn', Icons.person_rounded, isAutoFilledField: true),
                 _buildSoftInput(_phoneCtrl, 'Số điện thoại liên hệ', Icons.phone_rounded, isPhone: true, isAutoFilledField: true),
@@ -1218,20 +1315,24 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                       children: [
                                         Row(
                                           children: [
-                                            Text(
-                                              _isVoucherSuccess ? (_isAppliedVoucherVip ? '👑 VIP Pass Đã Áp Dụng' : 'Mã ưu đãi đã áp dụng') : 'Ưu đãi & Voucher', 
-                                              style: TextStyle(
-                                                color: _isAppliedVoucherVip ? const Color(0xFF9F1239) : const Color(0xFF1E293B), 
-                                                fontSize: 13, 
-                                                fontWeight: FontWeight.w800
-                                              )
+                                            Flexible(
+                                              child: Text(
+                                                _isVoucherSuccess ? (_isAppliedVoucherVip ? '👑 VIP Pass Đã Áp Dụng' : 'Mã ưu đãi đã áp dụng') : 'Ưu đãi & Voucher', 
+                                                style: TextStyle(
+                                                  color: _isAppliedVoucherVip ? const Color(0xFF9F1239) : const Color(0xFF1E293B), 
+                                                  fontSize: 12.5, 
+                                                  fontWeight: FontWeight.w800
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
                                             ),
                                             if (_isAppliedVoucherVip && _appliedVoucherFixedSlot != null) ...[
                                               const SizedBox(width: 6),
                                               Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                                 decoration: BoxDecoration(color: const Color(0xFFFE2C55), borderRadius: BorderRadius.circular(6)),
-                                                child: Text(_appliedVoucherFixedSlot!, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900)),
+                                                child: Text(_appliedVoucherFixedSlot!, style: const TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.w900)),
                                               ),
                                             ],
                                           ],
@@ -1381,18 +1482,22 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                 ),
                 const SizedBox(height: 28),
 
-                // NÚT CTA NỔI KHỐI CAO CẤP (Stadium Glow Button)
+                // 🚀 NÂNG CẤP: Nút CTA Xác Nhận Đặt Lịch Đồng Bộ Theme Cấp Bậc
                 Container(
                   width: double.infinity, 
-                  height: 52,
+                  height: 54,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF80BF84), Color(0xFF4C8D50)],
+                    borderRadius: BorderRadius.circular(22),
+                    gradient: LinearGradient(
+                      colors: _isPartnerPremium
+                          ? _tierTheme.gradientBorderColors
+                          : const [Color(0xFF14302B), Color(0xFF234E46)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF80BF84).withValues(alpha: 0.35),
+                        color: (_isPartnerPremium ? _tierTheme.primaryColor : const Color(0xFF14302B)).withValues(alpha: 0.3),
                         blurRadius: 16,
                         offset: const Offset(0, 6),
                       )
@@ -1403,13 +1508,22 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                       backgroundColor: Colors.transparent,
                       shadowColor: Colors.transparent,
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                       elevation: 0,
                     ),
                     onPressed: _isLoading ? null : _submitBooking,
                     child: _isLoading 
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
-                        : const Text('XÁC NHẬN ĐẶT LỊCH HẸN', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5, fontSize: 14)),
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (_isPartnerPremium) ...[
+                                Icon(_tierTheme.icon, color: Colors.white, size: 16),
+                                const SizedBox(width: 8),
+                              ],
+                              const Text('XÁC NHẬN ĐẶT LỊCH HẸN', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.5, fontSize: 13.5)),
+                            ],
+                          ),
                   ),
                 ),
               ],
