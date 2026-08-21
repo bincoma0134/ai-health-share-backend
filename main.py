@@ -1747,7 +1747,20 @@ Quy tắc hỗ trợ:
             temperature=0.6, 
             max_tokens=1024
         )
-        bot_reply = chat_completion.choices[0].message.content
+        raw_bot_reply = chat_completion.choices[0].message.content or ""
+
+        # 🚀 BỌC THÉP POST-PROCESSING: Triệt tiêu hoàn toàn các khối suy luận <think>...</think>
+        import re
+        bot_reply = re.sub(r"<think>.*?</think>", "", raw_bot_reply, flags=re.DOTALL)
+        bot_reply = re.sub(r"<thought>.*?</thought>", "", bot_reply, flags=re.DOTALL)
+        bot_reply = bot_reply.strip()
+
+        # Fail-safe: Nếu sau khi lọc chuỗi bị rỗng (mô hình chỉ sinh reasoning), giữ fallback an toàn
+        if not bot_reply and raw_bot_reply:
+            print("[DEBUG-AI-CHAT-CLEANER] Cảnh báo: Phản hồi thuần reasoning, kích hoạt chuỗi dự phòng")
+            bot_reply = raw_bot_reply.split("</think>")[-1].strip() if "</think>" in raw_bot_reply else raw_bot_reply.strip()
+
+        print(f"[DEBUG-AI-CHAT-CLEANER] Đã làm sạch phản hồi AI ({len(raw_bot_reply)} -> {len(bot_reply)} ký tự)")
 
         # 3. Lưu cặp tin nhắn MỚI NHẤT vào Database để tránh lặp dữ liệu
         last_user_msg = payload.messages[-1].content if payload.messages else ""
