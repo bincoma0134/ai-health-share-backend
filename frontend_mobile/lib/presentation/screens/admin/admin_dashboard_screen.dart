@@ -362,19 +362,28 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   int proCount = 0;
                   int diamondCount = 0;
 
-                  for (var p in _partners) {
-                    final String r = (p['role'] ?? '').toString();
-                    if (!r.contains('PARTNER')) continue;
-                    
-                    final isPrem = p['is_premium'] == true || p['is_premium'] == 'true';
-                    final tier = (p['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
-                    
-                    if (isPrem && tier == 'DIAMOND') {
-                      diamondCount++;
-                    } else if (isPrem && tier == 'PRO') {
-                      proCount++;
-                    } else {
-                      standardCount++;
+                  // 🚀 ƯU TIÊN 1: Lấy trực tiếp từ Source of Truth do Backend đếm sẵn trong stats
+                  if (_stats.containsKey('tier_breakdown') && _stats['tier_breakdown'] is Map) {
+                    final tb = _stats['tier_breakdown'] as Map<String, dynamic>;
+                    standardCount = int.tryParse(tb['standard']?.toString() ?? '0') ?? 0;
+                    proCount = int.tryParse(tb['pro']?.toString() ?? '0') ?? 0;
+                    diamondCount = int.tryParse(tb['diamond']?.toString() ?? '0') ?? 0;
+                  } else {
+                    // 🚀 ƯU TIÊN 2 (Fallback): Tính toán trực tiếp trên mảng _partners
+                    for (var p in _partners) {
+                      final String r = (p['role'] ?? '').toString();
+                      if (!r.contains('PARTNER')) continue;
+                      
+                      final isPrem = p['is_premium'] == true || p['is_premium'] == 'true';
+                      final tier = (p['premium_tier'] ?? 'STANDARD').toString().toUpperCase();
+                      
+                      if (isPrem && tier == 'DIAMOND') {
+                        diamondCount++;
+                      } else if (isPrem && tier == 'PRO') {
+                        proCount++;
+                      } else {
+                        standardCount++;
+                      }
                     }
                   }
 

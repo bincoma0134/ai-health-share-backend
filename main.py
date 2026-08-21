@@ -2406,7 +2406,16 @@ def get_admin_partners(current_user = Depends(verify_user_token), conn=Depends(g
     cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
         if current_user.role != "SUPER_ADMIN": raise HTTPException(status_code=403, detail="Cấm!")
-        cur.execute("SELECT id, full_name, email, avatar_url, created_at, role FROM users WHERE role IN ('PARTNER_ADMIN', 'CREATOR', 'MODERATOR') ORDER BY created_at DESC")
+        print(f"[DEBUG-ADMIN-PARTNERS] Super Admin {current_user.id} tải danh sách đối tác & cấp bậc...")
+        cur.execute("""
+            SELECT id, full_name, email, avatar_url, created_at, role, 
+                   COALESCE(is_premium, FALSE) as is_premium, 
+                   COALESCE(premium_tier, 'STANDARD') as premium_tier, 
+                   premium_until 
+            FROM users 
+            WHERE role IN ('PARTNER_ADMIN', 'CREATOR', 'MODERATOR') 
+            ORDER BY created_at DESC
+        """)
         return {"status": "success", "data": cur.fetchall()}
     finally: cur.close()
 
